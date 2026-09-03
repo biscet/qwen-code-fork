@@ -1,0 +1,145 @@
+.mark,
+.loader,
+.spinner {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.markTile,
+.loaderTile {
+  fill: var(--homecode-mark-tile, #08080a);
+  stroke: var(--homecode-mark-border, rgba(255, 255, 255, 0.1));
+  stroke-width: 1;
+}
+
+.markBracketLeft,
+.loaderBracketLeft {
+  fill: var(--homecode-mark-bracket-left, #d3d3d5);
+}
+
+.markBracketRight,
+.loaderBracketRight {
+  fill: var(--homecode-mark-bracket-right, #f4f4f5);
+}
+
+.markPixel,
+.loaderPixel {
+  fill: var(--homecode-mark-pixel, #77777a);
+}
+
+.loaderBracketLeft {
+  animation: homecode-lock-left 1.6s ease-in-out infinite;
+}
+
+.loaderBracketRight {
+  animation: homecode-lock-right 1.6s ease-in-out infinite;
+}
+
+.loaderPixelTop {
+  animation: homecode-pixel-top 1.6s ease-in-out infinite;
+}
+
+.loaderPixelBottom {
+  animation: homecode-pixel-bottom 1.6s ease-in-out infinite;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+
+.spinnerCell {
+  fill: currentColor;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: homecode-spinner-cell 1.35s ease-in-out infinite;
+}
+
+.spinnerCell:nth-child(2n) {
+  animation-delay: -0.22s;
+}
+
+.spinnerCell:nth-child(3n) {
+  animation-delay: -0.48s;
+}
+
+.spinnerCell:nth-child(5n) {
+  animation-delay: -0.74s;
+}
+
+@keyframes homecode-lock-left {
+  0%,
+  100% {
+    opacity: 0.68;
+  }
+
+  48%,
+  70% {
+    opacity: 1;
+  }
+}
+
+@keyframes homecode-lock-right {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  48%,
+  70% {
+    opacity: 0.68;
+  }
+}
+
+@keyframes homecode-pixel-top {
+  0%,
+  24%,
+  100% {
+    opacity: 0.32;
+  }
+
+  42%,
+  70% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes homecode-pixel-bottom {
+  0%,
+  38%,
+  100% {
+    opacity: 0.32;
+  }
+
+  54%,
+  82% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes homecode-spinner-cell {
+  0%,
+  100% {
+    opacity: 0.24;
+    transform: scale(0.76);
+  }
+
+  48% {
+    opacity: 0.96;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loaderBracketLeft,
+  .loaderBracketRight,
+  .loaderPixelTop,
+  .loaderPixelBottom,
+  .spinnerCell {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

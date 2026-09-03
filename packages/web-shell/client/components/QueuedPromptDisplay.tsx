@@ -26,6 +26,7 @@ import {
 import { cssUrlVar } from '../utils/cssUrlVar';
 import { ReadonlyComposerTag } from './messages/UserMessage';
 import { FileTypeIcon } from './FileTypeIcon';
+import { HomeCodeSpinner } from './branding/HomeCodeBrand';
 import { isSafeImageSrc } from './messages/Markdown';
 import styles from '../App.module.css';
 
@@ -362,7 +363,10 @@ export function QueuedPromptDisplay({
                 role="status"
               >
                 {hasStateSpinner && (
-                  <span className={styles.queuedPromptSpinner} />
+                  <HomeCodeSpinner
+                    className={styles.queuedPromptSpinner}
+                    aria-hidden="true"
+                  />
                 )}
                 <span className={styles.queuedPromptStateLabel}>
                   {isRemoving

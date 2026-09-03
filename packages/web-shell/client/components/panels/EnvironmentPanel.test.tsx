@@ -344,7 +344,7 @@ describe('EnvironmentPanel', () => {
     ).not.toBeNull();
     expect(
       monitorItem?.querySelector(
-        '[data-status="running"] svg.lucide-loader-circle',
+        '[data-status="running"] [data-homecode-spinner]',
       ),
     ).not.toBeNull();
     const cancelledItem = Array.from(view.querySelectorAll('ul button')).find(

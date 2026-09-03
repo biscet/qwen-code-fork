@@ -45,14 +45,14 @@ const RANGE_WORD_KEY: Record<DaemonUsageRange, string> = {
 };
 // Fixed categorical palette for the model rows (rank badge + bar + share%).
 const RANK_COLORS = [
-  '#3b82f6',
-  '#14b8a6',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#22c55e',
-  '#06b6d4',
-  '#ec4899',
+  '#7698fd',
+  '#00abcf',
+  '#f2cf76',
+  '#f17471',
+  '#9e99f7',
+  '#49c970',
+  '#65d9eb',
+  '#f799c6',
 ];
 
 function dayMs(dateKey: string): number {

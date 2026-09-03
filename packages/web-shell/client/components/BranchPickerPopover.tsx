@@ -19,7 +19,6 @@ import {
   ChevronRightIcon,
   GitBranchIcon,
   GitCommitIcon,
-  Loader2Icon,
   PlusIcon,
   SearchIcon,
   StarIcon,
@@ -28,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Spinner } from './ui/spinner';
 import { validateBranchName } from './GitModePopover';
 import { deriveStatus, hasComputedTreeSummary } from './GitBranchIndicator';
 import styles from './BranchPickerPopover.module.css';
@@ -718,10 +718,7 @@ export function BranchPickerPopover({
                     data-testid="branch-picker-pull"
                   >
                     {busyAction === 'pull' ? (
-                      <Loader2Icon
-                        size={14}
-                        className={`${styles.actionIcon} ${styles.spin}`}
-                      />
+                      <Spinner className={styles.actionIcon} />
                     ) : (
                       <ArrowDownToLineIcon
                         size={14}
@@ -759,10 +756,7 @@ export function BranchPickerPopover({
                     data-testid="branch-picker-push"
                   >
                     {busyAction === 'push' ? (
-                      <Loader2Icon
-                        size={14}
-                        className={`${styles.actionIcon} ${styles.spin}`}
-                      />
+                      <Spinner className={styles.actionIcon} />
                     ) : (
                       <ArrowUpFromLineIcon
                         size={14}
@@ -980,9 +974,7 @@ export function BranchPickerPopover({
                     disabled={!!busyAction}
                     onClick={() => void handlePull({ force: true })}
                   >
-                    {busyAction === 'pullDiscard' && (
-                      <Loader2Icon size={13} className={styles.spin} />
-                    )}
+                    {busyAction === 'pullDiscard' && <Spinner />}
                     {t('branchPicker.pullDiscardGo')}
                   </button>
                   <button
@@ -1004,7 +996,7 @@ export function BranchPickerPopover({
                   onClick={() => void handlePull({ stash: true })}
                 >
                   {busyAction === 'pullStash' ? (
-                    <Loader2Icon size={13} className={styles.spin} />
+                    <Spinner />
                   ) : (
                     <ArrowDownToLineIcon size={13} />
                   )}

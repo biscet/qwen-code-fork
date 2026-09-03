@@ -79,6 +79,23 @@ describe('StandaloneApp', () => {
     ).toEqual(['addMenu']);
   });
 
+  it('uses the simplified Desktop sidebar', () => {
+    act(() => root.render(<StandaloneApp daemonToken="token" />));
+
+    expect(testState.props?.webShellProps.sidebar).toEqual({
+      showSessionSourceSwitch: false,
+      showWorkspaceGit: false,
+      primaryNav: {
+        items: ['newTask', 'plugins', 'scheduledTasks'],
+      },
+      footer: {
+        items: ['settings', 'daemonStatus', 'version'],
+        layout: 'stacked',
+        versionLabel: '1.0.0',
+      },
+    });
+  });
+
   it('round-trips standalone context without a workspace selector', () => {
     window.history.replaceState(
       null,

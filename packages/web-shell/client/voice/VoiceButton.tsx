@@ -13,6 +13,7 @@ import {
   useWorkspaceEventSignals,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../i18n';
+import { HomeCodeSpinner } from '../components/branding/HomeCodeBrand';
 import { useVoiceCapture } from './useVoiceCapture';
 import {
   loadVoiceStatus,
@@ -434,7 +435,7 @@ export function VoiceButton({
         role="status"
         aria-label={label}
       >
-        <span className={styles.spinner} aria-hidden="true" />
+        <HomeCodeSpinner className={styles.spinner} aria-hidden="true" />
         <span className={styles.time}>…</span>
       </span>
     );

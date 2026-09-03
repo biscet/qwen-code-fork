@@ -18,6 +18,7 @@ import {
 } from '../hooks/useAtMentionMenu';
 import { cssUrlVar } from '../utils/cssUrlVar';
 import styles from './ChatEditor.module.css';
+import { HomeCodeSpinner } from './branding/HomeCodeBrand';
 import { isSafeImageSrc } from './messages/Markdown';
 
 const AT_PANEL_THEME_VARS = [
@@ -467,11 +468,15 @@ export function AtMentionPanel({
                                 alt=""
                                 aria-hidden="true"
                               />
+                            ) : row.iconSpin ? (
+                              <HomeCodeSpinner
+                                className={styles.atItemIconSpin}
+                                style={{ color: row.iconColor }}
+                                aria-hidden="true"
+                              />
                             ) : (
                               <span
-                                className={`${styles.atItemIcon} ${
-                                  row.iconSpin ? styles.atItemIconSpin : ''
-                                }`}
+                                className={styles.atItemIcon}
                                 style={{
                                   ...cssUrlVar('--at-item-icon-url', safeIcon),
                                   color: row.iconColor,

@@ -227,10 +227,10 @@
 }
 
 .statusBarSuccess {
-  color: var(--success-color, #22c55e);
+  color: var(--success-color, #49c970);
   background: color-mix(
     in srgb,
-    var(--success-color, #22c55e) 10%,
+    var(--success-color, #49c970) 10%,
     transparent
   );
 }
@@ -300,19 +300,6 @@
     var(--destructive, #ef4444) 40%,
     transparent
   );
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .empty {

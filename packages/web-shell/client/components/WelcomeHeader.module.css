@@ -9,6 +9,12 @@
   animation: welcomeFadeIn 400ms ease-out;
 }
 
+.mark {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 4px;
+}
+
 @keyframes welcomeFadeIn {
   from {
     opacity: 0;
@@ -41,11 +47,8 @@
 }
 
 .title {
-  background: var(--agent-logo-gradient);
-  background-clip: text;
-  color: var(--primary, var(--agent-blue-500));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--foreground);
+  font-weight: 500;
 }
 
 .subtitle {

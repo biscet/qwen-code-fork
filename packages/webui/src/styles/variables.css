@@ -17,41 +17,41 @@
   /* ===========================
      Primary Colors
      =========================== */
-  --app-primary: #3b82f6;
-  --app-primary-hover: #2563eb;
-  --app-primary-foreground: #e4e4e7;
-  --app-secondary-foreground: #a1a1aa;
+  --app-primary: #7698fd;
+  --app-primary-hover: #a2bcff;
+  --app-primary-foreground: #f2f2f2;
+  --app-secondary-foreground: #aeaeae;
 
   /* ===========================
      Background Colors
      =========================== */
-  --app-background: #1e1e1e;
-  --app-primary-background: #1e1e1e;
-  --app-background-secondary: #252526;
-  --app-secondary-background: #252526;
-  --app-background-tertiary: #2d2d2d;
+  --app-background: #080808;
+  --app-primary-background: #161616;
+  --app-background-secondary: #1c1c1c;
+  --app-secondary-background: #1c1c1c;
+  --app-background-tertiary: #242424;
 
   /* ===========================
      Foreground/Text Colors
      =========================== */
-  --app-foreground: #e4e4e7;
-  --app-foreground-secondary: #a1a1aa;
-  --app-foreground-muted: #71717a;
+  --app-foreground: #f2f2f2;
+  --app-foreground-secondary: #aeaeae;
+  --app-foreground-muted: #808080;
 
   /* ===========================
      Border Colors
      =========================== */
-  --app-border: #3f3f46;
-  --app-border-focus: #3b82f6;
-  --app-primary-border-color: #3f3f46;
+  --app-border: rgba(255, 255, 255, 0.1);
+  --app-border-focus: #7698fd;
+  --app-primary-border-color: rgba(255, 255, 255, 0.1);
 
   /* ===========================
      Status Colors
      =========================== */
-  --app-success: #10b981;
-  --app-warning: #f59e0b;
-  --app-error: #ef4444;
-  --app-info: #3b82f6;
+  --app-success: #49c970;
+  --app-warning: #f2cf76;
+  --app-error: #f17471;
+  --app-info: #7698fd;
 
   /* ===========================
      Typography
@@ -69,13 +69,11 @@
   /* ===========================
      Link Styles
      =========================== */
-  --app-link-foreground: #007acc;
-  --app-link-active-foreground: #005a9e;
+  --app-link-foreground: #a2bcff;
+  --app-link-active-foreground: #c3d4fd;
 
-  /* ===========================
-     Brand Colors
-     =========================== */
-  --app-qwen-ivory: #f5f5dc;
+  /* Legacy compatibility alias used by the thinking icon. */
+  --app-qwen-ivory: var(--app-primary);
 
   /* ===========================
      Border Radius
@@ -104,25 +102,25 @@
   /* ===========================
      Input Styles
      =========================== */
-  --app-input-background: #3c3c3c;
-  --app-input-secondary-background: #2d2d2d;
-  --app-input-border: #3f3f46;
-  --app-input-foreground: #e4e4e7;
-  --app-input-placeholder-foreground: #71717a;
+  --app-input-background: #161616;
+  --app-input-secondary-background: #242424;
+  --app-input-border: rgba(255, 255, 255, 0.1);
+  --app-input-foreground: #f2f2f2;
+  --app-input-placeholder-foreground: #808080;
 
   /* ===========================
      Button Styles
      =========================== */
-  --app-ghost-button-hover-background: rgba(90, 93, 94, 0.31);
-  --app-button-background: #3c3c3c;
-  --app-button-foreground: #ffffff;
+  --app-ghost-button-hover-background: rgba(255, 255, 255, 0.08);
+  --app-button-background: #242424;
+  --app-button-foreground: #f2f2f2;
   --app-button-hover-background: var(--app-primary-hover);
   --app-transparent-inner-border: rgba(255, 255, 255, 0.1);
 
   /* ===========================
      Header Styles
      =========================== */
-  --app-header-background: #252526;
+  --app-header-background: #101010;
 
   /* ===========================
      List Styles
@@ -131,32 +129,32 @@
   --app-list-item-padding: 4px 8px;
   --app-list-border-color: transparent;
   --app-list-border-radius: 4px;
-  --app-list-hover-background: rgba(90, 93, 94, 0.31);
-  --app-list-active-background: #094771;
-  --app-list-active-foreground: #ffffff;
+  --app-list-hover-background: rgba(255, 255, 255, 0.08);
+  --app-list-active-background: #242424;
+  --app-list-active-foreground: #f2f2f2;
   --app-list-gap: 2px;
 
   /* ===========================
      Menu Styles
      =========================== */
-  --app-menu-background: #252526;
-  --app-menu-border: #454545;
-  --app-menu-foreground: #cccccc;
-  --app-menu-selection-background: #094771;
-  --app-menu-selection-foreground: #ffffff;
+  --app-menu-background: #1c1c1c;
+  --app-menu-border: rgba(255, 255, 255, 0.1);
+  --app-menu-foreground: #f2f2f2;
+  --app-menu-selection-background: #242424;
+  --app-menu-selection-foreground: #f2f2f2;
 
   /* ===========================
      Tool Call Styles
      =========================== */
-  --app-tool-background: #1e1e1e;
-  --app-code-background: #2d2d2d;
+  --app-tool-background: #161616;
+  --app-code-background: #242424;
 
   /* ===========================
      Warning/Error Styles
      =========================== */
-  --app-warning-background: rgba(255, 204, 0, 0.1);
-  --app-warning-border: #ffcc00;
-  --app-warning-foreground: #ffcc00;
+  --app-warning-background: rgba(242, 207, 118, 0.1);
+  --app-warning-border: #f2cf76;
+  --app-warning-foreground: #f2cf76;
 
   /* ===========================
      VSCode Compatibility
@@ -170,28 +168,31 @@
 /* Light theme override (can be toggled via class or media query) */
 @media (prefers-color-scheme: light) {
   :root.auto-theme {
-    --app-primary-foreground: #1f2937;
-    --app-secondary-foreground: #6b7280;
+    --app-primary: #3b5cf6;
+    --app-primary-hover: #7698fd;
+    --app-primary-foreground: #161616;
+    --app-secondary-foreground: #5c5c5c;
     --app-background: #ffffff;
     --app-primary-background: #ffffff;
-    --app-background-secondary: #f3f4f6;
-    --app-background-tertiary: #e5e7eb;
-    --app-foreground: #1f2937;
-    --app-foreground-secondary: #6b7280;
-    --app-foreground-muted: #9ca3af;
-    --app-border: #e5e7eb;
-    --app-primary-border-color: #e5e7eb;
+    --app-background-secondary: #fafafa;
+    --app-background-tertiary: #f2f2f2;
+    --app-foreground: #161616;
+    --app-foreground-secondary: #5c5c5c;
+    --app-foreground-muted: #808080;
+    --app-border: rgba(0, 0, 0, 0.1);
+    --app-primary-border-color: rgba(0, 0, 0, 0.1);
     --app-input-background: #ffffff;
-    --app-input-border: #d1d5db;
-    --app-input-placeholder-foreground: #9ca3af;
+    --app-input-border: rgba(0, 0, 0, 0.1);
+    --app-input-placeholder-foreground: #808080;
     --app-ghost-button-hover-background: rgba(0, 0, 0, 0.05);
-    --app-header-background: #f9fafb;
+    --app-header-background: #fafafa;
     --app-list-hover-background: rgba(0, 0, 0, 0.05);
-    --app-list-active-background: #3b82f6;
+    --app-list-active-background: #f2f2f2;
+    --app-list-active-foreground: #161616;
     --app-menu-background: #ffffff;
-    --app-menu-border: #e5e7eb;
-    --app-menu-foreground: #1f2937;
+    --app-menu-border: rgba(0, 0, 0, 0.1);
+    --app-menu-foreground: #161616;
     --app-tool-background: #ffffff;
-    --app-code-background: #f3f4f6;
+    --app-code-background: #f2f2f2;
   }
 }

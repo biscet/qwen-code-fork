@@ -1,19 +1,19 @@
 .themeDark {
-  --background: #0d0d0d;
-  --foreground: #fafafa;
-  --muted: #161616;
-  --muted-foreground: #808598;
-  --secondary: #1e1e1e;
-  --border: #2a2a2a;
-  --agent-blue-500: #6785ff;
+  --background: #080808;
+  --foreground: #f2f2f2;
+  --muted: #1c1c1c;
+  --muted-foreground: #808080;
+  --secondary: #242424;
+  --border: rgba(255, 255, 255, 0.1);
+  --agent-blue-500: #7698fd;
   /* Chart series colors — mirror App.module.css .themeDark. DialogShell portals
      to document.body, outside the app root that defines these, so the dialog's
      own theme scope must carry them or SVG strokes resolve to `none`. */
-  --agent-blue-400: #8aa0ff;
-  --primary: #fafafa;
-  --success-color: #48bb78;
-  --warning-color: #ecc94b;
-  --error-color: #fc8181;
+  --agent-blue-400: #a2bcff;
+  --primary: #ededed;
+  --success-color: #49c970;
+  --warning-color: #f2cf76;
+  --error-color: #f17471;
   --font-mono:
     'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
   --font-sans:
@@ -24,18 +24,18 @@
 
 .themeLight {
   --background: #ffffff;
-  --foreground: #0a0a0b;
-  --muted: #f3f3f5;
-  --muted-foreground: #a3a3a5;
-  --secondary: #f3f3f5;
-  --border: #e3e4e6;
-  --agent-blue-500: #0033ff;
+  --foreground: #161616;
+  --muted: #f2f2f2;
+  --muted-foreground: #808080;
+  --secondary: #f2f2f2;
+  --border: rgba(0, 0, 0, 0.1);
+  --agent-blue-500: #3b5cf6;
   /* Chart series colors — mirror App.module.css .themeLight (see .themeDark). */
-  --agent-blue-400: #335cff;
-  --primary: #151517;
-  --success-color: #1f7a3a;
-  --warning-color: #9a6a00;
-  --error-color: #c0362c;
+  --agent-blue-400: #7698fd;
+  --primary: #161616;
+  --success-color: #198b43;
+  --warning-color: #b35624;
+  --error-color: #b82d35;
   --font-mono:
     'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
   --font-sans:

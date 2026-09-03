@@ -180,10 +180,7 @@
 .loadingIcon {
   width: 12px;
   height: 12px;
-  border: 2px solid color-mix(in srgb, var(--agent-blue-500) 24%, transparent);
-  border-top-color: var(--agent-blue-500);
-  border-radius: 50%;
-  animation: todoPanelSpin 0.8s linear infinite;
+  color: var(--agent-blue-500);
 }
 
 .content {
@@ -216,16 +213,4 @@
 .pending .icon,
 .pending .content {
   color: var(--muted-foreground);
-}
-
-@keyframes todoPanelSpin {
-  to {
-    transform: rotate(1turn);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loadingIcon {
-    animation: none;
-  }
 }

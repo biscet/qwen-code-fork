@@ -20,9 +20,7 @@ import {
   GitForkIcon,
   PencilIcon,
   PlugIcon,
-  RadioTowerIcon,
   RefreshCwIcon,
-  SettingsIcon,
   SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -83,8 +81,6 @@ const MANAGEMENT_ENTRIES: ReadonlyArray<{
   { target: 'mcp', Icon: PlugIcon },
   { target: 'skills', Icon: SparklesIcon },
   { target: 'extensions', Icon: BlocksIcon },
-  { target: 'channels', Icon: RadioTowerIcon },
-  { target: 'settings', Icon: SettingsIcon },
 ];
 
 export function hasWorkspaceMenuActions(

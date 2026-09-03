@@ -22,6 +22,7 @@ import {
   isAgentCancelled,
   sanitizeControlChars,
 } from './toolFormatting';
+import { HomeCodeSpinner } from '../branding/HomeCodeBrand';
 import styles from './PlanExecutionView.module.css';
 
 export type PlanNodeStatus =
@@ -1208,7 +1209,12 @@ export function PlanExecutionView({
                     >
                       <div className={styles.nodeTop}>
                         <i aria-hidden="true" className={styles.nodeGlyph}>
-                          {PLAN_STATUS_GLYPH[state.status]}
+                          {state.status === 'running' ||
+                          state.status === 'in_progress' ? (
+                            <HomeCodeSpinner className={styles.nodeSpinner} />
+                          ) : (
+                            PLAN_STATUS_GLYPH[state.status]
+                          )}
                         </i>
                         <span className={styles.nodeId}>{todo.id}</span>
                         <span

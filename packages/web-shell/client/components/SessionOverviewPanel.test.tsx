@@ -563,6 +563,7 @@ describe('SessionOverviewPanel', () => {
           'data-web-shell-session-loading',
         ),
       ).toBe(true);
+      expect(row.querySelector('[data-homecode-spinner]')).not.toBeNull();
     }
     const idle = rows().find((tr) => tr.textContent?.includes('Still'))!;
     expect(idle.querySelector('[data-web-shell-session-loading]')).toBeNull();

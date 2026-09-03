@@ -1136,7 +1136,12 @@ function SessionOverviewPanelInner({
                       data-web-shell-session-loading
                       aria-label={t(`sessionsOverview.status.${card.status}`)}
                       title={t(`sessionsOverview.status.${card.status}`)}
-                    />
+                    >
+                      <Spinner
+                        className={styles.loadingGlyph}
+                        aria-hidden="true"
+                      />
+                    </span>
                   )}
                   {card.isCurrent && (
                     <Badge

@@ -135,8 +135,8 @@ const TOOLTIP_STYLES = `
   max-width: 700px !important;
   max-height: 400px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
-  background: var(--background, #0d0d0d) !important;
-  border: 1px solid var(--border, #2a2a2a) !important;
+  background: var(--background, #080808) !important;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1)) !important;
   border-radius: 6px !important;
   overflow: visible;
 }
@@ -186,13 +186,13 @@ const TOOLTIP_STYLES = `
 }
 
 [data-web-shell-tooltip-portal] .cm-tooltip-autocomplete ul li:hover {
-  background: var(--secondary, #1e1e1e) !important;
-  color: var(--foreground, #e4e4e4) !important;
+  background: var(--secondary, #242424) !important;
+  color: var(--foreground, #f2f2f2) !important;
 }
 
 [data-web-shell-tooltip-portal] .cm-tooltip-autocomplete ul li[aria-selected] {
-  background: var(--secondary, #1e1e1e) !important;
-  color: var(--foreground, #e4e4e4) !important;
+  background: var(--secondary, #242424) !important;
+  color: var(--foreground, #f2f2f2) !important;
 }
 
 [data-web-shell-tooltip-portal] .cm-tooltip-autocomplete ul li:is(:hover, [aria-selected]) .cm-completionLabel {
@@ -272,10 +272,10 @@ const TOOLTIP_STYLES = `
   max-height: min(280px, calc(100vh - 32px));
   padding: 8px 10px;
   overflow: auto;
-  border: 1px solid var(--border, #2a2a2a);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
   background: var(--muted, #161616);
-  color: var(--foreground, #e4e4e4);
+  color: var(--foreground, #f2f2f2);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 13px;

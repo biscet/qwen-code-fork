@@ -157,7 +157,7 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
     root.classList.toggle('dark', theme === WebShellThemeId.Dark);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', theme === 'light' ? '#ffffff' : '#0d0d0d');
+      meta.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808');
     }
   }, [theme]);
   const handleThemeChange = useCallback((nextTheme: WebShellTheme) => {
@@ -210,7 +210,18 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
             language,
             onLanguageChange: handleLanguageChange,
             onSessionIdChange: handleSessionIdChange,
-            sidebar: true,
+            sidebar: {
+              showSessionSourceSwitch: false,
+              showWorkspaceGit: false,
+              primaryNav: {
+                items: ['newTask', 'plugins', 'scheduledTasks'],
+              },
+              footer: {
+                items: ['settings', 'daemonStatus', 'version'],
+                layout: 'stacked',
+                versionLabel: '1.0.0',
+              },
+            },
             header: {
               items: ['title', 'environment', 'rightPanel', 'tokenUsage'],
             },

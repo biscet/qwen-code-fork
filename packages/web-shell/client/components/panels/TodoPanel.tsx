@@ -4,6 +4,7 @@ import type { TodoItem } from '../../adapters/types';
 import type { WebShellBottomStatusItem } from '../../customization';
 import { getTodoStatusIcon } from '../../utils/todos';
 import { useI18n } from '../../i18n';
+import { HomeCodeSpinner } from '../branding/HomeCodeBrand';
 import styles from './TodoPanel.module.css';
 
 interface TodoPanelProps {
@@ -139,7 +140,10 @@ export const TodoPanel = memo(function TodoPanel({
             >
               <span className={styles.icon} aria-hidden="true">
                 {todo.status === 'in_progress' ? (
-                  <span className={styles.loadingIcon} />
+                  <HomeCodeSpinner
+                    className={styles.loadingIcon}
+                    aria-hidden="true"
+                  />
                 ) : (
                   getTodoStatusIcon(todo.status)
                 )}

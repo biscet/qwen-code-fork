@@ -67,9 +67,9 @@ function pinPhraseSelection(): void {
 
 function labelText(container: HTMLElement): string | undefined {
   const status = container.firstElementChild;
-  // spinner span, optional label span, meta span — the label is the middle one.
+  // The HomeCode spinner is an SVG; an optional label precedes the meta span.
   const spans = status?.querySelectorAll('span') ?? [];
-  return spans.length === 3 ? (spans[1]?.textContent ?? '') : undefined;
+  return spans.length === 2 ? (spans[0]?.textContent ?? '') : undefined;
 }
 
 describe('StreamingStatus loading phrases', () => {
@@ -90,10 +90,10 @@ describe('StreamingStatus loading phrases', () => {
   it('hides the phrase when the resolver returns an empty array', () => {
     pinPhraseSelection();
     const container = render({ loadingPhrases: () => [] });
-    // No label span — only spinner + meta remain.
+    // No label span — only the HomeCode spinner + meta remain.
     expect(labelText(container)).toBeUndefined();
     expect(container.firstElementChild?.querySelectorAll('span').length).toBe(
-      2,
+      1,
     );
   });
 
@@ -111,8 +111,8 @@ describe('StreamingStatus loading phrases', () => {
     expect(container.textContent).not.toContain('should not appear');
     // But the dynamic status stays: spinner + meta (elapsed time + cancel hint).
     const spans = container.firstElementChild?.querySelectorAll('span') ?? [];
-    expect(spans.length).toBe(2);
-    expect(spans[0]?.textContent).not.toBe(''); // spinner frame
+    expect(spans.length).toBe(1);
+    expect(container.querySelector('[data-homecode-spinner]')).not.toBeNull();
     expect(container.textContent).toContain('esc to cancel'); // meta/cancel hint
     expect(container.textContent).toMatch(/\ds/); // elapsed time, e.g. "0s"
   });
@@ -328,7 +328,7 @@ describe('StreamingStatus daemon keep-alive (#9487)', () => {
     }
   });
 
-  it('advances the spinner frames during an idle keep-alive gap', () => {
+  it('keeps the HomeCode spinner visible during an idle keep-alive gap', () => {
     vi.useFakeTimers();
     try {
       mocks.streamingState = 'idle';
@@ -336,13 +336,12 @@ describe('StreamingStatus daemon keep-alive (#9487)', () => {
         {},
         { hasActivePrompt: true, showPhrase: false },
       );
-      const spinner = container.firstElementChild!.querySelector('span')!;
-      const firstFrame = spinner.textContent;
-      expect(firstFrame).not.toBe('');
+      const spinner = container.querySelector('[data-homecode-spinner]');
+      expect(spinner).not.toBeNull();
       act(() => {
         vi.advanceTimersByTime(250);
       });
-      expect(spinner.textContent).not.toBe(firstFrame);
+      expect(container.querySelector('[data-homecode-spinner]')).toBe(spinner);
     } finally {
       vi.useRealTimers();
     }

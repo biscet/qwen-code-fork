@@ -85,12 +85,13 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   FolderClosedIcon,
-  LoaderCircleIcon,
   SlashIcon,
   UploadIcon,
   XIcon,
 } from 'lucide-react';
 import { FileTypeIcon } from './FileTypeIcon';
+import { HomeCodeSpinner } from './branding/HomeCodeBrand';
+import { Spinner } from './ui/spinner';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import {
   Popover,
@@ -468,8 +469,8 @@ function SendIcon() {
         d="M10 15.5v-11M5.5 9 10 4.5 14.5 9"
         stroke="currentColor"
         strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
       />
     </svg>
   );
@@ -480,7 +481,7 @@ function StopIcon() {
 }
 
 function LoadingIcon() {
-  return <span className={styles.loadingIcon} aria-hidden="true" />;
+  return <HomeCodeSpinner className={styles.loadingIcon} aria-hidden="true" />;
 }
 
 function QuickActionsIcon() {
@@ -488,11 +489,13 @@ function QuickActionsIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       {[7, 12, 17].flatMap((y) =>
         [7, 12, 17].map((x) => (
-          <circle
+          <rect
             key={`${x}-${y}`}
-            cx={x}
-            cy={y}
-            r="1.35"
+            x={x - 1.25}
+            y={y - 1.25}
+            width="2.5"
+            height="2.5"
+            rx="0.5"
             fill="currentColor"
           />
         )),
@@ -2703,7 +2706,7 @@ export const ChatEditor = memo(
                     }
                   >
                     {busy ? (
-                      <LoaderCircleIcon
+                      <Spinner
                         className={styles.uploadRowSpinner}
                         aria-hidden="true"
                       />

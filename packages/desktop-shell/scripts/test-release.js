@@ -62,11 +62,39 @@ async function testBootstrapWorkspaceVisibility() {
     path.join(packageDir, 'bootstrap', 'index.html'),
     'utf8',
   );
-  assert.match(bootstrapHtml, /class="mark" src="qwen-code-logo\.svg"/);
+  assert.match(
+    bootstrapHtml,
+    /<svg\s+[\s\S]*?class="mark"[\s\S]*?viewBox="0 0 100 100"/,
+    'The bootstrap splash must render the HomeCode mark inline so its loading states can animate.',
+  );
+  for (const markClass of [
+    'mark-tile',
+    'mark-bracket-left',
+    'mark-bracket-right',
+    'mark-pixel mark-pixel-top',
+    'mark-pixel mark-pixel-bottom',
+  ]) {
+    assert.match(
+      bootstrapHtml,
+      new RegExp(`class="${markClass}"`),
+      `The bootstrap HomeCode mark must include ${markClass}.`,
+    );
+  }
   assert.ok(
     fs.existsSync(path.join(packageDir, 'bootstrap', 'qwen-code-logo.svg')),
     'The bootstrap splash mark must ship with the frontendDist directory.',
   );
+  const bootstrapMark = fs.readFileSync(
+    path.join(packageDir, 'bootstrap', 'qwen-code-logo.svg'),
+    'utf8',
+  );
+  for (const color of ['#08080a', '#d3d3d5', '#f4f4f5', '#77777a']) {
+    assert.match(
+      bootstrapMark,
+      new RegExp(color),
+      `The shipped HomeCode mark must preserve source color ${color}.`,
+    );
+  }
   assert.doesNotMatch(bootstrapHtml, /class="mark">Q</);
   const reducedMotionBlock = bootstrapHtml.match(
     /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)(?:@media|<\/style>)/,

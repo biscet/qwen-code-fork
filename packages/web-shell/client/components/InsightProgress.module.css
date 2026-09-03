@@ -11,9 +11,8 @@
 
 .spinner {
   color: var(--agent-blue-500);
-  display: inline-block;
-  width: 1ch;
-  text-align: center;
+  width: 14px;
+  height: 14px;
 }
 
 .bar {

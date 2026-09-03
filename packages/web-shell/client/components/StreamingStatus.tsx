@@ -8,6 +8,7 @@ import { useI18n } from '../i18n';
 import { useWebShellCustomization } from '../customization';
 import { useStreamingLoadingMetrics } from '../hooks/useStreamingLoadingMetrics';
 import { formatTokenCount } from '../utils/formatTokenCount';
+import { HomeCodeSpinner } from './branding/HomeCodeBrand';
 import styles from './StreamingStatus.module.css';
 
 interface StreamingStatusProps {
@@ -27,8 +28,6 @@ interface StreamingStatusProps {
    */
   hasActivePrompt?: boolean;
 }
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 export function StreamingStatus({
   startedAt,
@@ -67,7 +66,6 @@ export function StreamingStatus({
   }, []);
   const [elapsed, setElapsed] = useState(0);
   const startTime = useRef(Date.now());
-  const [dotFrame, setDotFrame] = useState(0);
   const [loadingPhrase, setLoadingPhrase] = useState(
     () => resolvePhrases(language)[0] ?? '',
   );
@@ -121,17 +119,8 @@ export function StreamingStatus({
     return () => clearInterval(interval);
   }, [language, streamingState, resolvePhrases, showPhrase]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const interval = setInterval(() => {
-      setDotFrame((f) => (f + 1) % SPINNER_FRAMES.length);
-    }, 250);
-    return () => clearInterval(interval);
-  }, [isActive]);
-
   if (streamingState === 'idle' && !hasActivePrompt) return null;
 
-  const spinnerChar = SPINNER_FRAMES[dotFrame % SPINNER_FRAMES.length];
   const arrow = isReceivingContent ? '↓' : '↑';
   const timeStr = elapsed < 60 ? `${elapsed}s` : formatDuration(elapsed * 1000);
   const tokenStr =
@@ -141,7 +130,7 @@ export function StreamingStatus({
 
   return (
     <div className={styles.status}>
-      <span className={styles.spinner}>{spinnerChar}</span>
+      <HomeCodeSpinner className={styles.spinner} aria-hidden="true" />
       {showPhrase && loadingPhrase && (
         <span className={styles.label}>{loadingPhrase}</span>
       )}

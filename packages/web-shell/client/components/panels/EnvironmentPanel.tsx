@@ -13,13 +13,13 @@ import {
   FileDiffIcon,
   FolderClosedIcon,
   GitBranchIcon,
-  LoaderCircleIcon,
   SquareActivityIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
 import type { WebShellEnvironmentPanelItem } from '../../customization';
 import { useI18n } from '../../i18n';
 import { BranchPickerPopover } from '../BranchPickerPopover';
+import { Spinner } from '../ui/spinner';
 import styles from './EnvironmentPanel.module.css';
 
 interface EnvironmentPanelProps {
@@ -86,7 +86,7 @@ function taskStatusKey(status: DaemonSessionTaskStatus['status']) {
 function taskStatusIcon(status: DaemonSessionTaskStatus['status']) {
   if (status === 'completed') return <CircleCheckIcon />;
   if (status === 'running') {
-    return <LoaderCircleIcon className={styles.statusRunning} />;
+    return <Spinner className={styles.statusRunning} />;
   }
   if (status === 'failed') return <CircleXIcon />;
   if (status === 'cancelled') return <CircleStopIcon />;

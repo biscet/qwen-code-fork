@@ -200,8 +200,6 @@ describe('WorkspaceMenu', () => {
       'MCP3/4',
       'Skills12',
       'Extensions',
-      'Channels',
-      'Settings',
       'Reload runtime',
     ]);
     expect(document.body.textContent).toContain('Manage');
@@ -294,8 +292,6 @@ describe('WorkspaceMenu', () => {
       'MCP',
       'Skills',
       'Extensions',
-      'Channels',
-      'Settings',
       'Reload runtime',
       'Remove workspace',
     ]);

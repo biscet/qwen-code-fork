@@ -118,10 +118,7 @@
 .spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid var(--border, rgba(127, 127, 127, 0.4));
-  border-top-color: var(--agent-blue-500, #4a9eff);
-  border-radius: 50%;
-  animation: voiceSpin 0.8s linear infinite;
+  color: var(--agent-blue-500, #7698fd);
 }
 
 /* Live interim transcript / error preview, floating above the control. */
@@ -160,11 +157,5 @@
   }
   50% {
     opacity: 0.35;
-  }
-}
-
-@keyframes voiceSpin {
-  to {
-    transform: rotate(360deg);
   }
 }

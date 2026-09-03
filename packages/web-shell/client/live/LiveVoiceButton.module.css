@@ -79,7 +79,7 @@
 }
 
 .dot[data-ready='true'] {
-  background: #22c55e;
+  background: var(--success-color);
 }
 
 .dot[data-denied='true'] {
@@ -109,9 +109,10 @@
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff, #8b6bf0 45%, #4b35a7);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent);
+  border-radius: 4px;
+  background: var(--agent-blue-400);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--agent-blue-500) 14%, transparent);
 }
 
 .liveState[data-state='thinking'] .liveStateOrb,

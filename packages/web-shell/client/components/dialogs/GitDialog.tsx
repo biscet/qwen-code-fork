@@ -13,17 +13,12 @@ import {
 } from 'react';
 import { useWorkspace } from '@qwen-code/web-shell/daemon-react-sdk';
 import type { DaemonWorkspaceGitDiffFile } from '@qwen-code/sdk/daemon';
-import {
-  ChevronDownIcon,
-  EyeIcon,
-  Loader2Icon,
-  PencilIcon,
-  SearchIcon,
-} from 'lucide-react';
+import { ChevronDownIcon, EyeIcon, PencilIcon, SearchIcon } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { useExternalLinkOpener } from '../../hooks/useExternalLinkOpener';
 import { Markdown } from '../messages/Markdown';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Spinner } from '../ui/spinner';
 import { DialogShell } from './DialogShell';
 import { GitDiffContent } from './GitDiffDialog';
 import { GitLogContent } from './GitLogDialog';
@@ -693,9 +688,7 @@ export function GitDialog({
                 disabled={!commitMsg.trim() || !!commitBusy || prBusy}
                 onClick={() => void doCommit(false)}
               >
-                {commitBusy === 'commit' && (
-                  <Loader2Icon size={14} className={styles.spin} />
-                )}
+                {commitBusy === 'commit' && <Spinner />}
                 {t('gitCommit.commit')}
               </button>
               <button
@@ -704,9 +697,7 @@ export function GitDialog({
                 disabled={!commitMsg.trim() || !!commitBusy || prBusy}
                 onClick={() => void doCommit(true)}
               >
-                {commitBusy === 'push' && (
-                  <Loader2Icon size={14} className={styles.spin} />
-                )}
+                {commitBusy === 'push' && <Spinner />}
                 {t('gitCommit.commitAndPush')}
               </button>
               {prsSupported && (
@@ -792,9 +783,7 @@ export function GitDialog({
                     }
                     onClick={() => void doCreatePr()}
                   >
-                    {prBusy && (
-                      <Loader2Icon size={14} className={styles.spin} />
-                    )}
+                    {prBusy && <Spinner />}
                     {t('gitCommit.prSubmit')}
                   </button>
                 </div>

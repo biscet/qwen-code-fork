@@ -584,6 +584,9 @@ describe('PlanExecutionView', () => {
       JSON.stringify(['plan', 'build-api']),
       JSON.stringify(['plan', 'build-ui']),
     ]);
+    expect(container.querySelectorAll('[data-homecode-spinner]')).toHaveLength(
+      2,
+    );
     expect(container.querySelector('[data-plan-workflow]')).not.toBeNull();
 
     act(() => root.unmount());

@@ -282,6 +282,23 @@ describe('AtMentionPanel', () => {
     expect(images[0]?.getAttribute('src')).toBe('data:image/png;base64,iVBOR');
   });
 
+  it('uses the HomeCode pixel spinner for rotating provider icons', () => {
+    const menu = itemsMenu();
+    menu.items = [
+      {
+        id: 'loading',
+        label: 'Loading provider',
+        icon: 'data:image/png;base64,iVBOR',
+        iconSpin: true,
+      },
+    ];
+    mount(menu);
+
+    expect(
+      document.body.querySelector('[data-homecode-spinner]'),
+    ).not.toBeNull();
+  });
+
   it('guards mask icon sources', () => {
     const menu = itemsMenu();
     menu.items = [

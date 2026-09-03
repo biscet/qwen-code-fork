@@ -50,18 +50,12 @@
   width: 12px;
   height: 12px;
   flex: 0 0 12px;
-  display: inline-flex;
-  border: 1.5px solid
-    color-mix(in srgb, var(--muted-foreground) 28%, transparent);
-  border-top-color: var(--muted-foreground);
-  border-radius: 999px;
-  animation: overviewSpin 0.8s linear infinite;
+  color: var(--muted-foreground);
 }
 
-@keyframes overviewSpin {
-  to {
-    transform: rotate(360deg);
-  }
+.loadingGlyph {
+  width: 12px;
+  height: 12px;
 }
 
 /* Color tags mirror the sidebar's session-group palette. */

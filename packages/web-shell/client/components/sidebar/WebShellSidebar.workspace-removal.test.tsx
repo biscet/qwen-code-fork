@@ -6228,6 +6228,34 @@ describe('WebShellSidebar session toolbar archive action dedupe', () => {
 });
 
 describe('WebShellSidebar manage workspaces entry', () => {
+  it('renders the simplified footer as labeled rows with a fixed version', async () => {
+    renderSidebar({
+      footer: {
+        items: ['settings', 'daemonStatus', 'version'],
+        layout: 'stacked',
+        versionLabel: '1.0.0',
+      },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const settings = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Settings"]',
+    );
+    const daemon = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Daemon Status"]',
+    );
+    expect(settings?.textContent).toContain('Settings');
+    expect(daemon?.textContent).toContain('Daemon Status');
+    expect(settings?.className).toContain('footerButton');
+    expect(daemon?.className).toContain('footerButton');
+    expect(
+      container.querySelector('[title="Qwen Code 1.0.0"]')?.textContent,
+    ).toBe('1.0.0');
+    expect(container.querySelector('button[aria-label="Collapse"]')).toBeNull();
+  });
+
   it('opens the Workspaces overview from the end of the Projects section', async () => {
     const onOpenWorkspacesOverview = vi.fn();
     renderSidebar({ onOpenWorkspacesOverview });

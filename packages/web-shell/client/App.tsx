@@ -944,6 +944,8 @@ export interface WebShellSidebarOptions {
   showCompactToggle?: boolean;
   /** Whether to show the Tasks/Channels session-source switch. Defaults to true. */
   showSessionSourceSwitch?: boolean;
+  /** Whether to show the git branch control beside workspace names. Defaults to true. */
+  showWorkspaceGit?: boolean;
   /** Hide or replace the complete sidebar branding row. */
   branding?: false | WebShellSidebarBranding;
   /** Customize the primary navigation area (new task button, custom entries). */
@@ -1408,6 +1410,7 @@ function resolveSidebarOptions(sidebar: WebShellProps['sidebar']): {
   defaultCollapsed: boolean;
   showCompactToggle: boolean;
   showSessionSourceSwitch: boolean;
+  showWorkspaceGit: boolean;
   branding?: false | WebShellSidebarBranding;
   primaryNav?: WebShellSidebarPrimaryNavOptions;
   hideProjectHeader?: boolean;
@@ -1422,6 +1425,7 @@ function resolveSidebarOptions(sidebar: WebShellProps['sidebar']): {
       defaultCollapsed: false,
       showCompactToggle: true,
       showSessionSourceSwitch: true,
+      showWorkspaceGit: true,
     };
   }
   if (!sidebar) {
@@ -1430,6 +1434,7 @@ function resolveSidebarOptions(sidebar: WebShellProps['sidebar']): {
       defaultCollapsed: false,
       showCompactToggle: true,
       showSessionSourceSwitch: true,
+      showWorkspaceGit: true,
     };
   }
   return {
@@ -1437,6 +1442,7 @@ function resolveSidebarOptions(sidebar: WebShellProps['sidebar']): {
     defaultCollapsed: sidebar.defaultCollapsed ?? false,
     showCompactToggle: sidebar.showCompactToggle ?? true,
     showSessionSourceSwitch: sidebar.showSessionSourceSwitch ?? true,
+    showWorkspaceGit: sidebar.showWorkspaceGit ?? true,
     branding: sidebar.branding,
     primaryNav: sidebar.primaryNav,
     hideProjectHeader: sidebar.hideProjectHeader,
@@ -14219,15 +14225,18 @@ export function App({
                       setGitModeIntent({ mode: 'current' });
                     }
                   }}
-                  onOpenGitDiff={(workspaceCwd) =>
-                    setGitDialog({
-                      workspaceCwd,
-                      gitCwd:
-                        workspaceCwd === activeWorkspaceCwd
-                          ? sessionWorktree?.path
-                          : undefined,
-                      view: 'diff',
-                    })
+                  onOpenGitDiff={
+                    sidebarOptions.showWorkspaceGit
+                      ? (workspaceCwd) =>
+                          setGitDialog({
+                            workspaceCwd,
+                            gitCwd:
+                              workspaceCwd === activeWorkspaceCwd
+                                ? sessionWorktree?.path
+                                : undefined,
+                            view: 'diff',
+                          })
+                      : undefined
                   }
                   onOpenCommit={(workspaceCwd) =>
                     setGitDialog({

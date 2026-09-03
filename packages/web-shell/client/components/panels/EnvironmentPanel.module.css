@@ -255,11 +255,5 @@ button.row:disabled {
 }
 
 .statusRunning {
-  animation: environment-panel-spin 1s linear infinite;
-}
-
-@keyframes environment-panel-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  color: var(--status-running-fg);
 }

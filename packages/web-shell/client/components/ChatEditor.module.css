@@ -250,18 +250,14 @@
   overflow: hidden;
 }
 
-:global(
-    [data-web-shell-toolbar-popover][data-web-shell-compact-overlay]
-  ) {
+:global([data-web-shell-toolbar-popover][data-web-shell-compact-overlay]) {
   width: min(360px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
   box-sizing: border-box;
   padding: 6px;
 }
 
-:global(
-    [data-web-shell-toolbar-popover][data-web-shell-compact-overlay]
-  )
+:global([data-web-shell-toolbar-popover][data-web-shell-compact-overlay])
   .dropdownItemDesc {
   display: -webkit-box;
   overflow-wrap: anywhere;
@@ -772,7 +768,9 @@
 }
 
 .atItemIconSpin {
-  animation: at-item-icon-spin 1.2s linear infinite;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
 }
 
 .atItemLabel,
@@ -795,12 +793,6 @@
   color: var(--muted-foreground);
   justify-self: end;
   text-align: right;
-}
-
-@keyframes at-item-icon-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .atItemDescription {
@@ -1164,7 +1156,7 @@
 }
 
 .gitBranchChip[data-worktree='true'] {
-  color: var(--color-accent-fg, #8b5cf6);
+  color: var(--agent-purple-600, #7152f4);
 }
 
 .gitBranchIconWrap {
@@ -1329,10 +1321,7 @@
   border-radius: 6px;
 }
 
-.editorShell[data-web-shell-compact-composer]
-  .toolbarRight
-  button
-  svg {
+.editorShell[data-web-shell-compact-composer] .toolbarRight button svg {
   width: 16px;
   height: 16px;
 }
@@ -1969,10 +1958,6 @@
 .loadingIcon {
   width: 14px;
   height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: sendBtnLoadingSpin 0.8s linear infinite;
 }
 
 /* Armed-to-cancel state: first Esc primes the stop, the button shows an "Esc"
@@ -2025,10 +2010,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loadingIcon {
-    animation: none;
-  }
-
   .sendBtnArmed,
   .sendBtnArmed:not(:disabled) {
     animation: none;
@@ -2037,12 +2018,6 @@
   .sendBtnArmed::after {
     animation: none;
     --esc-countdown: 100%;
-  }
-}
-
-@keyframes sendBtnLoadingSpin {
-  to {
-    transform: rotate(360deg);
   }
 }
 
@@ -2406,21 +2381,6 @@
 
 .uploadRowSpinner {
   color: var(--agent-blue-500);
-  animation: uploadRowSpin 1s linear infinite;
-}
-
-/* Must follow the base rule: equal-specificity cascade resolves to the
-   last declaration, so an earlier override would stay dead code. */
-@media (prefers-reduced-motion: reduce) {
-  .uploadRowSpinner {
-    animation: none;
-  }
-}
-
-@keyframes uploadRowSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .uploadRowName {

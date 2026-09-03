@@ -538,3 +538,41 @@
   -webkit-line-clamp: 3;
   overflow: hidden;
 }
+@keyframes homecode-spinner-cell {
+  0%,
+  100% {
+    opacity: 0.24;
+    transform: scale(0.76);
+  }
+
+  48% {
+    opacity: 0.96;
+    transform: scale(1);
+  }
+}
+
+.homecode-spinner-cell {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: homecode-spinner-cell 1.35s ease-in-out infinite;
+}
+
+.homecode-spinner-cell:nth-child(2n) {
+  animation-delay: -0.22s;
+}
+
+.homecode-spinner-cell:nth-child(3n) {
+  animation-delay: -0.48s;
+}
+
+.homecode-spinner-cell:nth-child(5n) {
+  animation-delay: -0.74s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .homecode-spinner-cell {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

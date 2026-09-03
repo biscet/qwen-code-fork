@@ -43,6 +43,7 @@ describe('TodoPanel bottom status items', () => {
     );
 
     const button = container.querySelector('button[aria-label="Step 1 / 1"]');
+    expect(container.querySelector('[data-homecode-spinner]')).not.toBeNull();
     act(() => (button as HTMLButtonElement).click());
     expect(onOpen).toHaveBeenCalledTimes(1);
   });

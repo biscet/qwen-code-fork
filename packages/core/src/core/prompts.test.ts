@@ -84,6 +84,21 @@ describe('Core System Prompt (prompts.ts)', () => {
     );
   });
 
+  it('gates coding edits and completion on observable evidence', () => {
+    vi.stubEnv('SANDBOX', undefined);
+    const prompt = getCoreSystemPrompt();
+
+    expect(prompt).toContain('## Operational Reasoning Contract');
+    expect(prompt).toContain('Never state a hypothesis as fact');
+    expect(prompt).toContain('Pre-edit gate');
+    expect(prompt).toContain('exactly one foreground `general-purpose` writer');
+    expect(prompt).toContain('`E2E/USER ACCEPTANCE` separately');
+    expect(prompt).toContain('`IMPLEMENTED; E2E GAP`');
+    expect(prompt.indexOf('## Operational Reasoning Contract')).toBeGreaterThan(
+      prompt.indexOf('## Software Engineering Tasks'),
+    );
+  });
+
   it('identifies UserPromptSubmit hook context as distinct from user input', () => {
     vi.stubEnv('SANDBOX', undefined);
     const prompt = getCoreSystemPrompt();
@@ -674,6 +689,7 @@ describe('Core System Prompt (prompts.ts)', () => {
         nonCoding,
       );
       expect(prompt).not.toContain('## Software Engineering Tasks');
+      expect(prompt).not.toContain('## Operational Reasoning Contract');
       // Everything else the base prompt carries must survive — dropping the
       // safety rules along with the workflow guidance would be a regression.
       expect(prompt).toContain('# Core Mandates');
@@ -692,6 +708,7 @@ describe('Core System Prompt (prompts.ts)', () => {
         concise,
       );
       expect(prompt).toContain('## Software Engineering Tasks');
+      expect(prompt).toContain('## Operational Reasoning Contract');
     });
 
     it('omits Learning from headless prompts that cannot receive a reply', () => {

@@ -176,8 +176,8 @@
   display: block;
   fill: none;
   stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .iconButton svg {
@@ -350,8 +350,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .projectsHeaderAction {
@@ -433,6 +433,10 @@
   touch-action: pan-y;
 }
 
+.sidebar.stackedFooter .body {
+  margin-bottom: 104px;
+}
+
 .sectionTitle {
   padding: 8px 8px 0;
   color: var(--muted-foreground);
@@ -470,8 +474,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .workspaceHeaderActions {
@@ -517,8 +521,8 @@
   display: block;
   fill: none;
   stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .projectName,
@@ -623,8 +627,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .sessionGroupTitle {
@@ -656,8 +660,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .sessionGroupHeaderActions {
@@ -1109,8 +1113,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .sessionMetaSlot {
@@ -1161,7 +1165,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-accent-fg, #8b5cf6);
+  color: var(--agent-purple-600, #7152f4);
 }
 
 .sessionGitIcon svg {
@@ -1175,11 +1179,7 @@
   width: 12px;
   height: 12px;
   display: inline-flex;
-  border: 1.5px solid
-    color-mix(in srgb, var(--muted-foreground) 28%, transparent);
-  border-top-color: var(--muted-foreground);
-  border-radius: 999px;
-  animation: sidebarSpin 0.8s linear infinite;
+  color: var(--muted-foreground);
 }
 
 .sessionRow:hover:not(.runningSession) .sessionGitIcon,
@@ -1214,12 +1214,6 @@
 .sessionActions:has(.sessionActionButton:focus-visible),
 .sessionActions:has([data-state='open']) {
   opacity: 1;
-}
-
-@keyframes sidebarSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes sessionTitleScroll {
@@ -1291,8 +1285,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .searchInput {
@@ -1407,8 +1401,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .groupMenuCheck {
@@ -1681,6 +1675,39 @@
   margin-left: auto;
 }
 
+.footer.stackedFooter {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.footer.stackedFooter .footerPrimary,
+.footer.stackedFooter .footerActions {
+  display: contents;
+}
+
+.footer.stackedFooter .footerButton {
+  width: 100%;
+  height: 32px;
+  flex: 0 0 32px;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+.footer.stackedFooter .footerButtonLabel {
+  display: inline;
+}
+
+.footer.stackedFooter .footerActions .footerButton {
+  order: 1;
+}
+
+.footer.stackedFooter .version {
+  order: 2;
+  align-self: center;
+  padding: 4px 0 2px;
+}
+
 .footerButtonLabel {
   min-width: 0;
   white-space: nowrap;
@@ -1889,8 +1916,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .actionMenuLabel {
@@ -1949,8 +1976,8 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .archivedTitle {

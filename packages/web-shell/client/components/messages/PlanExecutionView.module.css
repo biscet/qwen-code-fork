@@ -589,16 +589,9 @@ button.nestedExecution:not(:disabled):focus-visible {
   text-align: center;
 }
 
-/* Work in flight is the only thing on the page that moves, so the eye finds it
-   without a legend. */
-.node[data-status='running'] .nodeGlyph {
-  animation: planGlyphSpin 1.6s linear infinite;
-}
-
-@keyframes planGlyphSpin {
-  to {
-    transform: rotate(360deg);
-  }
+.nodeSpinner {
+  width: 12px;
+  height: 12px;
 }
 
 .edgeNotice {

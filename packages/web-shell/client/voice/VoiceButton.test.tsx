@@ -226,6 +226,14 @@ describe('VoiceButton', () => {
     warn.mockRestore();
   });
 
+  it('uses the HomeCode pixel spinner while transcribing', async () => {
+    mocks.capture.status = 'transcribing';
+    const { container } = mount(false);
+    await flush();
+
+    expect(container.querySelector('[data-homecode-spinner]')).not.toBeNull();
+  });
+
   it('does not request workspace voice without the daemon capability', async () => {
     mocks.workspace.capabilities.features = [];
     const { container } = mount(false);

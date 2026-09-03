@@ -8,13 +8,21 @@
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --radius: 6px;
+  --homecode-mark-tile: #08080a;
+  --homecode-mark-bracket-left: #d3d3d5;
+  --homecode-mark-bracket-right: #f4f4f5;
+  --homecode-mark-pixel: #77777a;
+  --homecode-mark-border: rgba(255, 255, 255, 0.1);
+  --shadow-raised:
+    0 0 0 1px color-mix(in srgb, var(--border) 84%, transparent),
+    0 10px 30px rgba(0, 0, 0, 0.18);
   /* Theme-independent session/workspace accent palette — single source of truth
      for the sidebar group dots, overview badges, and split-pane workspace
      accents. Kept here (not per-theme) since the values don't vary by theme. */
-  --accent-red: #ff5a5f;
-  --accent-orange: #ff8a2a;
-  --accent-yellow: #f6c431;
-  --accent-green: #69c987;
+  --accent-red: #d92e3c;
+  --accent-orange: #ee7330;
+  --accent-yellow: #e7af36;
+  --accent-green: #2eaf5a;
   /* Execution-status palette — one mapping shared by the plan graph, the
      workflow inspector, and the cockpit header so a status reads the same
      colour wherever it appears. Derived from the per-theme tokens above, so a
@@ -57,6 +65,12 @@
   font-size: 14px;
   line-height: 1.5;
   overflow: hidden;
+}
+
+.app :global(svg.lucide) {
+  stroke-width: 1.25;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .appChat {
@@ -430,151 +444,141 @@
 }
 
 .themeDark {
-  --background: #0d0d0d;
-  --foreground: #fafafa;
+  --background: #080808;
+  --foreground: #f2f2f2;
   --card: #161616;
-  --card-foreground: #fafafa;
+  --card-foreground: #f2f2f2;
   --table-section-bg: var(--subtle-bg);
-  --popover: #1a1a1a;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #0a0a0b;
-  --secondary: #1e1e1e;
-  --secondary-foreground: #a3a3a5;
-  --muted: #161616;
-  --muted-foreground: #808598;
-  --accent: #1e1e1e;
-  --accent-foreground: #fafafa;
-  --border: #2a2a2a;
-  --ring: #747476;
-  --sidebar-background: #0d0d0d;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #fafafa;
-  --sidebar-primary-foreground: #0a0a0b;
-  --sidebar-accent: #1e1e1e;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #2a2a2a;
-  --sidebar-ring: #747476;
-  --agent-blue-500: #6785ff;
-  --agent-blue-400: #8aa0ff;
-  --agent-blue-300: #b4c3ff;
-  --agent-blue-200: #2f3f88;
-  --agent-blue-100: #1c254f;
-  --agent-purple-300: #bcacfe;
-  --agent-purple-400: #d5cbfe;
-  --agent-purple-600: #9a7cff;
-  --agent-purple-shadow: 0 0 40px rgba(119, 85, 254, 0.28);
-  --agent-gray-200: #2a2d34;
-  --agent-gray-500: #808598;
-  --agent-gray-800: #3b3f49;
-  --success-color: #48bb78;
-  --warning-color: #ecc94b;
-  --error-color: #fc8181;
-  --streaming-label-color: #b794f4;
-  --agent-logo-gradient: linear-gradient(
-    90deg,
-    #5b8def 0%,
-    #6d44e8 55%,
-    #a78bfa 100%
-  );
-  --subtle-bg: rgba(255, 255, 255, 0.04);
-  --subtle-bg-strong: rgba(255, 255, 255, 0.06);
-  --success-bg: rgba(72, 187, 120, 0.12);
-  --warning-bg: rgba(236, 201, 75, 0.08);
-  --warning-border: rgba(236, 201, 75, 0.2);
-  --error-bg: rgba(252, 129, 129, 0.08);
-  --error-border: rgba(252, 129, 129, 0.2);
-  --chat-editor-bg-primary: #2f2f2f;
-  --chat-editor-bg-tertiary: #1e1e1e;
-  --chat-editor-border-color: #2a2a2a;
-  --chat-editor-text-primary: #e4e4e4;
-  --chat-editor-text-secondary: #a0a0a0;
-  --chat-editor-text-dimmed: #666;
-  --chat-editor-accent-color: #4a9eff;
-  --chat-editor-selection-bg: #3d5a7a;
-  --chat-editor-selection-color: #ffffff;
+  --popover: #1c1c1c;
+  --popover-foreground: #f2f2f2;
+  --primary: #ededed;
+  --primary-foreground: #161616;
+  --secondary: #242424;
+  --secondary-foreground: #aeaeae;
+  --muted: #1c1c1c;
+  --muted-foreground: #808080;
+  --accent: #242424;
+  --accent-foreground: #f2f2f2;
+  --border: rgba(255, 255, 255, 0.1);
+  --ring: #7698fd;
+  --sidebar-background: #101010;
+  --sidebar-foreground: #f2f2f2;
+  --sidebar-primary: #ededed;
+  --sidebar-primary-foreground: #161616;
+  --sidebar-accent: #242424;
+  --sidebar-accent-foreground: #f2f2f2;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #7698fd;
+  --agent-blue-500: #7698fd;
+  --agent-blue-400: #a2bcff;
+  --agent-blue-300: #c3d4fd;
+  --agent-blue-200: #d7e2fc;
+  --agent-blue-100: #ecf1fe;
+  --agent-purple-300: #b9b8f5;
+  --agent-purple-400: #9e99f7;
+  --agent-purple-600: #7152f4;
+  --agent-purple-shadow: 0 0 0 1px rgba(158, 153, 247, 0.18);
+  --agent-gray-200: #3a3a3a;
+  --agent-gray-500: #808080;
+  --agent-gray-800: #aeaeae;
+  --success-color: #49c970;
+  --warning-color: #f2cf76;
+  --error-color: #f17471;
+  --streaming-label-color: #a2bcff;
+  --agent-logo-gradient: linear-gradient(90deg, #aeaeae, #f2f2f2);
+  --subtle-bg: rgba(255, 255, 255, 0.06);
+  --subtle-bg-strong: rgba(255, 255, 255, 0.1);
+  --success-bg: rgba(73, 201, 112, 0.12);
+  --warning-bg: rgba(242, 207, 118, 0.1);
+  --warning-border: rgba(242, 207, 118, 0.24);
+  --error-bg: rgba(241, 116, 113, 0.1);
+  --error-border: rgba(241, 116, 113, 0.24);
+  --chat-editor-bg-primary: #161616;
+  --chat-editor-bg-tertiary: #242424;
+  --chat-editor-border-color: rgba(255, 255, 255, 0.1);
+  --chat-editor-text-primary: #f2f2f2;
+  --chat-editor-text-secondary: #aeaeae;
+  --chat-editor-text-dimmed: #808080;
+  --chat-editor-accent-color: #a2bcff;
+  --chat-editor-selection-bg: rgba(118, 152, 253, 0.28);
+  --chat-editor-selection-color: #f2f2f2;
   --scrollbar-track: transparent;
   --scrollbar-thumb: #3a3a3a;
-  --scrollbar-thumb-hover: #525252;
-  --git-mode-current: #3ddc97;
-  --git-mode-branch: #f5a623;
-  --git-mode-worktree: #b48eff;
-  --git-mode-valid: #48bb78;
-  --git-mode-invalid: #fc8181;
+  --scrollbar-thumb-hover: #5c5c5c;
+  --git-mode-current: #49c970;
+  --git-mode-branch: #f2cf76;
+  --git-mode-worktree: #b9b8f5;
+  --git-mode-valid: #49c970;
+  --git-mode-invalid: #f17471;
 }
 
 .themeLight {
   --background: #ffffff;
-  --foreground: #0a0a0b;
+  --foreground: #161616;
   --card: #ffffff;
-  --card-foreground: #0a0a0b;
-  --table-section-bg: #f3f4f6;
+  --card-foreground: #161616;
+  --table-section-bg: #fafafa;
   --popover: #ffffff;
-  --popover-foreground: #0a0a0b;
-  --primary: #151517;
+  --popover-foreground: #161616;
+  --primary: #161616;
   --primary-foreground: #fafafa;
-  --secondary: #f3f3f5;
-  --secondary-foreground: #747476;
-  --muted: #f3f3f5;
-  --muted-foreground: #a3a3a5;
-  --accent: #f3f3f5;
-  --accent-foreground: #151517;
-  --border: #e3e4e6;
-  --ring: #a3a3a5;
+  --secondary: #f2f2f2;
+  --secondary-foreground: #5c5c5c;
+  --muted: #f2f2f2;
+  --muted-foreground: #808080;
+  --accent: #f2f2f2;
+  --accent-foreground: #161616;
+  --border: rgba(0, 0, 0, 0.1);
+  --ring: #3b5cf6;
   --sidebar-background: #fafafa;
-  --sidebar-foreground: #0a0a0b;
-  --sidebar-primary: #151517;
+  --sidebar-foreground: #161616;
+  --sidebar-primary: #161616;
   --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #f3f3f5;
-  --sidebar-accent-foreground: #151517;
-  --sidebar-border: #e3e4e6;
-  --sidebar-ring: #a3a3a5;
-  --agent-blue-500: #0033ff;
-  --agent-blue-400: #335cff;
-  --agent-blue-300: #6785ff;
-  --agent-blue-200: #b4c3ff;
-  --agent-blue-100: #cdd7ff;
-  --agent-purple-300: #d5cbfe;
-  --agent-purple-400: #bcacfe;
-  --agent-purple-600: #7755fe;
-  --agent-purple-shadow: 0 0 40px rgba(203, 207, 254, 0.45);
-  --agent-gray-200: #d4d7e2;
-  --agent-gray-500: #808598;
-  --agent-gray-800: #3b3f49;
-  --success-color: #1f7a3a;
-  --warning-color: #9a6a00;
-  --error-color: #c0362c;
-  --streaming-label-color: #7b4ab8;
-  --agent-logo-gradient: linear-gradient(
-    90deg,
-    #2563eb 0%,
-    #6d44e8 55%,
-    #7c3aed 100%
-  );
-  --subtle-bg: rgba(32, 31, 25, 0.05);
-  --subtle-bg-strong: rgba(32, 31, 25, 0.08);
-  --success-bg: rgba(31, 122, 58, 0.11);
-  --warning-bg: rgba(154, 106, 0, 0.1);
-  --warning-border: rgba(154, 106, 0, 0.24);
-  --error-bg: rgba(192, 54, 44, 0.1);
-  --error-border: rgba(192, 54, 44, 0.24);
+  --sidebar-accent: #f2f2f2;
+  --sidebar-accent-foreground: #161616;
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+  --sidebar-ring: #3b5cf6;
+  --agent-blue-500: #3b5cf6;
+  --agent-blue-400: #7698fd;
+  --agent-blue-300: #a2bcff;
+  --agent-blue-200: #c3d4fd;
+  --agent-blue-100: #ecf1fe;
+  --agent-purple-300: #b9b8f5;
+  --agent-purple-400: #9e99f7;
+  --agent-purple-600: #7152f4;
+  --agent-purple-shadow: 0 0 0 1px rgba(113, 82, 244, 0.14);
+  --agent-gray-200: #dbdbdb;
+  --agent-gray-500: #808080;
+  --agent-gray-800: #3a3a3a;
+  --success-color: #198b43;
+  --warning-color: #b35624;
+  --error-color: #b82d35;
+  --streaming-label-color: #3b5cf6;
+  --agent-logo-gradient: linear-gradient(90deg, #5c5c5c, #161616);
+  --subtle-bg: rgba(0, 0, 0, 0.04);
+  --subtle-bg-strong: rgba(0, 0, 0, 0.08);
+  --success-bg: rgba(25, 139, 67, 0.1);
+  --warning-bg: rgba(179, 86, 36, 0.1);
+  --warning-border: rgba(179, 86, 36, 0.24);
+  --error-bg: rgba(184, 45, 53, 0.1);
+  --error-border: rgba(184, 45, 53, 0.24);
   --chat-editor-bg-primary: var(--background);
   --chat-editor-bg-tertiary: #f2f2f3;
-  --chat-editor-border-color: #d8d6cc;
-  --chat-editor-text-primary: #22231f;
-  --chat-editor-text-secondary: #5f6259;
-  --chat-editor-text-dimmed: #8b8d84;
-  --chat-editor-accent-color: #0b66c3;
-  --chat-editor-selection-bg: rgba(11, 102, 195, 0.18);
+  --chat-editor-border-color: rgba(0, 0, 0, 0.1);
+  --chat-editor-text-primary: #161616;
+  --chat-editor-text-secondary: #5c5c5c;
+  --chat-editor-text-dimmed: #808080;
+  --chat-editor-accent-color: #3b5cf6;
+  --chat-editor-selection-bg: rgba(59, 92, 246, 0.18);
   --chat-editor-selection-color: var(--chat-editor-text-primary);
   --scrollbar-track: transparent;
-  --scrollbar-thumb: #c7c9cc;
-  --scrollbar-thumb-hover: #aeb1b5;
-  --git-mode-current: #1a7a4a;
-  --git-mode-branch: #9a6a00;
-  --git-mode-worktree: #6b3fa0;
-  --git-mode-valid: #1f7a3a;
-  --git-mode-invalid: #c0362c;
+  --scrollbar-thumb: #dbdbdb;
+  --scrollbar-thumb-hover: #aeaeae;
+  --git-mode-current: #198b43;
+  --git-mode-branch: #ac8833;
+  --git-mode-worktree: #5230c2;
+  --git-mode-valid: #198b43;
+  --git-mode-invalid: #b82d35;
 }
 
 .content {
@@ -1145,16 +1149,6 @@
 .queuedPromptSpinner {
   width: 10px;
   height: 10px;
-  border: 1.5px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 999px;
-  animation: queuedPromptSpin 0.8s linear infinite;
-}
-
-@keyframes queuedPromptSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .queuedPromptActions {

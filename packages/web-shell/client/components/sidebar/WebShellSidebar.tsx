@@ -901,6 +901,15 @@ export function WebShellSidebar({
   onStandaloneNotice,
 }: WebShellSidebarProps) {
   const { t } = useI18n();
+  const macOSDesktop =
+    typeof window !== 'undefined' &&
+    Boolean(
+      (
+        window as Window & {
+          __HOMECODE_MACOS_DESKTOP__?: boolean;
+        }
+      ).__HOMECODE_MACOS_DESKTOP__,
+    );
   const connection = useConnection();
   const actions = useActions();
   const workspaceActions = useWorkspaceActions();
@@ -4900,10 +4909,31 @@ export function WebShellSidebar({
   ]);
   return (
     <>
+      {macOSDesktop && (
+        <button
+          className={cx(
+            styles.collapseButton,
+            styles.macOSDesktopSidebarToggle,
+          )}
+          type="button"
+          data-testid="macos-desktop-sidebar-toggle"
+          title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-expanded={!collapsed}
+          onClick={() => onCollapsedChange(!collapsed)}
+        >
+          {collapsed ? (
+            <PanelLeftOpenIcon size={16} strokeWidth={1.2} />
+          ) : (
+            <PanelLeftCloseIcon size={16} strokeWidth={1.2} />
+          )}
+        </button>
+      )}
       <aside
         ref={sidebarRef}
         className={cx(
           styles.sidebar,
+          macOSDesktop && styles.macOSDesktop,
           collapsed && styles.collapsed,
           isResizing && styles.resizing,
           mobileOpen && styles.mobileOpen,
@@ -5219,17 +5249,21 @@ export function WebShellSidebar({
             </div>
           </DialogShell>
         )}
-        {shouldRenderBrand && (
-          <div className={styles.topRow}>
-            {branding?.render
-              ? branding.render()
-              : !collapsed && (
-                  <HomeCodeWordmark
-                    className={styles.brandWordmark}
-                    role="img"
-                    aria-label="HomeCode"
-                  />
-                )}
+        {(shouldRenderBrand || macOSDesktop) && (
+          <div
+            className={styles.topRow}
+            data-tauri-drag-region={macOSDesktop ? true : undefined}
+          >
+            {shouldRenderBrand &&
+              (branding?.render
+                ? branding.render()
+                : !collapsed && (
+                    <HomeCodeWordmark
+                      className={styles.brandWordmark}
+                      role="img"
+                      aria-label="HomeCode"
+                    />
+                  ))}
           </div>
         )}
         {primaryNavItems.has('newTask') && (

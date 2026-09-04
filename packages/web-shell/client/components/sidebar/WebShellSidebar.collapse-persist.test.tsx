@@ -321,10 +321,56 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   window.localStorage.clear();
+  delete (window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean })
+    .__HOMECODE_MACOS_DESKTOP__;
   vi.restoreAllMocks();
 });
 
 describe('WebShellSidebar collapsed session group persistence', () => {
+  it('integrates the macOS titlebar and expand control into the collapsed sidebar', async () => {
+    (
+      window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
+    ).__HOMECODE_MACOS_DESKTOP__ = true;
+    const onCollapsedChange = vi.fn();
+    renderSidebar(true, { footer: false, onCollapsedChange });
+    await flushSidebar();
+
+    const sidebar = container.querySelector<HTMLElement>('aside');
+    expect(sidebar?.className).toContain(sidebarStyles.macOSDesktop);
+    expect(sidebar?.className).toContain(sidebarStyles.collapsed);
+    expect(
+      sidebar?.querySelector(
+        `.${sidebarStyles.topRow}[data-tauri-drag-region]`,
+      ),
+    ).not.toBeNull();
+
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '[data-testid="macos-desktop-sidebar-toggle"]',
+    );
+    expect(toggle?.getAttribute('aria-label')).toBe('Expand');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    click(toggle!);
+    expect(onCollapsedChange).toHaveBeenCalledWith(false);
+  });
+
+  it('renders the macOS wordmark and collapse control in the expanded titlebar', async () => {
+    (
+      window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
+    ).__HOMECODE_MACOS_DESKTOP__ = true;
+    const onCollapsedChange = vi.fn();
+    renderSidebar(false, { footer: false, onCollapsedChange });
+    await flushSidebar();
+
+    expect(container.querySelector('[data-homecode-wordmark]')).not.toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '[data-testid="macos-desktop-sidebar-toggle"]',
+    );
+    expect(toggle?.getAttribute('aria-label')).toBe('Collapse');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    click(toggle!);
+    expect(onCollapsedChange).toHaveBeenCalledWith(true);
+  });
+
   it('uses drawer constraints and closes mobile without persisting desktop collapse', async () => {
     const onCollapsedChange = vi.fn();
     const onMobileClose = vi.fn();

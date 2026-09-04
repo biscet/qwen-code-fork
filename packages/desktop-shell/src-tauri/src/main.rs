@@ -207,7 +207,8 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     });
     let (width, height) = default_window_size();
 
-    let window = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
+    let window_builder =
+        WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
         .title("HomeCode")
         .inner_size(width, height)
         .min_inner_size(900.0, 600.0)
@@ -233,8 +234,14 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }),
             DownloadEvent::Finished { .. } => true,
             _ => false,
-        })
-        .build()?;
+        });
+    #[cfg(target_os = "macos")]
+    let window_builder = window_builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 17.0))
+        .initialization_script("window.__HOMECODE_MACOS_DESKTOP__ = true;");
+    let window = window_builder.build()?;
     restore_window(&window, window_state.as_ref());
 
     handle.manage(ApplicationState {

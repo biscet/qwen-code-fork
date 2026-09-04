@@ -27,6 +27,11 @@
   align-items: center;
 }
 
+.macOSDesktop.collapsed {
+  width: 76px;
+  min-width: 76px;
+}
+
 .sidebar.mobileOpen {
   width: clamp(
     var(--web-shell-sidebar-min-width, 220px),
@@ -198,6 +203,18 @@
   display: none;
 }
 
+.macOSDesktop .topRow {
+  width: calc(100% + 24px);
+  min-height: 40px;
+  justify-content: flex-end;
+  margin: -12px -12px 0;
+  padding: 0 12px 0 112px;
+}
+
+.macOSDesktop .topRow:empty {
+  display: flex;
+}
+
 .topRow .newChatButton {
   flex: 1 1 auto;
   width: auto;
@@ -220,9 +237,27 @@
   );
 }
 
+.macOSDesktop .brandWordmark {
+  width: 100px;
+  max-width: 100%;
+  pointer-events: none;
+}
+
+.macOSDesktopSidebarToggle {
+  position: fixed;
+  top: 6px;
+  left: 76px;
+  z-index: 2;
+}
+
 .collapsed .topRow {
   width: 100%;
   justify-content: center;
+}
+
+.macOSDesktop.collapsed .topRow {
+  width: calc(100% + 24px);
+  padding: 0;
 }
 
 .collapsed .topRow .newChatButton {
@@ -1778,10 +1813,21 @@
   flex-direction: column;
 }
 
+.collapsed .footer.stackedFooter {
+  align-items: center;
+}
+
 .collapsed .footerPrimary,
 .collapsed .footerActions {
   flex-direction: column;
   margin-left: 0;
+}
+
+.collapsed .footer.stackedFooter .footerButton {
+  width: 32px;
+  flex: 0 0 32px;
+  justify-content: center;
+  padding: 0;
 }
 
 .resizeHandle {

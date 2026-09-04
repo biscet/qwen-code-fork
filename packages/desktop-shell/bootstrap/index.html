@@ -29,6 +29,15 @@
         background: #080808;
       }
 
+      .titlebar-drag-region {
+        position: fixed;
+        z-index: 3;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: 38px;
+      }
+
       main {
         display: grid;
         place-items: center;
@@ -378,6 +387,11 @@
     </style>
   </head>
   <body data-state="starting">
+    <div
+      class="titlebar-drag-region"
+      data-tauri-drag-region
+      aria-hidden="true"
+    ></div>
     <main>
       <section class="shell" aria-live="polite">
         <div class="brand">

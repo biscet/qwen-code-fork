@@ -64,6 +64,46 @@ test('persists collapsed session groups across reload @smoke', async ({
   );
 });
 
+test('centers stacked footer icons in the collapsed macOS sidebar @smoke', async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    (
+      window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
+    ).__HOMECODE_MACOS_DESKTOP__ = true;
+  });
+  const scenario = createOrganizedScenario();
+  const daemon = await installScenario(page, scenario, testInfo);
+
+  await gotoSession(page, scenario, daemon);
+  await page.getByTestId('macos-desktop-sidebar-toggle').click();
+
+  const sidebar = page.getByRole('complementary', {
+    name: 'Workspace sidebar',
+  });
+  for (const label of ['Settings', 'Daemon status']) {
+    const button = sidebar.getByRole('button', { name: label });
+    const icon = button.locator('svg');
+    await expect(icon).toBeVisible();
+    await expect.poll(async () => (await button.boundingBox())?.width).toBe(32);
+    await expect
+      .poll(async () => (await button.boundingBox())?.height)
+      .toBe(32);
+    await expect
+      .poll(async () => {
+        const [sidebarBox, iconBox] = await Promise.all([
+          sidebar.boundingBox(),
+          icon.boundingBox(),
+        ]);
+        if (!sidebarBox || !iconBox) return Number.POSITIVE_INFINITY;
+        return Math.abs(
+          sidebarBox.x + sidebarBox.width / 2 - (iconBox.x + iconBox.width / 2),
+        );
+      })
+      .toBeLessThanOrEqual(0.5);
+  }
+});
+
 test('keeps long session details inside a constrained WebShell @smoke', async ({
   page,
 }, testInfo) => {

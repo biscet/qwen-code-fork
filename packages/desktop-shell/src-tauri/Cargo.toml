@@ -1,11 +1,15 @@
 [package]
 name = "qwen-code-desktop"
-version = "0.0.1"
+version = "1.2.0"
 description = "Thin desktop shell for Qwen Code Web Shell"
 authors = ["Qwen Team"]
 license = "Apache-2.0"
 edition = "2021"
 rust-version = "1.77.2"
+
+[[bin]]
+name = "HomeCode"
+path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.4.1", features = [] }

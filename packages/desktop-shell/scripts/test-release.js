@@ -42,6 +42,7 @@ try {
   testBootstrapBridgeConfiguration();
   await testBootstrapWorkspaceVisibility();
   testLegacyApplicationIdentity();
+  testDesktopChromeIdentity();
   testElectronBridgeWorkflow();
   testDesktopReleaseSigningWorkflow();
   testDesktopReleaseHardening();
@@ -275,6 +276,32 @@ function testLegacyApplicationIdentity() {
     /ExecWait '"\$R0\\Uninstall Qwen Code Desktop\.exe" \/currentuser \/S --updated _\?=\$R0'/,
   );
   assert.match(migrationHook, /\$\{If\} \$R2 != 0\s*\n\s*Abort/);
+}
+
+function testDesktopChromeIdentity() {
+  const cargo = fs.readFileSync(
+    path.join(packageDir, 'src-tauri', 'Cargo.toml'),
+    'utf8',
+  );
+  assert.match(
+    cargo,
+    /\[\[bin\]\]\s+name = "HomeCode"\s+path = "src\/main\.rs"/,
+  );
+
+  const main = fs.readFileSync(
+    path.join(packageDir, 'src-tauri', 'src', 'main.rs'),
+    'utf8',
+  );
+  assert.match(main, /title_bar_style\(tauri::TitleBarStyle::Overlay\)/);
+  assert.match(main, /hidden_title\(true\)/);
+  assert.match(main, /traffic_light_position\(/);
+  assert.match(main, /__HOMECODE_MACOS_DESKTOP__/);
+
+  const bootstrap = fs.readFileSync(
+    path.join(packageDir, 'bootstrap', 'index.html'),
+    'utf8',
+  );
+  assert.match(bootstrap, /data-tauri-drag-region/);
 }
 
 function testElectronBridgeWorkflow() {

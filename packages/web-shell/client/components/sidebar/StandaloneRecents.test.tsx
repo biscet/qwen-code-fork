@@ -153,6 +153,29 @@ describe('StandaloneRecents', () => {
     );
   });
 
+  it('collapses and restores the Recents body from its section header', async () => {
+    await render();
+    const header = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('sidebar.recents'),
+    );
+
+    expect(header?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('Active chat');
+    expect(container.textContent).toContain('sidebar.archivedTitle');
+
+    await act(async () => header?.click());
+
+    expect(header?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('Active chat');
+    expect(container.textContent).not.toContain('sidebar.archivedTitle');
+
+    await act(async () => header?.click());
+
+    expect(header?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('Active chat');
+    expect(container.textContent).toContain('sidebar.archivedTitle');
+  });
+
   it('loads archived chats only after the archived lane is expanded', async () => {
     await render();
     const archivedToggle = Array.from(

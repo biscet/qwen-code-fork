@@ -33,21 +33,39 @@ The port is based on the current HomeCode checkout:
 
 1. Web Shell semantic theme and shadcn token bridge.
 2. Shared Web UI fallback tokens.
-3. Welcome and sidebar branding.
+3. A large `homecode` empty-state wordmark and a text-only `homecode`
+   sidebar brand, both built from the same two-tone modular SVG lettering.
 4. Shared, streaming, queued, and bootstrap loading states.
 5. Browser favicon and Tauri application icon set.
 6. Bootstrap startup, recovery, and update screen.
 
+7. A Codex-like prompt surface: a compact 128px container in HomeCode's native
+   `#161616` dark layer, 22px radius, prompt above the toolbar, HomeCode context
+   controls on the left, and model, voice, and circular send/stop actions on
+   the right.
+8. Project and current branch share one neutral context control when both are
+   available. Its two click targets preserve workspace and git behavior while
+   the shared border makes them read as one unit.
+9. Project navigation precedes Recents. Both use the same compact disclosure
+   header, a quiet token-based divider separates them, and workspace management
+   joins the Project header's icon actions.
+
 ## Non-goals
 
-- Rename Qwen Code or change its product strings.
-- Change layout structure, session semantics, or daemon behavior.
+- Change session semantics, composer actions, or daemon behavior.
 - Replace specialized functional icons that have no HomeCode equivalent.
+- Add gradients, glass effects, ornamental motion, or other generated-looking
+  decoration.
 
 ## Acceptance
 
 - Web Shell typecheck, focused component tests, Web UI typecheck/tests, and
   desktop release tests pass.
 - A rebuilt runtime is used by a freshly restarted Tauri development process.
-- The live window shows the HomeCode mark, graphite palette, compact borders,
-  and pixel loader while retaining Qwen Code functionality.
+- The live window and user-facing product copy say `HomeCode`; internal Qwen
+  package, protocol, and migration identifiers remain unchanged.
+- The live empty state shows the two-tone modular `homecode` wordmark,
+  matching text-only sidebar brand, and filled rounded composer while retaining
+  all existing composer actions. Project and branch appear in one shared
+  context control. Project and Recents remain independently collapsible, with
+  workspace management available from the Project header.

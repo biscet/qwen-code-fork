@@ -2,17 +2,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 24px 0 20px;
+  justify-content: center;
+  padding: 18px 0 34px;
   font-family: var(--font-sans, system-ui, sans-serif);
   text-align: center;
   animation: welcomeFadeIn 400ms ease-out;
-}
-
-.mark {
-  width: 58px;
-  height: 58px;
-  margin-bottom: 4px;
 }
 
 @keyframes welcomeFadeIn {
@@ -33,38 +27,35 @@
   }
 }
 
-.titleRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35em;
-  color: var(--foreground);
-  font-size: 32px;
-  font-weight: 600;
-  line-height: 40px;
-  letter-spacing: -0.02em;
-}
-
 .title {
-  color: var(--foreground);
-  font-weight: 500;
+  margin: 0;
+  display: block;
+  width: min(744px, 76vw);
+  max-width: 100%;
 }
 
-.subtitle {
-  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 22px;
+.wordmark {
+  width: 100%;
+  height: auto;
+  --homecode-wordmark-home: color-mix(
+    in srgb,
+    var(--foreground) 72%,
+    var(--background)
+  );
+  --homecode-wordmark-code: var(--foreground);
+  --homecode-wordmark-inset: color-mix(
+    in srgb,
+    var(--foreground) 42%,
+    var(--background)
+  );
 }
 
 @media (max-width: 760px) {
   .header {
-    padding: 16px 0 14px;
+    padding: 10px 0 22px;
   }
 
-  .titleRow {
-    font-size: 26px;
-    line-height: 34px;
+  .title {
+    width: min(620px, 92vw);
   }
 }

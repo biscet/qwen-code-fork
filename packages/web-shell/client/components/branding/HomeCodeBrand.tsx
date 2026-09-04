@@ -3,6 +3,139 @@ import styles from './HomeCodeBrand.module.css';
 
 type BrandSvgProps = ComponentPropsWithoutRef<'svg'>;
 
+const WORDMARK_CELL = 20;
+const WORDMARK_GAP = 12;
+
+type WordmarkGlyph = {
+  letter: string;
+  tone: 'home' | 'code';
+  rows: readonly string[];
+  insets: ReadonlyArray<readonly [number, number, number, number]>;
+};
+
+const WORDMARK_GLYPHS: readonly WordmarkGlyph[] = [
+  {
+    letter: 'h',
+    tone: 'home',
+    rows: ['1000', '1000', '1111', '1001', '1001', '1001'],
+    insets: [[1, 4, 2, 2]],
+  },
+  {
+    letter: 'o',
+    tone: 'home',
+    rows: ['0000', '1111', '1001', '1001', '1001', '1111'],
+    insets: [[1, 3, 2, 2]],
+  },
+  {
+    letter: 'm',
+    tone: 'home',
+    rows: ['00000', '11111', '10101', '10101', '10101', '10101'],
+    insets: [
+      [1, 3, 1, 3],
+      [3, 3, 1, 3],
+    ],
+  },
+  {
+    letter: 'e',
+    tone: 'home',
+    rows: ['0000', '1111', '1000', '1111', '1000', '1111'],
+    insets: [[1, 4, 3, 1]],
+  },
+  {
+    letter: 'c',
+    tone: 'code',
+    rows: ['0000', '1111', '1000', '1000', '1000', '1111'],
+    insets: [[1, 3, 3, 2]],
+  },
+  {
+    letter: 'o',
+    tone: 'code',
+    rows: ['0000', '1111', '1001', '1001', '1001', '1111'],
+    insets: [[1, 3, 2, 2]],
+  },
+  {
+    letter: 'd',
+    tone: 'code',
+    rows: ['0001', '1111', '1001', '1001', '1001', '1111'],
+    insets: [[1, 3, 2, 2]],
+  },
+  {
+    letter: 'e',
+    tone: 'code',
+    rows: ['0000', '1111', '1000', '1111', '1000', '1111'],
+    insets: [[1, 4, 3, 1]],
+  },
+];
+
+type PositionedWordmarkGlyph = WordmarkGlyph & {
+  x: number;
+  path: string;
+};
+
+const WORDMARK_LAYOUT = WORDMARK_GLYPHS.reduce<PositionedWordmarkGlyph[]>(
+  (glyphs, glyph) => {
+    const previous = glyphs.at(-1);
+    const x = previous
+      ? previous.x + previous.rows[0].length * WORDMARK_CELL + WORDMARK_GAP
+      : 0;
+    const path = glyph.rows
+      .flatMap((row, rowIndex) =>
+        [...row].flatMap((cell, columnIndex) =>
+          cell === '1'
+            ? [
+                `M${x + columnIndex * WORDMARK_CELL} ${
+                  rowIndex * WORDMARK_CELL
+                }h${WORDMARK_CELL}v${WORDMARK_CELL}h-${WORDMARK_CELL}z`,
+              ]
+            : [],
+        ),
+      )
+      .join('');
+    glyphs.push({ ...glyph, x, path });
+    return glyphs;
+  },
+  [],
+);
+
+const FINAL_WORDMARK_GLYPH = WORDMARK_LAYOUT.at(-1)!;
+const WORDMARK_WIDTH =
+  FINAL_WORDMARK_GLYPH.x + FINAL_WORDMARK_GLYPH.rows[0].length * WORDMARK_CELL;
+
+export function HomeCodeWordmark({ className, ...props }: BrandSvgProps) {
+  return (
+    <svg
+      {...props}
+      className={`${styles.wordmark} ${className ?? ''}`.trim()}
+      viewBox={`0 0 ${WORDMARK_WIDTH} ${WORDMARK_CELL * 6}`}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      shapeRendering="crispEdges"
+      data-homecode-wordmark
+    >
+      {WORDMARK_LAYOUT.map((glyph, index) => (
+        <g key={`${glyph.letter}-${index}`}>
+          <path
+            className={
+              glyph.tone === 'home' ? styles.wordmarkHome : styles.wordmarkCode
+            }
+            d={glyph.path}
+          />
+          {glyph.insets.map(([column, row, width, height], insetIndex) => (
+            <rect
+              className={styles.wordmarkInset}
+              key={insetIndex}
+              x={glyph.x + column * WORDMARK_CELL}
+              y={row * WORDMARK_CELL}
+              width={width * WORDMARK_CELL}
+              height={height * WORDMARK_CELL}
+            />
+          ))}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 function PixelMarkPaths({ loading = false }: { loading?: boolean }) {
   return (
     <>

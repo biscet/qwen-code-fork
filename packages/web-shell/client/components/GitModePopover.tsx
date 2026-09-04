@@ -5,7 +5,13 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { CircleDotIcon, GitBranchIcon, GitForkIcon } from 'lucide-react';
+import {
+  CheckIcon,
+  CircleDotIcon,
+  GitBranchIcon,
+  GitForkIcon,
+  XIcon,
+} from 'lucide-react';
 import { useI18n } from '../i18n';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import styles from './GitModePopover.module.css';
@@ -179,55 +185,57 @@ export function GitModePopover({
         >
           <div className={styles.header}>{t('gitMode.title')}</div>
 
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selectedMode === 'current'}
-            className={`${styles.option} ${selectedMode === 'current' ? styles.optionSelected : ''}`}
-            onClick={handleSelectCurrent}
+          <div
+            className={styles.options}
+            role="radiogroup"
+            aria-label={t('gitMode.title')}
           >
-            <span className={`${styles.optionIcon} ${styles.iconCurrent}`}>
-              <CircleDotIcon size={15} strokeWidth={1.5} />
-            </span>
-            <span className={styles.optionText}>
-              <span className={styles.optionName}>{t('gitMode.current')}</span>
-              <span className={styles.optionDesc}>
-                {t('gitMode.currentDesc', { branch })}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={selectedMode === 'current'}
+              className={`${styles.option} ${selectedMode === 'current' ? styles.optionSelected : ''}`}
+              onClick={handleSelectCurrent}
+            >
+              <span className={styles.optionIcon}>
+                <CircleDotIcon size={15} strokeWidth={1.6} />
               </span>
-            </span>
-            {selectedMode === 'current' && (
-              <span className={styles.checkCurrent} aria-hidden="true">
-                ✓
+              <span className={styles.optionText}>
+                <span className={styles.optionName}>
+                  {t('gitMode.current')}
+                </span>
+                <span className={styles.optionDesc}>
+                  {t('gitMode.currentDesc', { branch })}
+                </span>
               </span>
-            )}
-          </button>
+              {selectedMode === 'current' && (
+                <CheckIcon className={styles.check} aria-hidden="true" />
+              )}
+            </button>
 
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selectedMode === 'branch'}
-            className={`${styles.option} ${selectedMode === 'branch' ? styles.optionSelected : ''}`}
-            onClick={() => setSelectedMode('branch')}
-          >
-            <span className={`${styles.optionIcon} ${styles.iconBranch}`}>
-              <GitBranchIcon size={15} strokeWidth={1.5} />
-            </span>
-            <span className={styles.optionText}>
-              <span className={styles.optionName}>{t('gitMode.branch')}</span>
-              <span className={styles.optionDesc}>
-                {t('gitMode.branchDesc', { branch })}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={selectedMode === 'branch'}
+              className={`${styles.option} ${selectedMode === 'branch' ? styles.optionSelected : ''}`}
+              onClick={() => setSelectedMode('branch')}
+            >
+              <span className={styles.optionIcon}>
+                <GitBranchIcon size={15} strokeWidth={1.6} />
               </span>
-            </span>
+              <span className={styles.optionText}>
+                <span className={styles.optionName}>{t('gitMode.branch')}</span>
+                <span className={styles.optionDesc}>
+                  {t('gitMode.branchDesc', { branch })}
+                </span>
+              </span>
+              {selectedMode === 'branch' && (
+                <CheckIcon className={styles.check} aria-hidden="true" />
+              )}
+            </button>
+
             {selectedMode === 'branch' && (
-              <span className={styles.checkBranch} aria-hidden="true">
-                ✓
-              </span>
-            )}
-          </button>
-
-          {selectedMode === 'branch' && (
-            <div className={styles.branchBox}>
-              <div className={styles.branchRow}>
+              <div className={styles.branchBox}>
                 <label
                   className={styles.branchLabel}
                   htmlFor="git-mode-branch-input"
@@ -252,87 +260,81 @@ export function GitModePopover({
                   />
                   {branchName && (
                     <span
-                      className={styles.branchStatus}
+                      className={`${styles.branchStatus} ${branchValid ? styles.branchStatusValid : styles.branchStatusInvalid}`}
                       aria-hidden="true"
-                      style={{
-                        color: branchValid
-                          ? 'var(--git-mode-valid)'
-                          : 'var(--git-mode-invalid)',
-                      }}
                     >
-                      {branchValid ? '✓' : '✗'}
+                      {branchValid ? (
+                        <CheckIcon size={13} strokeWidth={2} />
+                      ) : (
+                        <XIcon size={13} strokeWidth={2} />
+                      )}
                     </span>
                   )}
                 </span>
-              </div>
-              <div
-                className={`${styles.branchHint} ${branchName && !branchValid ? styles.branchHintError : ''}`}
-              >
-                {branchName && !branchValid
-                  ? t('gitMode.branchInvalidName')
-                  : t('gitMode.branchHint')}
-              </div>
-              {branchName && branchValid && (
-                <div className={styles.branchHint}>
-                  {t('gitMode.branchConflictWarning')}
+                <div
+                  className={`${styles.branchHint} ${branchName && !branchValid ? styles.branchHintError : ''}`}
+                >
+                  {branchName && !branchValid
+                    ? t('gitMode.branchInvalidName')
+                    : t('gitMode.branchHint')}
                 </div>
+                {branchName && branchValid && (
+                  <div className={styles.branchHint}>
+                    {t('gitMode.branchConflictWarning')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              role="radio"
+              aria-checked={selectedMode === 'worktree'}
+              className={`${styles.option} ${selectedMode === 'worktree' ? styles.optionSelected : ''}`}
+              onClick={() => setSelectedMode('worktree')}
+            >
+              <span className={styles.optionIcon}>
+                <GitForkIcon size={15} strokeWidth={1.6} />
+              </span>
+              <span className={styles.optionText}>
+                <span className={styles.optionName}>
+                  {t('gitMode.worktree')}
+                </span>
+                <span className={styles.optionDesc}>
+                  {t('gitMode.worktreeDesc')}
+                </span>
+              </span>
+              {selectedMode === 'worktree' && (
+                <CheckIcon className={styles.check} aria-hidden="true" />
+              )}
+            </button>
+          </div>
+
+          {selectedMode !== 'current' && (
+            <div className={styles.footer}>
+              {selectedMode === 'branch' && (
+                <button
+                  type="button"
+                  className={styles.confirmButton}
+                  disabled={!branchName || !branchValid}
+                  onClick={handleConfirmBranch}
+                  data-testid="git-mode-confirm-branch"
+                >
+                  {t('gitMode.confirmBranch')}
+                </button>
+              )}
+              {selectedMode === 'worktree' && (
+                <button
+                  type="button"
+                  className={styles.confirmButton}
+                  onClick={handleConfirmWorktree}
+                  data-testid="git-mode-confirm-worktree"
+                >
+                  {t('gitMode.confirmWorktree')}
+                </button>
               )}
             </div>
           )}
-
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selectedMode === 'worktree'}
-            className={`${styles.option} ${selectedMode === 'worktree' ? styles.optionSelected : ''}`}
-            onClick={() => setSelectedMode('worktree')}
-          >
-            <span className={`${styles.optionIcon} ${styles.iconWorktree}`}>
-              <GitForkIcon size={15} strokeWidth={1.5} />
-            </span>
-            <span className={styles.optionText}>
-              <span className={styles.optionName}>{t('gitMode.worktree')}</span>
-              <span className={styles.optionDesc}>
-                {t('gitMode.worktreeDesc')}
-              </span>
-            </span>
-            {selectedMode === 'worktree' && (
-              <span className={styles.checkWorktree} aria-hidden="true">
-                ✓
-              </span>
-            )}
-          </button>
-
-          <div className={styles.footer}>
-            <span className={styles.cmd}>
-              {selectedMode === 'branch'
-                ? `$ git checkout -b ${branchName || '…'} ← ${branch}`
-                : selectedMode === 'worktree'
-                  ? '$ git worktree add .qwen/worktrees/<slug>'
-                  : `$ git checkout ${branch}`}
-            </span>
-            {selectedMode === 'branch' && (
-              <button
-                type="button"
-                className={styles.confirmBranch}
-                disabled={!branchName || !branchValid}
-                onClick={handleConfirmBranch}
-                data-testid="git-mode-confirm-branch"
-              >
-                {t('gitMode.confirmBranch')}
-              </button>
-            )}
-            {selectedMode === 'worktree' && (
-              <button
-                type="button"
-                className={styles.confirmWorktree}
-                onClick={handleConfirmWorktree}
-                data-testid="git-mode-confirm-worktree"
-              >
-                {t('gitMode.confirmWorktree')}
-              </button>
-            )}
-          </div>
         </PopoverContent>
       </Popover>
       {(isBranch || isWorktree) && (
@@ -344,7 +346,7 @@ export function GitModePopover({
           title={t('gitMode.resetToCurrent')}
           data-testid="git-mode-clear"
         >
-          ✕
+          <XIcon size={11} strokeWidth={1.8} aria-hidden="true" />
         </button>
       )}
     </span>

@@ -4,6 +4,8 @@ export interface ToolbarDropdownItem {
   searchText?: string;
 }
 
+const TOOLBAR_LABEL_EXPANSION_HYSTERESIS_PX = 32;
+
 export function filterToolbarDropdownItems<T extends ToolbarDropdownItem>(
   items: readonly T[],
   query: string,
@@ -50,7 +52,6 @@ export function getToolbarItemVisibilityWithHysteresis({
   availableWidth,
   items,
   currentVisibility,
-  expansionMargin,
 }: {
   availableWidth: number;
   items: ReadonlyArray<{
@@ -59,14 +60,19 @@ export function getToolbarItemVisibilityWithHysteresis({
     ready?: boolean;
   }>;
   currentVisibility: Readonly<Record<string, boolean>>;
-  expansionMargin: number;
 }): Record<string, boolean> {
   const collapseVisibility = getToolbarItemVisibility({
     availableWidth,
     items,
   });
   const expansionVisibility = getToolbarItemVisibility({
-    availableWidth: Math.max(0, availableWidth - expansionMargin),
+    // Keep one compact control of slack before restoring labels. Actual and
+    // offscreen measurement widths can differ enough to otherwise alternate
+    // on consecutive ResizeObserver deliveries.
+    availableWidth: Math.max(
+      0,
+      availableWidth - TOOLBAR_LABEL_EXPANSION_HYSTERESIS_PX,
+    ),
     items,
   });
 
@@ -93,8 +99,11 @@ export function getToolbarExpansionBudget({
   currentExpansionWidth: number;
   gap: number;
 }): number {
-  const fixedLeadingWidth = Math.max(0, leadingWidth - currentExpansionWidth);
-  return Math.max(0, toolbarWidth - rightWidth - fixedLeadingWidth - gap);
+  const fixedWidth = Math.max(
+    0,
+    leadingWidth + rightWidth - currentExpansionWidth,
+  );
+  return Math.max(0, toolbarWidth - fixedWidth - gap);
 }
 
 export function resolveToolbarModelLabel({

@@ -152,7 +152,7 @@ async function testBootstrapWorkspaceVisibility() {
     workspace: '/Users/example/Documents',
   });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(element('#title').textContent, 'Restarting Qwen Code');
+  assert.equal(element('#title').textContent, 'Restarting HomeCode');
   assert.equal(
     element('#workspace').hidden,
     true,
@@ -250,7 +250,7 @@ function testLegacyApplicationIdentity() {
       'utf8',
     ),
   );
-  assert.equal(config.productName, 'Qwen Code Desktop');
+  assert.equal(config.productName, 'HomeCode');
   assert.equal(config.identifier, 'com.alibaba.qwen-code');
   assert.equal(
     config.bundle.windows.nsis.installerHooks,

@@ -24,6 +24,7 @@ import type { CommandInfo } from '../adapters/types';
 import type { AttachmentPreviewRequest } from '../adapters/messageTypes';
 import type { UseDaemonFollowupSuggestionReturn } from '@qwen-code/web-shell/daemon-react-sdk';
 import type {
+  DaemonSessionContextUsageStatus,
   DaemonSessionGroupPresetColor,
   DaemonWorkspaceGitStatus,
   ReasoningSelection,
@@ -62,6 +63,7 @@ import {
   isPreviewableFileComposerTag,
 } from '../utils/composerTag';
 import { isSafeImageSrc } from './messages/Markdown';
+import { ContextUsageMessage } from './messages/ContextUsageMessage';
 import { ModeIcon } from './ModeIcon';
 import { planSlashSectionRows } from '../utils/slashSectionPlan';
 import { getModelDisplayName } from '../utils/modelDisplay';
@@ -238,8 +240,13 @@ interface ChatEditorProps {
   contextWindow?: number;
   /** Keep Context Usage available before a restored session reports usage. */
   contextUsageAlwaysVisible?: boolean;
-  /** Show the context-usage breakdown, exactly like typing /context. */
-  onShowContextUsage?: () => void;
+  /** Load the context-usage breakdown shown above the composer. */
+  onShowContextUsage?: (
+    detail?: boolean,
+  ) =>
+    | DaemonSessionContextUsageStatus
+    | undefined
+    | Promise<DaemonSessionContextUsageStatus | undefined>;
   availableModels?: Array<{ id: string; label?: string }>;
   onSelectMode?: (mode: string) => void;
   onSelectModel?: (model: string) => void;
@@ -502,91 +509,6 @@ function QuickActionsIcon() {
       )}
     </svg>
   );
-}
-
-function attachComposerGlow(glowRootEl: HTMLElement, inputEl: HTMLElement) {
-  let glowRaf: number | undefined;
-  let pulseRaf: number | undefined;
-  let pulseDecayTimer: number | undefined;
-  let typingTimer: number | undefined;
-  let glowCurrent = 0;
-  let pulseCurrent = 0;
-
-  const apply = (on: number, pulse: number) => {
-    glowRootEl.style.setProperty('--dac-glow-on', on.toFixed(4));
-    glowRootEl.style.setProperty('--dac-glow-pulse', pulse.toFixed(4));
-  };
-
-  const animateGlow = (target: number) => {
-    if (glowRaf !== undefined) window.cancelAnimationFrame(glowRaf);
-    const start = glowCurrent;
-    const diff = target - start;
-    if (Math.abs(diff) < 0.001) {
-      glowCurrent = target;
-      apply(target, pulseCurrent);
-      return;
-    }
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min((now - t0) / 220, 1);
-      glowCurrent = start + diff * (1 - (1 - t) ** 2);
-      apply(glowCurrent, pulseCurrent);
-      glowRaf = t < 1 ? window.requestAnimationFrame(tick) : undefined;
-    };
-    glowRaf = window.requestAnimationFrame(tick);
-  };
-
-  const animatePulseDecay = () => {
-    if (pulseRaf !== undefined) window.cancelAnimationFrame(pulseRaf);
-    const start = pulseCurrent;
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min((now - t0) / 300, 1);
-      pulseCurrent = start * (1 - t);
-      apply(glowCurrent, pulseCurrent);
-      pulseRaf = t < 1 ? window.requestAnimationFrame(tick) : undefined;
-    };
-    pulseRaf = window.requestAnimationFrame(tick);
-  };
-
-  const setTyping = (on: boolean) => {
-    if (on) glowRootEl.setAttribute('data-dac-typing', '');
-    else glowRootEl.removeAttribute('data-dac-typing');
-  };
-
-  const onFocus = () => animateGlow(1);
-  const onBlur = () => {
-    animateGlow(0);
-    setTyping(false);
-    if (typingTimer !== undefined) window.clearTimeout(typingTimer);
-  };
-  const onKeydown = () => {
-    if (pulseRaf !== undefined) window.cancelAnimationFrame(pulseRaf);
-    if (pulseDecayTimer !== undefined) window.clearTimeout(pulseDecayTimer);
-    pulseCurrent = 1;
-    apply(glowCurrent, 1);
-    pulseDecayTimer = window.setTimeout(animatePulseDecay, 100);
-    setTyping(true);
-    if (typingTimer !== undefined) window.clearTimeout(typingTimer);
-    typingTimer = window.setTimeout(() => setTyping(false), 650);
-  };
-
-  inputEl.addEventListener('focus', onFocus);
-  inputEl.addEventListener('blur', onBlur);
-  inputEl.addEventListener('keydown', onKeydown);
-  if (document.activeElement === inputEl) animateGlow(1);
-
-  return () => {
-    if (glowRaf !== undefined) window.cancelAnimationFrame(glowRaf);
-    if (pulseRaf !== undefined) window.cancelAnimationFrame(pulseRaf);
-    if (pulseDecayTimer !== undefined) window.clearTimeout(pulseDecayTimer);
-    if (typingTimer !== undefined) window.clearTimeout(typingTimer);
-    inputEl.removeEventListener('focus', onFocus);
-    inputEl.removeEventListener('blur', onBlur);
-    inputEl.removeEventListener('keydown', onKeydown);
-    apply(0, 0);
-    setTyping(false);
-  };
 }
 
 function WidthModeIcon({ mode }: { mode: '1000' | 'wide' }) {
@@ -1731,6 +1653,58 @@ export const ChatEditor = memo(
     });
 
     const { t } = useI18n();
+    const [contextUsagePopoverOpen, setContextUsagePopoverOpen] =
+      useState(false);
+    const [contextUsageStatus, setContextUsageStatus] = useState<
+      DaemonSessionContextUsageStatus | undefined
+    >(undefined);
+    const [contextUsageLoading, setContextUsageLoading] = useState(false);
+    const contextUsageRequestRef = useRef(0);
+
+    const loadContextUsage = useCallback(
+      async (detail: boolean) => {
+        const request = ++contextUsageRequestRef.current;
+        setContextUsageLoading(true);
+        try {
+          const status = await onShowContextUsage?.(detail);
+          if (contextUsageRequestRef.current !== request) return;
+          if (!status) {
+            setContextUsagePopoverOpen(false);
+            return;
+          }
+          setContextUsageStatus(status);
+        } catch {
+          if (contextUsageRequestRef.current === request) {
+            setContextUsagePopoverOpen(false);
+          }
+        } finally {
+          if (contextUsageRequestRef.current === request) {
+            setContextUsageLoading(false);
+          }
+        }
+      },
+      [onShowContextUsage],
+    );
+
+    const handleContextUsageOpenChange = useCallback(
+      (open: boolean) => {
+        setContextUsagePopoverOpen(open);
+        if (open) {
+          void loadContextUsage(false);
+        } else {
+          contextUsageRequestRef.current += 1;
+          setContextUsageLoading(false);
+        }
+      },
+      [loadContextUsage],
+    );
+
+    useEffect(() => {
+      contextUsageRequestRef.current += 1;
+      setContextUsagePopoverOpen(false);
+      setContextUsageStatus(undefined);
+      setContextUsageLoading(false);
+    }, [sessionId]);
 
     useImperativeHandle(ref, () => core.handle, [core.handle]);
 
@@ -2053,8 +2027,6 @@ export const ChatEditor = memo(
     const closeAtMenu = core.closeAtMenu;
     const hasSlashMenu = Boolean(slashMenu);
     const hasAtMenu = Boolean(atMenu);
-    const editorViewRef = core.viewRef;
-
     useEffect(() => {
       if (typeof window === 'undefined' || !window.matchMedia) return;
       const media = window.matchMedia('(hover: none), (pointer: coarse)');
@@ -2092,17 +2064,6 @@ export const ChatEditor = memo(
         window.removeEventListener('touchstart', onPointerOutside);
       };
     }, [hasAtMenu, hasSlashMenu, closeAtMenu, closeSlashMenu]);
-
-    // editorViewRef is stable for the component's lifetime, so this effect
-    // runs once and the glow stays attached to the initial contentDOM; it
-    // re-attaches only if the view ref itself is replaced (CodeMirror
-    // recreates contentDOM on view swap, which is uncommon).
-    useEffect(() => {
-      const glowRoot = containerRef.current;
-      const inputEl = editorViewRef.current?.contentDOM;
-      if (!glowRoot || !inputEl) return undefined;
-      return attachComposerGlow(glowRoot, inputEl);
-    }, [editorViewRef]);
 
     useEffect(() => {
       const container = containerRef.current;
@@ -2461,6 +2422,9 @@ export const ChatEditor = memo(
     const gitBranchVisible = Boolean(
       gitBranch && showToolbarAction('gitBranch'),
     );
+    const workspaceBranchControlVisible = Boolean(
+      gitBranchVisible && (workspaceSelectVisible || workspaceIndicatorVisible),
+    );
 
     useLayoutEffect(() => {
       if (currentModelLabel && currentModelLabel !== lastConfirmedModelLabel) {
@@ -2571,10 +2535,6 @@ export const ChatEditor = memo(
           availableWidth,
           items,
           currentVisibility,
-          // Aggregate scrollWidth can differ from the sum of individually
-          // rounded replicas by one pixel per item. Apply that slack only when
-          // expanding so a collapsed/expanded pair cannot form a two-cycle.
-          expansionMargin: items.length,
         });
         const next = {
           workspaceSelect: itemVisibility.workspaceSelect ?? false,
@@ -2646,10 +2606,80 @@ export const ChatEditor = memo(
       showModelAction,
       showModeAction,
       workspaceIndicatorVisible,
+      workspaceBranchControlVisible,
       workspaceName,
       workspaceSelectVisible,
       selectedWorkspaceLabel,
     ]);
+
+    const workspaceSelectorControl =
+      workspaceSelectVisible && workspaces && onSelectWorkspace ? (
+        <WorkspaceSelector
+          workspaces={workspaces}
+          selectedWorkspaceCwd={selectedWorkspaceCwd}
+          disabled={workspaceSelectionDisabled}
+          busy={workspaceMutationBusy}
+          scratchSupported={scratchWorkspaceSupported}
+          existingFolderSupported={existingFolderWorkspaceSupported}
+          standaloneSupported={standaloneTargetSupported}
+          selectedStandalone={selectedStandaloneTarget}
+          className={`${styles.toolBtn} ${styles.workspaceSelectTrigger} ${
+            showWorkspaceSelectLabel ? '' : styles.workspaceSelectTriggerCompact
+          }`}
+          onSelectWorkspace={onSelectWorkspace}
+          onSelectStandalone={onSelectStandaloneTarget}
+          onCreateScratch={onCreateScratchWorkspace ?? (() => {})}
+          onOpenExistingFolder={onOpenExistingWorkspace ?? (() => {})}
+        />
+      ) : null;
+
+    const workspaceIndicatorControl =
+      workspaceIndicatorVisible && workspaceName ? (
+        <WorkspaceIndicator
+          name={workspaceName}
+          title={workspaceTitle ?? workspaceName}
+          color={workspaceColor}
+          compact={!showWorkspaceLabel}
+          ariaLabel={t('workspace.paneLabel', {
+            name: workspaceName,
+          })}
+        />
+      ) : null;
+
+    const gitBranchControl =
+      gitBranchVisible && gitBranch ? (
+        gitModeIntent && onGitModeIntentChange ? (
+          <GitModePopover
+            branch={gitBranch}
+            compact={!showGitBranchLabel}
+            intent={gitModeIntent}
+            onIntentChange={onGitModeIntentChange}
+          />
+        ) : (
+          <BranchPickerPopover
+            open={branchPickerOpen}
+            onOpenChange={setBranchPickerOpen}
+            workspaceCwd={selectedWorkspace?.cwd ?? ''}
+            gitCwd={gitCwd}
+            status={gitStatus}
+            onOpenDiff={onOpenGitDiff}
+            onOpenCommit={onOpenCommit}
+          >
+            <button
+              type="button"
+              className={styles.gitBranchChipButton}
+              aria-label={gitBranchAriaLabel(gitBranch, gitStatus, t)}
+            >
+              <GitBranchIndicator
+                branch={gitBranch}
+                status={gitStatus}
+                compact={!showGitBranchLabel}
+                worktree={gitWorktree}
+              />
+            </button>
+          </BranchPickerPopover>
+        )
+      ) : null;
 
     return (
       <div
@@ -2754,10 +2784,6 @@ export const ChatEditor = memo(
           onDragOver={handleUploadDragOver}
           onDragLeave={handleUploadDragLeave}
           onDropCapture={handleUploadDrop}
-          // Legacy marker from the pre-#8098 glow implementation; no CSS or
-          // script consumes it today, kept as-is to stay faithful to the
-          // restored original.
-          data-dac-glow
           onClick={() => {
             setModeDropdownOpen(false);
             setModelDropdownOpen(false);
@@ -2765,8 +2791,6 @@ export const ChatEditor = memo(
             core.focus();
           }}
         >
-          <div className={styles.dacAura} aria-hidden="true" />
-          <div className={styles.dacHalo} aria-hidden="true" />
           {uploadEnabled && (
             <input
               ref={fileInputRef}
@@ -3138,81 +3162,25 @@ export const ChatEditor = memo(
                       skills={skills ?? []}
                     />
                   )}
-                  {workspaceSelectVisible &&
-                    workspaces &&
-                    onSelectWorkspace && (
-                      <WorkspaceSelector
-                        workspaces={workspaces}
-                        selectedWorkspaceCwd={selectedWorkspaceCwd}
-                        disabled={workspaceSelectionDisabled}
-                        busy={workspaceMutationBusy}
-                        scratchSupported={scratchWorkspaceSupported}
-                        existingFolderSupported={
-                          existingFolderWorkspaceSupported
-                        }
-                        standaloneSupported={standaloneTargetSupported}
-                        selectedStandalone={selectedStandaloneTarget}
-                        className={`${styles.toolBtn} ${styles.workspaceSelectTrigger} ${
-                          showWorkspaceSelectLabel
-                            ? ''
-                            : styles.workspaceSelectTriggerCompact
-                        }`}
-                        onSelectWorkspace={onSelectWorkspace}
-                        onSelectStandalone={onSelectStandaloneTarget}
-                        onCreateScratch={onCreateScratchWorkspace ?? (() => {})}
-                        onOpenExistingFolder={
-                          onOpenExistingWorkspace ?? (() => {})
-                        }
+                  {workspaceBranchControlVisible ? (
+                    <span
+                      className={styles.workspaceBranchControl}
+                      data-web-shell-workspace-branch
+                    >
+                      {workspaceSelectorControl ?? workspaceIndicatorControl}
+                      <span
+                        className={styles.workspaceBranchSeparator}
+                        aria-hidden="true"
                       />
-                    )}
-                  {workspaceIndicatorVisible && workspaceName && (
-                    <WorkspaceIndicator
-                      name={workspaceName}
-                      title={workspaceTitle ?? workspaceName}
-                      color={workspaceColor}
-                      compact={!showWorkspaceLabel}
-                      ariaLabel={t('workspace.paneLabel', {
-                        name: workspaceName,
-                      })}
-                    />
+                      {gitBranchControl}
+                    </span>
+                  ) : (
+                    <>
+                      {workspaceSelectorControl}
+                      {workspaceIndicatorControl}
+                      {gitBranchControl}
+                    </>
                   )}
-                  {gitBranchVisible &&
-                    gitBranch &&
-                    (gitModeIntent && onGitModeIntentChange ? (
-                      <GitModePopover
-                        branch={gitBranch}
-                        compact={!showGitBranchLabel}
-                        intent={gitModeIntent}
-                        onIntentChange={onGitModeIntentChange}
-                      />
-                    ) : (
-                      <BranchPickerPopover
-                        open={branchPickerOpen}
-                        onOpenChange={setBranchPickerOpen}
-                        workspaceCwd={selectedWorkspace?.cwd ?? ''}
-                        gitCwd={gitCwd}
-                        status={gitStatus}
-                        onOpenDiff={onOpenGitDiff}
-                        onOpenCommit={onOpenCommit}
-                      >
-                        <button
-                          type="button"
-                          className={styles.gitBranchChipButton}
-                          aria-label={gitBranchAriaLabel(
-                            gitBranch,
-                            gitStatus,
-                            t,
-                          )}
-                        >
-                          <GitBranchIndicator
-                            branch={gitBranch}
-                            status={gitStatus}
-                            compact={!showGitBranchLabel}
-                            worktree={gitWorktree}
-                          />
-                        </button>
-                      </BranchPickerPopover>
-                    ))}
                   {showModeAction && (
                     <div
                       className={`${styles.dropdownWrapper} ${
@@ -3251,78 +3219,6 @@ export const ChatEditor = memo(
                             {showModeLabel && (
                               <span className={styles.toolBtnText}>
                                 {modeLabel}
-                              </span>
-                            )}
-                            <span className={styles.toolBtnArrow}>
-                              <ChevronDownIcon />
-                            </span>
-                          </button>
-                        }
-                      />
-                    </div>
-                  )}
-                  {showModelAction && (
-                    <div
-                      className={`${styles.dropdownWrapper} ${
-                        showModelLabel ? '' : styles.dropdownWrapperCompact
-                      }`}
-                    >
-                      <ToolbarPopover
-                        compact={compactOverlays}
-                        open={modelDropdownOpen}
-                        items={modelItems}
-                        activeId={currentModel}
-                        onOpenChange={(open) => {
-                          setModelDropdownOpen(open);
-                          if (open) setModeDropdownOpen(false);
-                        }}
-                        onSelect={handleModelSelect}
-                        tooltip={modelLabel}
-                        showCheck
-                        searchable
-                        searchLabel={t('common.search')}
-                        noResultsLabel={(query) =>
-                          t('model.noMatch', { query })
-                        }
-                        submenu={
-                          showReasoningOptions
-                            ? {
-                                triggerLabel: modelLabel,
-                                triggerAriaLabel: `${t('model.select')}: ${modelLabel}`,
-                                sectionLabel: t('model.section'),
-                              }
-                            : undefined
-                        }
-                        header={
-                          showReasoningOptions && reasoning ? (
-                            <ModelReasoningControls
-                              reasoning={reasoning}
-                              onSelect={onSelectReasoningEffort}
-                            />
-                          ) : undefined
-                        }
-                        trigger={
-                          <button
-                            className={`${styles.toolBtn} ${styles.modelToolBtn} ${
-                              showModelLabel ? '' : styles.toolBtnCompact
-                            }`}
-                            data-web-shell-model-button
-                            data-web-shell-toolbar-popover-trigger
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              core.closeSlashMenu();
-                              core.closeAtMenu();
-                              setQuickActionsOpen(false);
-                            }}
-                            aria-label={`${t('model.select')}: ${normalizedModelChipLabel}`}
-                            title={normalizedModelChipLabel}
-                          >
-                            <span className={styles.toolBtnModelIcon}>
-                              <ModelIcon />
-                            </span>
-                            {showModelLabel && (
-                              <span className={styles.toolBtnText}>
-                                {normalizedModelChipLabel}
                               </span>
                             )}
                             <span className={styles.toolBtnArrow}>
@@ -3421,51 +3317,150 @@ export const ChatEditor = memo(
                 {showToolbarAction('contextUsage') &&
                   (contextUsageAlwaysVisible ||
                     (contextWindow > 0 && tokenCount > 0)) && (
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            className={`${styles.toolBtn} ${styles.contextUsageBtn}`}
-                            data-hide-during-mobile-voice
-                            data-web-shell-context-usage
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onShowContextUsage?.();
-                            }}
-                            disabled={!onShowContextUsage}
-                            aria-label={
-                              contextWindow > 0 && tokenCount > 0
-                                ? t('status.contextUsed', {
-                                    pct: (
-                                      (tokenCount / contextWindow) *
-                                      100
-                                    ).toFixed(1),
-                                  })
-                                : t('contextUsage.title')
-                            }
-                          >
-                            <span className={styles.toolBtnIcon}>
-                              <ContextUsageRing
-                                pct={
-                                  contextWindow > 0
-                                    ? (tokenCount / contextWindow) * 100
-                                    : 0
+                    <Popover
+                      open={contextUsagePopoverOpen}
+                      onOpenChange={handleContextUsageOpenChange}
+                    >
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <PopoverTrigger asChild>
+                              <button
+                                className={`${styles.toolBtn} ${styles.contextUsageBtn}`}
+                                data-hide-during-mobile-voice
+                                data-web-shell-context-usage
+                                onClick={(event) => event.stopPropagation()}
+                                disabled={!onShowContextUsage}
+                                aria-label={
+                                  contextWindow > 0 && tokenCount > 0
+                                    ? t('status.contextUsed', {
+                                        pct: (
+                                          (tokenCount / contextWindow) *
+                                          100
+                                        ).toFixed(1),
+                                      })
+                                    : t('contextUsage.title')
                                 }
-                              />
-                            </span>
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          {contextWindow > 0 && tokenCount > 0
-                            ? formatContextUsageDetail(
-                                tokenCount,
-                                contextWindow,
-                              )
-                            : t('contextUsage.title')}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                              >
+                                <span className={styles.toolBtnIcon}>
+                                  <ContextUsageRing
+                                    pct={
+                                      contextWindow > 0
+                                        ? (tokenCount / contextWindow) * 100
+                                        : 0
+                                    }
+                                  />
+                                </span>
+                              </button>
+                            </PopoverTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {contextWindow > 0 && tokenCount > 0
+                              ? formatContextUsageDetail(
+                                  tokenCount,
+                                  contextWindow,
+                                )
+                              : t('contextUsage.title')}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <PopoverContent
+                        side="top"
+                        align="end"
+                        sideOffset={10}
+                        collisionPadding={12}
+                        className={styles.contextUsagePopover}
+                        data-testid="context-usage-popover"
+                        onOpenAutoFocus={(event) => event.preventDefault()}
+                      >
+                        {contextUsageStatus ? (
+                          <ContextUsageMessage
+                            status={contextUsageStatus}
+                            onShowDetail={() => void loadContextUsage(true)}
+                            compact
+                          />
+                        ) : (
+                          <div
+                            className={styles.contextUsageLoading}
+                            role="status"
+                          >
+                            {contextUsageLoading && <Spinner />}
+                            <span>{t('common.loading')}</span>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
                   )}
+                {showModelAction && (
+                  <div
+                    className={`${styles.dropdownWrapper} ${
+                      showModelLabel ? '' : styles.dropdownWrapperCompact
+                    }`}
+                  >
+                    <ToolbarPopover
+                      compact={compactOverlays}
+                      open={modelDropdownOpen}
+                      items={modelItems}
+                      activeId={currentModel}
+                      onOpenChange={(open) => {
+                        setModelDropdownOpen(open);
+                        if (open) setModeDropdownOpen(false);
+                      }}
+                      onSelect={handleModelSelect}
+                      tooltip={modelLabel}
+                      showCheck
+                      searchable
+                      searchLabel={t('common.search')}
+                      noResultsLabel={(query) => t('model.noMatch', { query })}
+                      submenu={
+                        showReasoningOptions
+                          ? {
+                              triggerLabel: modelLabel,
+                              triggerAriaLabel: `${t('model.select')}: ${modelLabel}`,
+                              sectionLabel: t('model.section'),
+                            }
+                          : undefined
+                      }
+                      header={
+                        showReasoningOptions && reasoning ? (
+                          <ModelReasoningControls
+                            reasoning={reasoning}
+                            onSelect={onSelectReasoningEffort}
+                          />
+                        ) : undefined
+                      }
+                      trigger={
+                        <button
+                          className={`${styles.toolBtn} ${styles.modelToolBtn} ${
+                            showModelLabel ? '' : styles.toolBtnCompact
+                          }`}
+                          data-web-shell-model-button
+                          data-web-shell-toolbar-popover-trigger
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            core.closeSlashMenu();
+                            core.closeAtMenu();
+                            setQuickActionsOpen(false);
+                          }}
+                          aria-label={`${t('model.select')}: ${normalizedModelChipLabel}`}
+                          title={normalizedModelChipLabel}
+                        >
+                          <span className={styles.toolBtnModelIcon}>
+                            <ModelIcon />
+                          </span>
+                          {showModelLabel && (
+                            <span className={styles.toolBtnText}>
+                              {normalizedModelChipLabel}
+                            </span>
+                          )}
+                          <span className={styles.toolBtnArrow}>
+                            <ChevronDownIcon />
+                          </span>
+                        </button>
+                      }
+                    />
+                  </div>
+                )}
                 {showCommandAction && (
                   <button
                     type="button"

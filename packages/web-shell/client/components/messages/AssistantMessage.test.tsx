@@ -3,7 +3,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebShellCustomizationProvider } from '../../customization';
-import { I18nProvider } from '../../i18n';
+import { I18nProvider, type WebShellLanguage } from '../../i18n';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -32,7 +32,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function render(node: ReactNode, language: 'en' | 'zh-CN' = 'en'): HTMLElement {
+function render(
+  node: ReactNode,
+  language: WebShellLanguage = 'en',
+): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -45,7 +48,7 @@ function render(node: ReactNode, language: 'en' | 'zh-CN' = 'en'): HTMLElement {
 
 function renderCompletedThinking(
   durationMs: number,
-  language: 'en' | 'zh-CN' = 'en',
+  language: WebShellLanguage = 'en',
 ): HTMLElement {
   vi.setSystemTime(0);
   const container = document.createElement('div');
@@ -266,7 +269,7 @@ describe('AssistantMessage thinking logic', () => {
     expect(generateContent).toHaveBeenCalledTimes(2);
   });
 
-  it('only offers translation when the UI language is Chinese', () => {
+  it('does not offer reasoning translation for the English UI', () => {
     const container = render(
       <ThinkingMessage
         content="private chain of thought"
@@ -280,6 +283,38 @@ describe('AssistantMessage thinking logic', () => {
         ?.click(),
     );
     expect(container.querySelector('button[title="Translate"]')).toBeNull();
+  });
+
+  it('translates completed reasoning into Russian for the Russian UI', async () => {
+    const generateContent = vi.fn(async function* () {
+      yield {
+        v: 1 as const,
+        type: 'done' as const,
+        requestId: 'russian-translation',
+        model: 'fast-model',
+        modelSource: 'fast' as const,
+        inputTokens: 3,
+        outputTokens: 2,
+      };
+    });
+    const container = render(
+      <ThinkingMessage
+        content="private chain of thought"
+        generateContent={generateContent}
+      />,
+      'ru',
+    );
+
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('button[title="Перевести"]')
+        ?.click(),
+    );
+
+    expect(generateContent).toHaveBeenCalledWith(
+      expect.stringContaining('into Russian'),
+      expect.any(Object),
+    );
   });
 
   it('shows a failure when generation completes without translated text', async () => {

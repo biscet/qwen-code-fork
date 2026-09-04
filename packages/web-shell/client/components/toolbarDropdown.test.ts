@@ -91,22 +91,40 @@ describe('toolbarDropdown', () => {
     ).toBe(252);
   });
 
-  it('does not oscillate when aggregate rounding changes the budget by one pixel', () => {
+  it('keeps the expansion budget stable when the model expands on the right', () => {
+    const collapsedBudget = getToolbarExpansionBudget({
+      toolbarWidth: 500,
+      leadingWidth: 80,
+      rightWidth: 100,
+      currentExpansionWidth: 0,
+      gap: 10,
+    });
+    const expandedBudget = getToolbarExpansionBudget({
+      toolbarWidth: 500,
+      leadingWidth: 80,
+      rightWidth: 260,
+      currentExpansionWidth: 160,
+      gap: 10,
+    });
+
+    expect(expandedBudget).toBe(collapsedBudget);
+  });
+
+  it('does not oscillate when collapsing a label changes the measured budget', () => {
     const items = [{ id: 'workspace', expansionWidth: 60 }];
-    let visibility = { workspace: false };
+    let visibility = { workspace: true };
     const states: boolean[] = [];
 
     for (let index = 0; index < 4; index += 1) {
       visibility = getToolbarItemVisibilityWithHysteresis({
-        availableWidth: visibility.workspace ? 60 : 61,
+        availableWidth: visibility.workspace ? 59 : 83,
         items,
         currentVisibility: visibility,
-        expansionMargin: items.length,
       });
       states.push(visibility.workspace);
     }
 
-    expect(states).toEqual([true, true, true, true]);
+    expect(states).toEqual([false, false, false, false]);
   });
 
   it('keeps the confirmed model through a transient empty update', () => {

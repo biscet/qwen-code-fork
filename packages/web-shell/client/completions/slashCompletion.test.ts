@@ -131,6 +131,36 @@ describe('getSlashCommandCompletionResult', () => {
     ]);
   });
 
+  it('offers Russian language selection with Russian descriptions', () => {
+    const commands: CommandInfo[] = [
+      {
+        name: 'language',
+        description: 'Изменить язык интерфейса',
+        argumentHint: 'ui [en|zh-CN|ru]',
+        subcommands: ['ui'],
+      },
+    ];
+
+    const result = getSlashCommandCompletionResult(
+      '/language ui ',
+      13,
+      commands,
+      [],
+      'ru',
+      getTranslator('ru'),
+    );
+
+    expect(result?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'ru',
+          detail: 'Русский',
+          apply: '/language ui ru ',
+        }),
+      ]),
+    );
+  });
+
   it('returns command-provided subcommands when no built-in tree exists', () => {
     const commands: CommandInfo[] = [
       {

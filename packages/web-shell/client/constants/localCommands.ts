@@ -24,7 +24,7 @@ export function getLocalCommands(
     {
       name: 'language',
       description: t('local.language'),
-      argumentHint: 'ui [en|zh-CN]',
+      argumentHint: 'ui [en|zh-CN|ru]',
       subcommands: ['ui'],
     },
     { name: 'plan', description: t('local.plan'), argumentHint: '<prompt>' },

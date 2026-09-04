@@ -49,14 +49,17 @@ function makeStatus(
   };
 }
 
-function render(status: DaemonSessionContextUsageStatus): HTMLElement {
+function render(
+  status: DaemonSessionContextUsageStatus,
+  compact = false,
+): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
     root.render(
       <I18nProvider language="en">
-        <ContextUsageMessage status={status} />
+        <ContextUsageMessage status={status} compact={compact} />
       </I18nProvider>,
     );
   });
@@ -103,5 +106,28 @@ describe('ContextUsageMessage', () => {
     expect(container.textContent).not.toContain('Messages');
     expect(container.textContent).not.toContain('Used');
     expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('uses an accessible graphical bar in the compact popover variant', () => {
+    const container = render(makeStatus(60, false), true);
+    const progress = container.querySelector('[role="progressbar"]');
+
+    expect(progress?.getAttribute('aria-valuenow')).toBe('60');
+    expect(container.querySelector('[data-compact="true"]')).not.toBeNull();
+    expect(progress?.textContent).toBe('');
+  });
+
+  it('keeps the compact pre-conversation summary short', () => {
+    const container = render(makeStatus(0, true), true);
+    const progress = container.querySelector('[role="progressbar"]');
+
+    expect(progress?.getAttribute('aria-valuenow')).toBe('40');
+    expect(container.textContent).toContain('~40.0%');
+    expect(container.textContent).toContain('40 / 100 tokens');
+    expect(container.textContent).not.toContain('No API response yet.');
+    expect(container.textContent).not.toContain(
+      'Estimated pre-conversation overhead',
+    );
+    expect(container.textContent).not.toContain('/context detail');
   });
 });

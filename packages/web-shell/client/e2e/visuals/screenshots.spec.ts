@@ -938,6 +938,12 @@ for (const theme of THEMES) {
         capabilities: {
           workspaces: [
             { id: 'primary', cwd: workspaceCwd, primary: true, trusted: true },
+            {
+              id: 'secondary',
+              cwd: '/tmp/qwen-api-service',
+              primary: false,
+              trusted: true,
+            },
           ],
         },
         gitStatus: { v: 2, workspaceCwd, branch: 'main' },

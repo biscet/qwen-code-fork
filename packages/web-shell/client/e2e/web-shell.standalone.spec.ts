@@ -222,6 +222,34 @@ test('standalone Recents keeps lifecycle actions on exact standalone routes @smo
     0,
   );
 
+  const sidebar = page.getByRole('complementary');
+  const sectionHeaders = sidebar.locator(
+    'button[class*="projectsHeaderToggle"]',
+  );
+  const projectHeader = sectionHeaders.filter({ hasText: 'Project' });
+  const recentsHeader = sectionHeaders.filter({ hasText: 'Recents' });
+  const [projectBox, recentsBox] = await Promise.all([
+    projectHeader.boundingBox(),
+    recentsHeader.boundingBox(),
+  ]);
+  expect(projectBox).not.toBeNull();
+  expect(recentsBox).not.toBeNull();
+  expect(projectBox!.y).toBeLessThan(recentsBox!.y);
+  await expect(projectHeader).toHaveAttribute('aria-expanded', 'true');
+  await expect(recentsHeader).toHaveAttribute('aria-expanded', 'true');
+
+  await recentsHeader.click();
+  await expect(recentsHeader).toHaveAttribute('aria-expanded', 'false');
+  await expect(projectHeader).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    page.getByText('Other conversation', { exact: true }),
+  ).toHaveCount(0);
+
+  await recentsHeader.click();
+  await expect(
+    page.getByText('Other conversation', { exact: true }),
+  ).toBeVisible();
+
   await openSessionAction(page, 'Other conversation', 'Rename');
   const renameDialog = page.getByRole('dialog', { name: 'Rename' });
   await renameDialog.getByRole('textbox').fill('Renamed conversation');

@@ -1,12 +1,17 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { HomeCodeLoader, HomeCodeMark, HomeCodeSpinner } from './HomeCodeBrand';
+import {
+  HomeCodeLoader,
+  HomeCodeMark,
+  HomeCodeSpinner,
+  HomeCodeWordmark,
+} from './HomeCodeBrand';
 
 describe('HomeCode branding primitives', () => {
   it('renders the product mark and animated loader from the same geometry', () => {
-    const mark = renderToStaticMarkup(<HomeCodeMark aria-label="Qwen Code" />);
+    const mark = renderToStaticMarkup(<HomeCodeMark aria-label="HomeCode" />);
     const loader = renderToStaticMarkup(
-      <HomeCodeLoader aria-label="Loading Qwen Code" />,
+      <HomeCodeLoader aria-label="Loading HomeCode" />,
     );
 
     expect(mark).toContain('data-homecode-mark');
@@ -22,5 +27,16 @@ describe('HomeCode branding primitives', () => {
 
     expect(spinner).toContain('data-homecode-spinner');
     expect(spinner.match(/<rect/g)).toHaveLength(12);
+  });
+
+  it('renders the HomeCode name as a crisp modular wordmark', () => {
+    const wordmark = renderToStaticMarkup(
+      <HomeCodeWordmark role="img" aria-label="HomeCode" />,
+    );
+
+    expect(wordmark).toContain('data-homecode-wordmark');
+    expect(wordmark).toContain('shape-rendering="crispEdges"');
+    expect(wordmark).toContain('aria-label="HomeCode"');
+    expect(wordmark).not.toContain('Qwen Code');
   });
 });

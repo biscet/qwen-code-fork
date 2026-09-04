@@ -4,8 +4,9 @@ import {
   useMemo,
   type PropsWithChildren,
 } from 'react';
+import { RU } from './i18n.ru';
 
-export const WEB_SHELL_LANGUAGES = ['en', 'zh-CN'] as const;
+export const WEB_SHELL_LANGUAGES = ['en', 'zh-CN', 'ru'] as const;
 
 export type WebShellLanguage = (typeof WEB_SHELL_LANGUAGES)[number];
 
@@ -176,7 +177,7 @@ const EN: Messages = {
   'about.noSandbox': 'no sandbox',
   'about.platform': 'OS',
   'about.proxy': 'Proxy',
-  'about.qwenCode': 'Qwen Code',
+  'about.qwenCode': 'HomeCode',
   'about.runtime': 'Runtime',
   'about.sandbox': 'Sandbox',
   'about.sessionId': 'Session ID',
@@ -212,9 +213,9 @@ const EN: Messages = {
   'agent.create.location': 'Choose Location',
   'agent.create.method': 'Choose Generation Method',
   'agent.create.method.manual': 'Manual Creation',
-  'agent.create.method.qwen': 'Generate with Qwen Code',
+  'agent.create.method.qwen': 'Generate with HomeCode',
   'agent.create.method.qwen.recommended':
-    'Generate with Qwen Code (Recommended)',
+    'Generate with HomeCode (Recommended)',
   'agent.create.method.qwen.desc':
     'LLM generates the description and system prompt',
   'agent.create.name': 'Name',
@@ -491,7 +492,7 @@ const EN: Messages = {
   'settings.liveSetup.install.error': 'Setup needs attention',
   'settings.liveSetup.confirmTitle': 'Enable experimental Qwen Live?',
   'settings.liveSetup.confirmDescription':
-    'Qwen Code will download, verify, install, and open the signed Qwen Live Host app. macOS will then ask you to grant Microphone, Accessibility, and Screen Recording access.',
+    'HomeCode will download, verify, install, and open the signed Qwen Live Host app. macOS will then ask you to grant Microphone, Accessibility, and Screen Recording access.',
   'settings.liveSetup.cancel': 'Cancel',
   'settings.liveSetup.confirm': 'Enable and install',
   'live.refresh': 'Refresh status',
@@ -1672,7 +1673,7 @@ const EN: Messages = {
   'help.footer':
     'Tab/Shift+Tab to switch tabs · ↑/↓ or PgUp/PgDn to scroll · Esc to close',
   'help.intro':
-    'Qwen Code understands your codebase, makes edits with your permission, and executes commands right from your terminal.',
+    'HomeCode understands your codebase, makes edits with your permission, and executes commands right from your terminal.',
   'help.section.shortcuts': 'Shortcuts',
   'help.search': 'Search commands',
   'help.shortcut.addContext': 'Add files or folders as context',
@@ -1762,10 +1763,10 @@ const EN: Messages = {
   'slash.category.system': 'System commands',
   'language.changed': (v) => `UI language changed to ${v?.language ?? ''}`,
   'language.current': (v) => `Current UI language: ${v?.language ?? ''}`,
-  'language.invalid': 'Invalid language. Available: en, zh-CN',
+  'language.invalid': 'Invalid language. Available: en, zh-CN, ru',
   'language.options': 'Available options:',
   'language.set': 'Set UI language',
-  'language.usage': 'Usage: /language ui [en|zh-CN]',
+  'language.usage': 'Usage: /language ui [en|zh-CN|ru]',
   'localCommand.noSession':
     'No active session yet. Send your first message before using this command.',
   'localCommand.diffNoWorkspace':
@@ -1785,13 +1786,13 @@ const EN: Messages = {
   'local.log': 'Show commit history for the workspace',
   'local.prs': 'Show open GitHub pull requests for the workspace',
   'local.directory': 'Manage workspace directories',
-  'local.docs': 'Open the full Qwen Code documentation',
+  'local.docs': 'Open the full HomeCode documentation',
   'local.doctor': 'Run installation and environment diagnostics',
   'local.dream': 'Consolidate managed auto-memory topic files',
   'local.effort': 'Set reasoning effort for capable models',
   'local.export': 'Export the current session history to a file',
   'local.forget': 'Remove matching entries from managed auto-memory',
-  'local.hooks': 'Manage Qwen Code hooks',
+  'local.hooks': 'Manage HomeCode hooks',
   'local.importConfig': 'Import MCP servers from Claude configs',
   'local.init': 'Analyze the project and create a QWEN.md file',
   'local.insight': 'Generate programming insights from chat history',
@@ -1803,15 +1804,15 @@ const EN: Messages = {
   'skilldesc.batch': 'Run batch operations across many files in parallel',
   'skilldesc.dataviz': 'Design guidance for charts and data visualizations',
   'skilldesc.extensionCreator':
-    'Create, test, and customize Qwen Code extensions',
+    'Create, test, and customize HomeCode extensions',
   'skilldesc.goalDraft':
     'Turn a fuzzy intention into a verifiable /goal objective',
   'skilldesc.loop': 'Run a prompt on a schedule or self-paced wakeups',
   'skilldesc.newApp': 'Workflow for building a new app from scratch',
-  'skilldesc.qcHelper': 'Answer questions about using Qwen Code',
+  'skilldesc.qcHelper': 'Answer questions about using HomeCode',
   'skilldesc.review': 'Review changed code for bugs, security, and quality',
   'skilldesc.simplify': 'Clean up recent changes for reuse and simplicity',
-  'skilldesc.stuck': 'Diagnose frozen or slow Qwen Code sessions',
+  'skilldesc.stuck': 'Diagnose frozen or slow HomeCode sessions',
   'skilldesc.agentReproduceAlign':
     'Align a ported Codex/Claude Code feature with the original',
   'skilldesc.agentReproduceFeature':
@@ -1824,16 +1825,16 @@ const EN: Messages = {
   'skilldesc.docsAuditAndRefresh':
     'Audit and refresh docs/ against the codebase',
   'skilldesc.docsUpdateFromDiff': 'Update official docs from local git diff',
-  'skilldesc.e2eTesting': 'Run end-to-end tests of the Qwen Code CLI',
+  'skilldesc.e2eTesting': 'Run end-to-end tests of the HomeCode CLI',
   'skilldesc.featDev': 'End-to-end workflow for a non-trivial feature',
   'skilldesc.memoryLeakDebug': 'Diagnose CLI memory leaks via heap snapshots',
   'skilldesc.preparePr': 'Prepare a GitHub PR title and body from the branch',
-  'skilldesc.qwenCodeClaw': 'Use Qwen Code as a code-understanding agent',
+  'skilldesc.qwenCodeClaw': 'Use HomeCode as a code-understanding agent',
   'skilldesc.structuredDebugging':
     'Hypothesis-driven methodology for hard bugs',
   'skilldesc.terminalCapture': 'Automate terminal UI screenshot testing',
   'skilldesc.tmuxRealUserTesting': 'Real-user testing with tmux, saving logs',
-  'skilldesc.triage': 'Triage and review Qwen Code issues and PRs',
+  'skilldesc.triage': 'Triage and review HomeCode issues and PRs',
   'local.approvalMode': 'Change approval mode',
   'local.auth': 'Connect an LLM provider',
   'auth.title': 'Connect a Provider',
@@ -3027,7 +3028,7 @@ const EN: Messages = {
   'settings.title': 'Settings',
   'channels.title': 'Channels',
   'channels.description':
-    'Connect Qwen Code to the places where your team already works.',
+    'Connect HomeCode to the places where your team already works.',
   'channels.summary': (v) =>
     `${v?.workspace ?? ''} · ${v?.count ?? 0} configured`,
   'channels.workspace.current': 'Current workspace',
@@ -3057,15 +3058,15 @@ const EN: Messages = {
   'channels.statusDescription.partial':
     'Connected, but some capabilities are unavailable.',
   'channels.statusDescription.error': 'Needs attention before it can connect.',
-  'channels.startsWithServe': 'Connect when Qwen Code starts',
+  'channels.startsWithServe': 'Connect when HomeCode starts',
   'channels.startsWithServe.description':
-    'Automatically bring this Channel online after Qwen Code starts.',
+    'Automatically bring this Channel online after HomeCode starts.',
   'channels.unsupported.title': 'Channel management is not supported',
   'channels.unsupported.description':
-    'Update Qwen Code to a version that supports Channel management.',
+    'Update HomeCode to a version that supports Channel management.',
   'channels.readOnly.title': 'Channel management is read-only',
   'channels.readOnly.description':
-    'Restart Qwen Code with a bearer token to control channels.',
+    'Restart HomeCode with a bearer token to control channels.',
   'channels.loadError.title': 'Channels could not be loaded',
   'channels.empty.title': 'No supported channels configured',
   'channels.empty.description':
@@ -3325,7 +3326,7 @@ const EN: Messages = {
   'settings.requiresRestart': 'This change requires a restart to take effect.',
   'settings.localControl.title': 'Local Control',
   'settings.localControl.description':
-    'Continue this Qwen Code session from a phone on the same trusted network.',
+    'Continue this HomeCode session from a phone on the same trusted network.',
   'settings.localControl.on': 'On',
   'settings.localControl.off': 'Off',
   'settings.localControl.network': 'Local network',
@@ -3606,7 +3607,7 @@ const ZH: Messages = {
   'about.noSandbox': 'no sandbox',
   'about.platform': '操作系统',
   'about.proxy': '代理',
-  'about.qwenCode': 'Qwen Code',
+  'about.qwenCode': 'HomeCode',
   'about.runtime': '运行环境',
   'about.sandbox': '沙箱',
   'about.sessionId': '会话 ID',
@@ -3642,8 +3643,8 @@ const ZH: Messages = {
   'agent.create.location': '选择位置',
   'agent.create.method': '选择生成方式',
   'agent.create.method.manual': '手动创建',
-  'agent.create.method.qwen': '使用 Qwen Code 生成',
-  'agent.create.method.qwen.recommended': '使用 Qwen Code 生成（推荐）',
+  'agent.create.method.qwen': '使用 HomeCode 生成',
+  'agent.create.method.qwen.recommended': '使用 HomeCode 生成（推荐）',
   'agent.create.method.qwen.desc': 'LLM 生成描述和系统提示词',
   'agent.create.name': '名称',
   'agent.create.namePlaceholder': 'my-agent',
@@ -3906,7 +3907,7 @@ const ZH: Messages = {
   'settings.liveSetup.install.error': '安装需要处理',
   'settings.liveSetup.confirmTitle': '启用实验性 Qwen Live？',
   'settings.liveSetup.confirmDescription':
-    'Qwen Code 将自动下载、校验、安装并打开已签名的 Qwen Live Host。之后 macOS 会要求授予麦克风、辅助功能和屏幕录制权限。',
+    'HomeCode 将自动下载、校验、安装并打开已签名的 Qwen Live Host。之后 macOS 会要求授予麦克风、辅助功能和屏幕录制权限。',
   'settings.liveSetup.cancel': '取消',
   'settings.liveSetup.confirm': '启用并安装',
   'live.refresh': '刷新状态',
@@ -4999,7 +5000,7 @@ const ZH: Messages = {
   'help.emptyCustom': '当前没有可用的自定义命令。',
   'help.footer': 'Tab/Shift+Tab 切换标签 · ↑/↓ 或 PgUp/PgDn 滚动 · Esc 关闭',
   'help.intro':
-    'Qwen Code 可以理解代码库，在你的许可下修改文件，并直接执行命令。',
+    'HomeCode 可以理解代码库，在你的许可下修改文件，并直接执行命令。',
   'help.section.shortcuts': '快捷键',
   'help.search': '搜索命令',
   'help.shortcut.addContext': '添加文件或目录作为上下文',
@@ -5079,10 +5080,10 @@ const ZH: Messages = {
   'slash.category.system': '系统',
   'language.changed': (v) => `UI 语言已切换为 ${v?.language ?? ''}`,
   'language.current': (v) => `当前 UI 语言：${v?.language ?? ''}`,
-  'language.invalid': '语言无效。可用值：en, zh-CN',
+  'language.invalid': '语言无效。可用值：en, zh-CN, ru',
   'language.options': '可用选项：',
   'language.set': '设置 UI 语言',
-  'language.usage': '用法：/language ui [en|zh-CN]',
+  'language.usage': '用法：/language ui [en|zh-CN|ru]',
   'localCommand.noSession':
     '当前还没有会话。请先发送第一条消息，再使用这个命令。',
   'localCommand.diffNoWorkspace': '当前还没有可用于查看变更的工作区。',
@@ -5098,13 +5099,13 @@ const ZH: Messages = {
   'local.log': '显示工作区的提交历史',
   'local.prs': '显示工作区开放的 GitHub 拉取请求',
   'local.directory': '管理工作区目录',
-  'local.docs': '打开完整的 Qwen Code 文档',
+  'local.docs': '打开完整的 HomeCode 文档',
   'local.doctor': '运行安装和环境诊断',
   'local.dream': '整合托管的自动记忆主题文件',
   'local.effort': '设置推理模型的思考强度',
   'local.export': '将当前会话历史导出到文件',
   'local.forget': '从托管的自动记忆中移除匹配的条目',
-  'local.hooks': '管理 Qwen Code 钩子',
+  'local.hooks': '管理 HomeCode 钩子',
   'local.importConfig': '从 Claude 配置导入 MCP 服务器',
   'local.init': '分析项目并创建 QWEN.md 文件',
   'local.insight': '根据聊天历史生成编程洞察',
@@ -5114,14 +5115,14 @@ const ZH: Messages = {
   'local.workflows': '列出工作流运行，或协作式暂停/恢复运行中的任务',
   'skilldesc.batch': '并行批量处理多个文件',
   'skilldesc.dataviz': '图表与数据可视化设计指南',
-  'skilldesc.extensionCreator': '创建、测试和定制 Qwen Code 扩展',
+  'skilldesc.extensionCreator': '创建、测试和定制 HomeCode 扩展',
   'skilldesc.goalDraft': '将模糊意图改写为可验证的 /goal 目标',
   'skilldesc.loop': '按计划或自定节奏循环运行提示词',
   'skilldesc.newApp': '从零构建新应用的工作流',
-  'skilldesc.qcHelper': '解答 Qwen Code 使用相关问题',
+  'skilldesc.qcHelper': '解答 HomeCode 使用相关问题',
   'skilldesc.review': '审查代码变更的正确性、安全、质量与性能',
   'skilldesc.simplify': '清理近期代码变更（复用与精简）',
-  'skilldesc.stuck': '诊断卡死或缓慢的 Qwen Code 会话',
+  'skilldesc.stuck': '诊断卡死或缓慢的 HomeCode 会话',
   'skilldesc.agentReproduceAlign':
     '将已移植的 Codex/Claude Code 功能与原版对齐',
   'skilldesc.agentReproduceFeature': '复现 Codex/Claude Code 的现有功能',
@@ -5131,15 +5132,15 @@ const ZH: Messages = {
   'skilldesc.createIssue': '根据想法或 bug 描述起草并提交 GitHub issue',
   'skilldesc.docsAuditAndRefresh': '对照代码库审计并刷新 docs/ 文档',
   'skilldesc.docsUpdateFromDiff': '按本地 git diff 更新官方文档',
-  'skilldesc.e2eTesting': '运行 Qwen Code CLI 的端到端测试',
+  'skilldesc.e2eTesting': '运行 HomeCode CLI 的端到端测试',
   'skilldesc.featDev': '实现非平凡功能的端到端工作流',
   'skilldesc.memoryLeakDebug': '用堆快照诊断 CLI 内存泄漏',
   'skilldesc.preparePr': '从当前分支准备 GitHub PR 标题和正文',
-  'skilldesc.qwenCodeClaw': '将 Qwen Code 用作代码理解智能体',
+  'skilldesc.qwenCodeClaw': '将 HomeCode 用作代码理解智能体',
   'skilldesc.structuredDebugging': '假设驱动的疑难 bug 调试方法',
   'skilldesc.terminalCapture': '自动化终端 UI 截图测试',
   'skilldesc.tmuxRealUserTesting': '用 tmux 做真实用户测试并保存日志',
-  'skilldesc.triage': '把关和审查 Qwen Code 的 issue 与 PR',
+  'skilldesc.triage': '把关和审查 HomeCode 的 issue 与 PR',
   'local.approvalMode': '切换审批模式',
   'local.auth': '连接 LLM provider',
   'auth.title': '连接 Provider',
@@ -6252,7 +6253,7 @@ const ZH: Messages = {
   'splitView.composerPlaceholder': '给这个会话发消息…',
   'settings.title': '设置',
   'channels.title': '频道',
-  'channels.description': '让 Qwen Code 在团队日常使用的平台中收发消息。',
+  'channels.description': '让 HomeCode 在团队日常使用的平台中收发消息。',
   'channels.summary': (v) =>
     `${v?.workspace ?? ''} · 已配置 ${v?.count ?? 0} 个`,
   'channels.workspace.current': '当前工作区',
@@ -6278,13 +6279,13 @@ const ZH: Messages = {
   'channels.statusDescription.connected': '在线，可以正常接收消息。',
   'channels.statusDescription.partial': '已经连接，但部分能力暂不可用。',
   'channels.statusDescription.error': '需要处理问题后才能重新连接。',
-  'channels.startsWithServe': 'Qwen Code 启动时自动连接',
-  'channels.startsWithServe.description': 'Qwen Code 启动后自动让该频道上线。',
+  'channels.startsWithServe': 'HomeCode 启动时自动连接',
+  'channels.startsWithServe.description': 'HomeCode 启动后自动让该频道上线。',
   'channels.unsupported.title': '当前版本不支持频道管理',
-  'channels.unsupported.description': '请升级 Qwen Code 到支持频道管理的版本。',
+  'channels.unsupported.description': '请升级 HomeCode 到支持频道管理的版本。',
   'channels.readOnly.title': '频道管理为只读模式',
   'channels.readOnly.description':
-    '请使用 bearer token 重启 Qwen Code，以控制频道。',
+    '请使用 bearer token 重启 HomeCode，以控制频道。',
   'channels.loadError.title': '无法加载频道',
   'channels.empty.title': '尚未配置支持的频道',
   'channels.empty.description':
@@ -6532,7 +6533,7 @@ const ZH: Messages = {
   'settings.requiresRestart': '此更改需要重启后才能生效。',
   'settings.localControl.title': '本地控制',
   'settings.localControl.description':
-    '通过同一受信任网络中的手机继续当前 Qwen Code 会话。',
+    '通过同一受信任网络中的手机继续当前 HomeCode 会话。',
   'settings.localControl.on': '已开启',
   'settings.localControl.off': '关闭',
   'settings.localControl.network': '本地网络',
@@ -6602,16 +6603,16 @@ const ZH: Messages = {
     '~/.qwen/file-history/ 中用于 /rewind 的会话备份保留天数。后台清理最多每天运行一次。设为 0 表示最小保留（约 1 小时），仍会保护最近一小时触碰过的会话和当前活动会话。',
   'settings.label.general.gitCoAuthor.commit': '归因：commit',
   'settings.description.general.gitCoAuthor.commit':
-    '通过 Qwen Code 创建 commit 时，添加 Co-authored-by trailer，并写入逐文件 AI 归因 git note。关闭后两者都会跳过。',
+    '通过 HomeCode 创建 commit 时，添加 Co-authored-by trailer，并写入逐文件 AI 归因 git note。关闭后两者都会跳过。',
   'settings.label.general.gitCoAuthor.pr': '归因：PR',
   'settings.description.general.gitCoAuthor.pr':
-    '运行 gh pr create 时，在 PR 描述中追加 Qwen Code 归因行。',
+    '运行 gh pr create 时，在 PR 描述中追加 HomeCode 归因行。',
   'settings.label.general.language': '语言：界面',
   'settings.description.general.language':
     '用户界面的语言。使用 auto 可根据系统设置自动检测；也可以在 ~/.qwen/locales/ 中放置 JS 语言文件来使用自定义语言代码。',
   'settings.label.general.preventSystemSleep': '运行时防止系统睡眠',
   'settings.description.general.preventSystemSleep':
-    '当 Qwen Code 正在流式生成模型回复或执行工具时防止系统睡眠。空闲输入状态和权限确认状态不会阻止睡眠。',
+    '当 HomeCode 正在流式生成模型回复或执行工具时防止系统睡眠。空闲输入状态和权限确认状态不会阻止睡眠。',
   'settings.label.ui.theme': '主题',
   'settings.description.ui.theme': '界面的颜色主题。',
   'settings.label.ui.hideTips': '隐藏提示',
@@ -6679,11 +6680,13 @@ const ZH: Messages = {
 const MESSAGES: Record<WebShellLanguage, Messages> = {
   en: EN,
   'zh-CN': ZH,
+  ru: RU,
 };
 
 const LANGUAGE_LABELS: Record<WebShellLanguage, string> = {
   en: 'English [en]',
   'zh-CN': '中文 [zh-CN]',
+  ru: 'Русский [ru]',
 };
 
 const Context = createContext<{
@@ -6697,10 +6700,18 @@ const Context = createContext<{
 export function normalizeLanguage(
   value: string | undefined | null,
 ): WebShellLanguage {
-  const normalized = value?.trim().toLowerCase();
+  const normalized = value?.trim().toLowerCase().replace(/_/g, '-');
   if (!normalized) return 'en';
-  if (normalized === 'zh' || normalized === 'zh-cn' || normalized === 'zh_cn') {
+  if (normalized === 'zh' || normalized === 'zh-cn') {
     return 'zh-CN';
+  }
+  if (
+    normalized === 'ru' ||
+    normalized.startsWith('ru-') ||
+    normalized === 'russian' ||
+    normalized === 'русский'
+  ) {
+    return 'ru';
   }
   return 'en';
 }
@@ -6731,11 +6742,28 @@ export function languageSettingToWebShellLanguage(
   ) {
     return 'en';
   }
+  if (
+    normalized === 'ru' ||
+    normalized.startsWith('ru-') ||
+    normalized === 'russian' ||
+    normalized === 'русский'
+  ) {
+    return 'ru';
+  }
   return undefined;
 }
 
 export function languageLabel(language: WebShellLanguage): string {
   return LANGUAGE_LABELS[language];
+}
+
+export function getMissingTranslationKeys(
+  language: WebShellLanguage,
+): string[] {
+  const messages = MESSAGES[language];
+  return [...new Set([...Object.keys(EN), ...Object.keys(ZH)])].filter(
+    (key) => messages[key] === undefined,
+  );
 }
 
 export function getTranslator(language: WebShellLanguage) {

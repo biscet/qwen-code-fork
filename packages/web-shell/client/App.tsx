@@ -1029,7 +1029,7 @@ export interface WebShellProps {
   /** Called when `/theme` changes the web-shell theme. */
   onThemeChange?: (theme: WebShellTheme) => void;
   /** UI language for the web-shell. Defaults to `?language=` or browser language. */
-  language?: 'en' | 'zh-CN' | 'zh' | 'zh-cn';
+  language?: WebShellLanguage | 'zh' | 'zh-cn' | 'ru-RU' | 'ru-ru' | 'ru_RU';
   /** Called when `/language ui` changes the web-shell UI language. */
   onLanguageChange?: (language: WebShellLanguage) => void;
   /** Additional CSS class name appended to the root element. */
@@ -3383,11 +3383,11 @@ export function App({
     [messageTurnOutputs],
   );
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
-  const [environmentPanelOpen, setEnvironmentPanelOpen] = useState(false);
+  const [environmentPanelOpen, setEnvironmentPanelOpen] = useState(true);
   const preserveEnvironmentPanelOnArtifactOpenRef = useRef(false);
   useLayoutEffect(() => {
     preserveEnvironmentPanelOnArtifactOpenRef.current = false;
-    setEnvironmentPanelOpen(false);
+    setEnvironmentPanelOpen(true);
   }, [logicalSessionKey]);
   const artifactPanelOpenRef = useRef(artifactPanelOpen);
   artifactPanelOpenRef.current = artifactPanelOpen;
@@ -9318,11 +9318,29 @@ export function App({
       reportError,
     ],
   );
-  // Stable identity: ChatEditor is memoized and an inline closure would
-  // re-render it on every app render.
+  // The composer ring is a read-only popover. Explicit /context commands keep
+  // using showContextUsage above so typing the command still records its
+  // result in the transcript.
   const handleShowContextUsage = useCallback(
-    () => showContextUsage('/context', false),
-    [showContextUsage],
+    async (detail = false) => {
+      if (!requireActiveSessionForLocalCommand()) return undefined;
+      const owner = sessionOwnerGuard.capture();
+      try {
+        const result = await sessionActions.getContextUsage({ detail });
+        return owner.isCurrent() ? result : undefined;
+      } catch (error: unknown) {
+        if (owner.isCurrent()) {
+          reportError(error, 'Failed to load context usage');
+        }
+        return undefined;
+      }
+    },
+    [
+      reportError,
+      requireActiveSessionForLocalCommand,
+      sessionActions,
+      sessionOwnerGuard,
+    ],
   );
 
   // Stable reference: this travels through the memoized MessageList →
@@ -11407,6 +11425,7 @@ export function App({
                     t('language.options'),
                     '  - en: English',
                     '  - zh-CN: 中文',
+                    '  - ru: Русский',
                   ].join('\n'),
                 },
               ]);
@@ -11425,15 +11444,24 @@ export function App({
                       t('language.options'),
                       '  - en: English',
                       '  - zh-CN: 中文',
+                      '  - ru: Русский',
                     ].join('\n'),
                   },
                 ]);
                 return true;
               }
               const normalizedArg = languageArg.toLowerCase();
-              const valid = ['en', 'zh', 'zh-cn', 'zh_cn'].includes(
-                normalizedArg,
-              );
+              const valid = [
+                'en',
+                'zh',
+                'zh-cn',
+                'zh_cn',
+                'ru',
+                'ru-ru',
+                'ru_ru',
+                'russian',
+                'русский',
+              ].includes(normalizedArg);
               if (!valid) {
                 pushToast('error', t('language.invalid'));
                 return true;
@@ -13458,6 +13486,7 @@ export function App({
     chatWidthMode !== 'wide' && environmentPanelCanDock;
   const environmentPanelVisible =
     environmentPanelOpen &&
+    environmentPanelReachable &&
     !isChatEmptyState &&
     !activePanel &&
     mainView === 'chat';
@@ -13506,18 +13535,6 @@ export function App({
       observer.disconnect();
     };
   }, []);
-  const previousEnvironmentCanDockRef = useRef(environmentPanelCanDock);
-  useLayoutEffect(() => {
-    const crossedDockBreakpoint =
-      previousEnvironmentCanDockRef.current && !environmentPanelCanDock;
-    previousEnvironmentCanDockRef.current = environmentPanelCanDock;
-    if (
-      crossedDockBreakpoint &&
-      !preserveEnvironmentPanelOnArtifactOpenRef.current
-    ) {
-      setEnvironmentPanelOpen(false);
-    }
-  }, [environmentPanelCanDock]);
   const previousArtifactPanelOpenForEnvironmentRef = useRef(artifactPanelOpen);
   useLayoutEffect(() => {
     const artifactPanelJustOpened =
@@ -13536,6 +13553,12 @@ export function App({
   }, [artifactPanelOpen, environmentPanelFits]);
   const environmentPanelMounted =
     !isChatEmptyState && !activePanel && mainView === 'chat';
+  const subagentsPanelVisible =
+    environmentPanelMounted &&
+    !artifactPanelFullscreen &&
+    environmentPanelReachable &&
+    environmentPanelItems.includes('subagents') &&
+    environmentAgentTasks.length > 0;
   const chatWidthToggleMin = getChatMaxWidth(chatMaxWidth);
 
   const appClassName = [
@@ -14431,7 +14454,8 @@ export function App({
                 data-testid="context-body"
                 className={[
                   styles.contextBody,
-                  environmentPanelVisible && environmentPanelFits
+                  (environmentPanelVisible || subagentsPanelVisible) &&
+                  environmentPanelFits
                     ? styles.contextBodyWithEnvironmentPanel
                     : undefined,
                 ]
@@ -16017,6 +16041,7 @@ export function App({
               <EnvironmentPanel
                 floating={!environmentPanelFits}
                 hidden={!environmentPanelVisible || artifactPanelFullscreen}
+                agentTasksHidden={!subagentsPanelVisible}
                 workspaceCwd={
                   workspaceContextActive
                     ? (sessionWorktree?.path ?? activeWorkspaceCwd)

@@ -89,6 +89,15 @@ function toggleSection(view: HTMLElement, label: string): void {
   act(() => button?.click());
 }
 
+function expandSection(view: HTMLElement, label: string): void {
+  const button = Array.from(
+    view.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
+  ).find((candidate) => candidate.textContent?.includes(label));
+  if (button?.getAttribute('aria-expanded') === 'false') {
+    act(() => button.click());
+  }
+}
+
 describe('EnvironmentPanel', () => {
   it('shows supported workspace and Git context', () => {
     const view = mount();
@@ -248,6 +257,43 @@ describe('EnvironmentPanel', () => {
     toggle.remove();
   });
 
+  it('shows subagents in a separate expanded panel below environment', () => {
+    const agentTasks = Array.from({ length: 6 }, (_, index) => ({
+      kind: 'agent' as const,
+      id: `agent-${index + 1}`,
+      label: `Agent ${index + 1}`,
+      description: `Task ${index + 1}`,
+      status: 'running' as const,
+      startTime: 1,
+      runtimeMs: 10,
+      isBackgrounded: true,
+      toolUseId: `tool-agent-${index + 1}`,
+    }));
+    const view = mount({ agentTasks });
+    const environment = view.querySelector<HTMLElement>(
+      '[data-testid="environment-panel"]',
+    );
+    const subagents = view.querySelector<HTMLElement>(
+      '[data-testid="subagents-panel"]',
+    );
+
+    expect(environment).not.toBeNull();
+    expect(subagents).not.toBeNull();
+    expect(environment?.textContent).not.toContain('Subagents');
+    expect(
+      environment!.compareDocumentPosition(subagents!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      subagents?.querySelector('button[aria-expanded="true"]'),
+    ).not.toBeNull();
+    expect(subagents?.textContent).toContain('Agent 1');
+    expect(subagents?.querySelectorAll('ul button')).toHaveLength(6);
+    expect(
+      subagents?.querySelector('ul')?.getAttribute('data-scroll-after'),
+    ).toBe('5');
+  });
+
   it('shows agent, shell, and monitor task activity', () => {
     const tasks: DaemonSessionTaskStatus[] = [
       {
@@ -300,11 +346,11 @@ describe('EnvironmentPanel', () => {
     const view = mount({ tasks });
 
     expect(view.querySelectorAll('button[aria-expanded="false"]')).toHaveLength(
-      2,
+      1,
     );
-    expect(view.textContent).not.toContain('Explore code');
+    expect(view.textContent).toContain('Explore code');
 
-    toggleSection(view, 'Subagents');
+    expandSection(view, 'Subagents');
     toggleSection(view, 'Background tasks');
 
     expect(
@@ -373,7 +419,7 @@ describe('EnvironmentPanel', () => {
     };
     const view = mount({ tasks: [task], onOpenAgent });
 
-    toggleSection(view, 'Subagents');
+    expandSection(view, 'Subagents');
     const item = Array.from(
       view.querySelectorAll<HTMLButtonElement>('ul button'),
     ).find((button) => button.textContent?.includes('Review current changes'));
@@ -403,7 +449,7 @@ describe('EnvironmentPanel', () => {
       ],
     });
 
-    toggleSection(view, 'Subagents');
+    expandSection(view, 'Subagents');
 
     const color = view.querySelector<HTMLElement>(
       '[data-agent-color="purple"]',
@@ -429,7 +475,7 @@ describe('EnvironmentPanel', () => {
       ],
     });
 
-    toggleSection(view, 'Subagents');
+    expandSection(view, 'Subagents');
 
     const color = view.querySelector<HTMLElement>(
       '[data-agent-color="default"]',
@@ -458,7 +504,7 @@ describe('EnvironmentPanel', () => {
       agentTasks: agentTasks.filter((task) => task.kind === 'agent'),
     });
 
-    toggleSection(view, 'Subagents');
+    expandSection(view, 'Subagents');
 
     expect(view.textContent).toContain('Explore code');
     expect(view.textContent).toContain('Completed');
@@ -494,7 +540,7 @@ describe('EnvironmentPanel', () => {
       agentTasks: agentTasks.filter((task) => task.kind === 'agent'),
     });
 
-    toggleSection(view, 'Subagents');
+    expandSection(view, 'Subagents');
 
     expect(view.textContent).toContain('Agent (1)');
     expect(view.textContent).toContain('Agent (2)');

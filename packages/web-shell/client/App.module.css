@@ -562,7 +562,7 @@
   --warning-border: rgba(179, 86, 36, 0.24);
   --error-bg: rgba(184, 45, 53, 0.1);
   --error-border: rgba(184, 45, 53, 0.24);
-  --chat-editor-bg-primary: var(--background);
+  --chat-editor-bg-primary: #f5f5f5;
   --chat-editor-bg-tertiary: #f2f2f3;
   --chat-editor-border-color: rgba(0, 0, 0, 0.1);
   --chat-editor-text-primary: #161616;

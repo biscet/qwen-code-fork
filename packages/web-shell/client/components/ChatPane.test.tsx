@@ -2672,19 +2672,17 @@ describe('ChatPane', () => {
   it('shows context usage for this pane session', async () => {
     render();
 
+    let result: unknown;
     await act(async () => {
-      latestChatEditorProps.onShowContextUsage();
+      result = await latestChatEditorProps.onShowContextUsage();
     });
 
-    expect(appendLocalUserMessage).toHaveBeenCalledWith('/context');
     expect(getContextUsage).toHaveBeenCalledWith({ detail: false });
-    expect(transcriptDispatch).toHaveBeenCalledWith([
-      expect.objectContaining({
-        type: 'status',
-        clearActiveText: false,
-        text: expect.stringContaining('web-shell:context-usage:v1:'),
-      }),
-    ]);
+    expect(result).toEqual({
+      usage: { totalTokens: 1200, contextWindowSize: 8192 },
+    });
+    expect(appendLocalUserMessage).not.toHaveBeenCalled();
+    expect(transcriptDispatch).not.toHaveBeenCalled();
   });
 
   it("lists the pane session's own commands in the slash menu", () => {

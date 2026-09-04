@@ -96,7 +96,6 @@ import composerStatusStyles from './ComposerStatusStack.module.css';
 import { GoalEditDialog } from './dialogs/GoalEditDialog';
 import { ToolApproval } from './messages/ToolApproval';
 import { AskUserQuestion } from './messages/AskUserQuestion';
-import { serializeContextUsageMessage } from './messages/ContextUsageMessage';
 import type {
   TurnOutputKind,
   TurnOutputOpenRequest,
@@ -1043,43 +1042,35 @@ export function ChatPane({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [commands, connection.skills]);
-  const handleShowContextUsage = useCallback(() => {
-    if (
-      shouldBlockComposerSubmit({
-        connectionStatus: connection.status,
-        hasSession: Boolean(connection.sessionId),
-      })
-    ) {
-      return;
-    }
-    const owner = sessionOwnerGuard.capture();
-    if (streamingStateRef.current === 'idle') {
-      store.appendLocalUserMessage('/context');
-    }
-    actions
-      .getContextUsage({ detail: false })
-      .then((result) => {
-        if (!owner.isCurrent()) return;
-        store.dispatch([
-          {
-            type: 'status',
-            text: serializeContextUsageMessage(result),
-            clearActiveText: false,
-          },
-        ]);
-      })
-      .catch((error: unknown) => {
-        if (!owner.isCurrent()) return;
-        reportError(error, 'Failed to load context usage');
-      });
-  }, [
-    actions,
-    connection.sessionId,
-    connection.status,
-    reportError,
-    sessionOwnerGuard,
-    store,
-  ]);
+  const handleShowContextUsage = useCallback(
+    async (detail = false) => {
+      if (
+        shouldBlockComposerSubmit({
+          connectionStatus: connection.status,
+          hasSession: Boolean(connection.sessionId),
+        })
+      ) {
+        return undefined;
+      }
+      const owner = sessionOwnerGuard.capture();
+      try {
+        const result = await actions.getContextUsage({ detail });
+        return owner.isCurrent() ? result : undefined;
+      } catch (error: unknown) {
+        if (owner.isCurrent()) {
+          reportError(error, 'Failed to load context usage');
+        }
+        return undefined;
+      }
+    },
+    [
+      actions,
+      connection.sessionId,
+      connection.status,
+      reportError,
+      sessionOwnerGuard,
+    ],
+  );
   const availableModels = useMemo(
     () =>
       (connection.models ?? []).filter(isVisibleComposerModel).map((model) => ({

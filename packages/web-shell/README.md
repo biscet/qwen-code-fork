@@ -232,7 +232,7 @@ const projection = projectChatRecordsToDaemonTranscript(records);
 | `onSessionCreated`  | `(sessionId: string) => Promise<void> \| void`                                                                                        | 新 session 创建后触发；完成前会阻塞 session 初始化和 prompt 提交，最长等待 30 秒      |
 | `theme`             | `'dark' \| 'light'`                                                                                                                   | UI 主题，默认 `dark`                                                                  |
 | `onThemeChange`     | `(theme: WebShellTheme) => void`                                                                                                      | `/theme` 命令切换主题后触发                                                           |
-| `language`          | `'en' \| 'zh-CN' \| 'zh' \| 'zh-cn'`                                                                                                  | UI 语言                                                                               |
+| `language`          | `'en' \| 'zh-CN' \| 'zh' \| 'zh-cn' \| 'ru' \| 'ru-RU'`                                                                               | UI 语言                                                                               |
 | `onLanguageChange`  | `(language: WebShellLanguage) => void`                                                                                                | `/language ui` 切换 UI 语言后触发                                                     |
 | `onSlashCommand`    | `(command: WebShellSlashCommand) => boolean \| void`                                                                                  | 斜杠命令进入默认处理前触发；返回 `true` 时由宿主接管并跳过默认行为                    |
 

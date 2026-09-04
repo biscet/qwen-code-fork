@@ -55,9 +55,13 @@ function sortByTokens<T extends { tokens: number }>(items: readonly T[]): T[] {
 function ProgressBar({
   usedPercentage,
   bufferPercentage,
+  label,
+  compact,
 }: {
   usedPercentage: number;
   bufferPercentage: number;
+  label: string;
+  compact: boolean;
 }) {
   const width = 56;
   const usedCount = Math.round((Math.min(usedPercentage, 100) / 100) * width);
@@ -66,6 +70,8 @@ function ProgressBar({
       width,
   );
   const freeCount = Math.max(0, width - usedCount - bufferCount);
+  const usedWidth = Math.min(usedPercentage, 100);
+  const bufferWidth = Math.min(bufferPercentage, Math.max(0, 100 - usedWidth));
   const usedLevel = getContextUsageLevel(usedPercentage);
   const usedClass =
     usedLevel === 'error'
@@ -74,15 +80,37 @@ function ProgressBar({
         ? styles.warning
         : styles.accent;
 
+  if (!compact) {
+    return (
+      <div className={styles.progress} aria-hidden="true">
+        <span className={usedClass}>
+          {FILLED.repeat(Math.max(0, usedCount))}
+        </span>
+        <span className={styles.secondary}>
+          {EMPTY.repeat(Math.max(0, freeCount))}
+        </span>
+        <span className={styles.warning}>
+          {BUFFER.repeat(Math.max(0, bufferCount))}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.progress} aria-hidden="true">
-      <span className={usedClass}>{FILLED.repeat(Math.max(0, usedCount))}</span>
-      <span className={styles.secondary}>
-        {EMPTY.repeat(Math.max(0, freeCount))}
-      </span>
-      <span className={styles.warning}>
-        {BUFFER.repeat(Math.max(0, bufferCount))}
-      </span>
+    <div
+      className={styles.progress}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(usedPercentage)}
+    >
+      <span className={usedClass} style={{ width: `${usedWidth}%` }} />
+      <span className={styles.progressFree} />
+      <span
+        className={styles.progressBuffer}
+        style={{ width: `${bufferWidth}%` }}
+      />
     </div>
   );
 }
@@ -95,6 +123,7 @@ function CategoryRow({
   contextWindowSize,
   symbolClassName = styles.secondary,
   isOverLimit,
+  compact = false,
 }: {
   symbol: string;
   label: string;
@@ -103,14 +132,16 @@ function CategoryRow({
   contextWindowSize: number;
   symbolClassName?: string;
   isOverLimit?: boolean;
+  compact?: boolean;
 }) {
   return (
     <div className={styles.row}>
       <span className={`${styles.symbol} ${symbolClassName}`}>{symbol}</span>
       <span className={styles.label}>{label}</span>
       <span className={isOverLimit ? styles.error : styles.value}>
-        {formatTokens(tokens)} {tokenLabel} (
-        {formatPercentage(tokens, contextWindowSize)}%)
+        {compact
+          ? formatTokens(tokens)
+          : `${formatTokens(tokens)} ${tokenLabel} (${formatPercentage(tokens, contextWindowSize)}%)`}
       </span>
     </div>
   );
@@ -250,10 +281,13 @@ function SkillsSection({
 export function ContextUsageMessage({
   status,
   onShowDetail,
+  compact = false,
 }: {
   status: DaemonSessionContextUsageStatus;
-  /** Run /context detail, exactly like typing it. */
+  /** Load the detailed context breakdown. */
   onShowDetail?: () => void;
+  /** Use the compact composer-popover presentation. */
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const { usage } = status;
@@ -266,6 +300,109 @@ export function ContextUsageMessage({
     contextWindowSize > 0
       ? (breakdown.autocompactBuffer / contextWindowSize) * 100
       : 0;
+
+  if (compact) {
+    const estimatedTokens =
+      breakdown.systemPrompt +
+      breakdown.builtinTools +
+      breakdown.mcpTools +
+      breakdown.memoryFiles +
+      breakdown.skills;
+    const compactTokens = hasTokenCount ? usage.totalTokens : estimatedTokens;
+    const compactPercentage =
+      contextWindowSize > 0 ? (compactTokens / contextWindowSize) * 100 : 0;
+    const compactOverLimit = compactPercentage > 100;
+
+    return (
+      <div className={styles.panel} data-compact="true">
+        <div className={styles.titleRow}>
+          <div className={styles.title}>{t('contextUsage.title')}</div>
+          <div className={styles.titleValue}>
+            {!hasTokenCount && '~'}
+            {formatPercentage(compactTokens, contextWindowSize)}%
+          </div>
+        </div>
+        <div className={styles.metaLine}>
+          <span className={styles.compactModel} title={usage.modelName}>
+            {usage.modelName}
+          </span>
+          <span>
+            {formatTokens(compactTokens)} / {formatTokens(contextWindowSize)}{' '}
+            {t('contextUsage.tokens')}
+          </span>
+        </div>
+        {compactOverLimit && (
+          <div className={styles.error}>{t('contextUsage.overLimit')}</div>
+        )}
+        <ProgressBar
+          usedPercentage={Math.min(compactPercentage, 100)}
+          bufferPercentage={bufferPercentage}
+          label={t('contextUsage.used')}
+          compact
+        />
+        <div className={styles.compactRows}>
+          <CategoryRow
+            symbol={FILLED}
+            label={t('contextUsage.systemPrompt')}
+            tokens={breakdown.systemPrompt}
+            tokenLabel={t('contextUsage.tokens')}
+            contextWindowSize={contextWindowSize}
+            symbolClassName={styles.accent}
+            compact
+          />
+          <CategoryRow
+            symbol={FILLED}
+            label={t('contextUsage.builtinTools')}
+            tokens={breakdown.builtinTools}
+            tokenLabel={t('contextUsage.tokens')}
+            contextWindowSize={contextWindowSize}
+            symbolClassName={styles.accent}
+            compact
+          />
+          {breakdown.mcpTools > 0 && (
+            <CategoryRow
+              symbol={FILLED}
+              label={t('contextUsage.mcpTools')}
+              tokens={breakdown.mcpTools}
+              tokenLabel={t('contextUsage.tokens')}
+              contextWindowSize={contextWindowSize}
+              symbolClassName={styles.accent}
+              compact
+            />
+          )}
+          <CategoryRow
+            symbol={FILLED}
+            label={t('contextUsage.memoryFiles')}
+            tokens={breakdown.memoryFiles}
+            tokenLabel={t('contextUsage.tokens')}
+            contextWindowSize={contextWindowSize}
+            symbolClassName={styles.accent}
+            compact
+          />
+          <CategoryRow
+            symbol={FILLED}
+            label={t('contextUsage.skills')}
+            tokens={breakdown.skills}
+            tokenLabel={t('contextUsage.tokens')}
+            contextWindowSize={contextWindowSize}
+            symbolClassName={styles.accent}
+            compact
+          />
+          {hasTokenCount && (
+            <CategoryRow
+              symbol={FILLED}
+              label={t('contextUsage.messages')}
+              tokens={breakdown.messages}
+              tokenLabel={t('contextUsage.tokens')}
+              contextWindowSize={contextWindowSize}
+              symbolClassName={styles.accent}
+              compact
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.panel}>
@@ -312,6 +449,8 @@ export function ContextUsageMessage({
           <ProgressBar
             usedPercentage={Math.min(percentage, 100)}
             bufferPercentage={bufferPercentage}
+            label={t('contextUsage.used')}
+            compact={false}
           />
           <div className={styles.spacer} />
           <CategoryRow

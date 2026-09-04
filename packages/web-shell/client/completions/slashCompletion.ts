@@ -76,6 +76,7 @@ const SUBCOMMAND_TREE_ZH: Record<string, SubcommandNode[]> = {
       children: [
         { name: 'en', description: 'English' },
         { name: 'zh-CN', description: '中文' },
+        { name: 'ru', description: 'Русский' },
       ],
     },
     {
@@ -116,6 +117,7 @@ const SUBCOMMAND_TREE_EN: Record<string, SubcommandNode[]> = {
       children: [
         { name: 'en', description: 'English' },
         { name: 'zh-CN', description: '中文' },
+        { name: 'ru', description: 'Русский' },
       ],
     },
     {
@@ -182,6 +184,99 @@ const IMPLICIT_SUBCOMMAND_TREE_EN: Record<string, SubcommandNode[]> = {
   ],
 };
 
+const SUBCOMMAND_TREE_RU: Record<string, SubcommandNode[]> = {
+  agents: [
+    { name: 'manage', description: 'Управление существующими субагентами' },
+    { name: 'create', description: 'Создать нового субагента' },
+  ],
+  theme: [
+    { name: 'light', description: 'Переключиться на светлую тему' },
+    { name: 'dark', description: 'Переключиться на тёмную тему' },
+  ],
+  export: [
+    { name: 'md', description: 'Экспортировать в Markdown' },
+    { name: 'html', description: 'Экспортировать в HTML' },
+    { name: 'json', description: 'Экспортировать в JSON' },
+    { name: 'jsonl', description: 'Экспортировать в JSONL' },
+  ],
+  language: [
+    {
+      name: 'ui',
+      description: 'Выбрать язык интерфейса',
+      children: [
+        { name: 'en', description: 'English' },
+        { name: 'zh-CN', description: '中文' },
+        { name: 'ru', description: 'Русский' },
+      ],
+    },
+    {
+      name: 'output',
+      description: 'Выбрать язык ответов LLM',
+      argumentHint: '<язык>',
+    },
+  ],
+  extensions: [
+    { name: 'manage', description: 'Управление расширениями' },
+    {
+      name: 'install',
+      description: 'Установить расширение из источника',
+      argumentHint: '<источник>',
+    },
+  ],
+};
+
+const IMPLICIT_SUBCOMMAND_TREE_RU: Record<string, SubcommandNode[]> = {
+  context: [{ name: 'detail', description: 'Показать подробности контекста' }],
+  copy: [
+    { name: 'code', description: 'Копировать блоки кода' },
+    { name: 'latex', description: 'Копировать формулу LaTeX' },
+    {
+      name: 'inline-latex',
+      description: 'Копировать встроенную формулу LaTeX',
+    },
+  ],
+  tools: [{ name: 'desc', description: 'Показать описания инструментов' }],
+  stats: [
+    { name: 'model', description: 'Показать статистику по моделям' },
+    { name: 'tools', description: 'Показать статистику инструментов' },
+  ],
+  mcp: [
+    {
+      name: 'desc',
+      description: 'Показать описания MCP-серверов и инструментов',
+    },
+    {
+      name: 'nodesc',
+      description: 'Скрыть описания MCP-серверов и инструментов',
+    },
+    { name: 'schema', description: 'Показать схемы параметров инструментов' },
+  ],
+  memory: [
+    { name: 'show', description: 'Показать файлы памяти' },
+    { name: 'add', description: 'Добавить запись в память' },
+    { name: 'refresh', description: 'Обновить список файлов памяти' },
+  ],
+};
+
+function getSubcommandTrees(language: WebShellLanguage) {
+  if (language === 'zh-CN') {
+    return {
+      explicit: SUBCOMMAND_TREE_ZH,
+      implicit: IMPLICIT_SUBCOMMAND_TREE_ZH,
+    };
+  }
+  if (language === 'ru') {
+    return {
+      explicit: SUBCOMMAND_TREE_RU,
+      implicit: IMPLICIT_SUBCOMMAND_TREE_RU,
+    };
+  }
+  return {
+    explicit: SUBCOMMAND_TREE_EN,
+    implicit: IMPLICIT_SUBCOMMAND_TREE_EN,
+  };
+}
+
 function resolveSubcommands(
   cmdName: string,
   parts: string[],
@@ -199,14 +294,11 @@ function resolveSubcommands(
     }));
   }
 
-  const tree = language === 'zh-CN' ? SUBCOMMAND_TREE_ZH : SUBCOMMAND_TREE_EN;
+  const { explicit: tree, implicit: implicitTree } =
+    getSubcommandTrees(language);
   let nodes = tree[cmdName];
 
   if (!nodes) {
-    const implicitTree =
-      language === 'zh-CN'
-        ? IMPLICIT_SUBCOMMAND_TREE_ZH
-        : IMPLICIT_SUBCOMMAND_TREE_EN;
     nodes = implicitTree[cmdName];
   }
 
@@ -274,7 +366,7 @@ function hasSubcommandPicker(
   command: CommandInfo,
   language: WebShellLanguage,
 ): boolean {
-  const tree = language === 'zh-CN' ? SUBCOMMAND_TREE_ZH : SUBCOMMAND_TREE_EN;
+  const { explicit: tree } = getSubcommandTrees(language);
   return (
     command.name === 'skills' ||
     Boolean(command.subcommands?.length) ||
@@ -332,15 +424,12 @@ export function getImplicitTabCompletion(
 
   const cmdName = match[1];
   const cmd = commands.find((c) => c.name === cmdName);
-  const tree = language === 'zh-CN' ? SUBCOMMAND_TREE_ZH : SUBCOMMAND_TREE_EN;
+  const { explicit: tree, implicit: implicitTree } =
+    getSubcommandTrees(language);
   if (cmd?.subcommands?.length || tree[cmdName] || cmdName === 'skills') {
     return null;
   }
 
-  const implicitTree =
-    language === 'zh-CN'
-      ? IMPLICIT_SUBCOMMAND_TREE_ZH
-      : IMPLICIT_SUBCOMMAND_TREE_EN;
   const nodes = implicitTree[cmdName];
   if (!nodes || nodes.length === 0) return null;
 
@@ -391,15 +480,12 @@ export function getSlashCommandArgumentHint(
   const argumentHint = cmd.argumentHint?.trim();
   if (argumentHint) return argumentHint;
 
-  const tree = language === 'zh-CN' ? SUBCOMMAND_TREE_ZH : SUBCOMMAND_TREE_EN;
+  const { explicit: tree, implicit: implicitTree } =
+    getSubcommandTrees(language);
   if (cmd.subcommands?.length || tree[cmdName] || cmdName === 'skills') {
     return null;
   }
 
-  const implicitTree =
-    language === 'zh-CN'
-      ? IMPLICIT_SUBCOMMAND_TREE_ZH
-      : IMPLICIT_SUBCOMMAND_TREE_EN;
   const nodes = implicitTree[cmdName];
   if (!nodes || nodes.length === 0) return null;
 
@@ -499,11 +585,8 @@ export function getSlashCommandCompletionResult(
   if (subMatch) {
     const [, cmdName, rest] = subMatch;
     const cmd = commands.find((c) => c.name === cmdName);
-    const tree = language === 'zh-CN' ? SUBCOMMAND_TREE_ZH : SUBCOMMAND_TREE_EN;
-    const implicitTree =
-      language === 'zh-CN'
-        ? IMPLICIT_SUBCOMMAND_TREE_ZH
-        : IMPLICIT_SUBCOMMAND_TREE_EN;
+    const { explicit: tree, implicit: implicitTree } =
+      getSubcommandTrees(language);
     const hasTree = !!tree[cmdName] || cmdName === 'skills';
     const hasImplicitTree = !!implicitTree[cmdName];
     if (!cmd?.subcommands?.length && !hasTree && !hasImplicitTree) {
@@ -649,12 +732,8 @@ export function slashCompletionSource(
       const commands = getCommands();
       const cmd = commands.find((c) => c.name === cmdName);
       const language = getLanguage();
-      const tree =
-        language === 'zh-CN' ? SUBCOMMAND_TREE_ZH : SUBCOMMAND_TREE_EN;
-      const implicitTree =
-        language === 'zh-CN'
-          ? IMPLICIT_SUBCOMMAND_TREE_ZH
-          : IMPLICIT_SUBCOMMAND_TREE_EN;
+      const { explicit: tree, implicit: implicitTree } =
+        getSubcommandTrees(language);
       const hasTree = !!tree[cmdName] || cmdName === 'skills';
       const hasImplicitTree = !!implicitTree[cmdName];
       if (!cmd?.subcommands?.length && !hasTree && !hasImplicitTree)

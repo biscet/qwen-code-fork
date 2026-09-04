@@ -3,6 +3,7 @@
 import { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type {
+  DaemonSessionContextUsageStatus,
   DaemonWorkspaceGitStatus,
   ReasoningSelection,
 } from '@qwen-code/sdk/daemon';
@@ -375,6 +376,17 @@ interface ChatEditorRenderProps {
   gitStatus?: DaemonWorkspaceGitStatus;
   workspaceName?: string;
   workspaceTitle?: string;
+  workspaces?: Array<{
+    id: string;
+    cwd: string;
+    label: string;
+    primary: boolean;
+    trusted: boolean;
+  }>;
+  selectedWorkspaceCwd?: string;
+  onSelectWorkspace?: (workspaceCwd: string | undefined) => void;
+  scratchWorkspaceSupported?: boolean;
+  existingFolderWorkspaceSupported?: boolean;
   visibleToolbarActions?: readonly ComposerToolbarAction[];
   renderComposerTagTooltip?: ComposerTagRenderer;
   onComposerTagClick?: ComposerTagClickHandler;
@@ -393,7 +405,12 @@ interface ChatEditorRenderProps {
   }) => void;
   tokenCount?: number;
   contextWindow?: number;
-  onShowContextUsage?: () => void;
+  onShowContextUsage?: (
+    detail?: boolean,
+  ) =>
+    | DaemonSessionContextUsageStatus
+    | undefined
+    | Promise<DaemonSessionContextUsageStatus | undefined>;
   disabled?: boolean;
   atWorkspaceCwd?: string;
   composerScopeKey?: string;
@@ -877,7 +894,7 @@ describe('ChatEditor context usage ring', () => {
       '[data-web-shell-context-usage]',
     );
 
-  it('renders in toolbarRight before the voice actions', () => {
+  it('renders context and model controls in toolbarRight before voice', () => {
     const container = renderChatEditor({
       tokenCount: 34_298,
       contextWindow: 100_000,
@@ -887,12 +904,15 @@ describe('ChatEditor context usage ring', () => {
     const button = ring(container)!;
     expect(button).not.toBeNull();
     expect(button.getAttribute('aria-label')).toBe('34.3% context used');
+    const model = container.querySelector('[data-web-shell-model-button]')!;
     const liveVoice = container.querySelector(
       '[data-testid="live-voice-button"]',
     )!;
-    // The ring sits immediately left of the voice cluster.
     expect(
-      button.compareDocumentPosition(liveVoice) &
+      button.compareDocumentPosition(model) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      model.compareDocumentPosition(liveVoice) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -921,21 +941,62 @@ describe('ChatEditor context usage ring', () => {
     expect(ring(noWindow)).toBeNull();
   });
 
-  it('opens the context breakdown when clicked', () => {
-    const onShowContextUsage = vi.fn();
+  it('opens context above the composer and dismisses it outside', async () => {
+    const contextStatus: DaemonSessionContextUsageStatus = {
+      v: 1,
+      sessionId: 'session-1',
+      workspaceCwd: '/work/qwen-code',
+      usage: {
+        modelName: 'qwen',
+        totalTokens: 100,
+        contextWindowSize: 1000,
+        breakdown: {
+          systemPrompt: 20,
+          builtinTools: 10,
+          mcpTools: 0,
+          memoryFiles: 5,
+          skills: 5,
+          messages: 60,
+          freeSpace: 900,
+          autocompactBuffer: 0,
+        },
+        builtinTools: [],
+        mcpTools: [],
+        memoryFiles: [],
+        skills: [],
+      },
+      formattedText: 'Context usage: 100 / 1000 tokens',
+    };
+    const onShowContextUsage = vi.fn().mockResolvedValue(contextStatus);
     const container = renderChatEditor({
       tokenCount: 100,
       contextWindow: 1000,
       onShowContextUsage,
     });
 
-    act(() => {
+    await act(async () => {
       ring(container)!.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
+      await Promise.resolve();
     });
 
-    expect(onShowContextUsage).toHaveBeenCalledTimes(1);
+    expect(onShowContextUsage).toHaveBeenCalledExactlyOnceWith(false);
+    expect(
+      document.querySelector('[data-testid="context-usage-popover"]'),
+    ).not.toBeNull();
+    expect(document.body.textContent).toContain('Context Usage');
+
+    await act(async () => {
+      document.body.dispatchEvent(
+        new Event('pointerdown', { bubbles: true, composed: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      document.querySelector('[data-testid="context-usage-popover"]'),
+    ).toBeNull();
   });
 
   it('shows the used/total detail in a tooltip on focus', async () => {
@@ -1238,7 +1299,7 @@ describe('ChatEditor workspace toolbar integration', () => {
     ).toBeNull();
   });
 
-  it('renders the workspace chip before the git branch chip', () => {
+  it('groups the workspace label and git branch into one context control', () => {
     const container = renderChatEditor({
       gitBranch: 'main',
       workspaceName: 'api',
@@ -1247,12 +1308,55 @@ describe('ChatEditor workspace toolbar integration', () => {
     });
     const ws = container.querySelector('[data-web-shell-workspace]');
     const git = container.querySelector('[data-web-shell-git-branch]');
+    const combined = container.querySelector(
+      '[data-web-shell-workspace-branch]',
+    );
     expect(ws).not.toBeNull();
     expect(git).not.toBeNull();
-    // The workspace chip must precede the git-branch chip in document order.
+    expect(combined).not.toBeNull();
+    expect(combined?.contains(ws)).toBe(true);
+    expect(combined?.contains(git)).toBe(true);
     expect(
       ws!.compareDocumentPosition(git!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('groups the selectable project and branch without removing either action', () => {
+    const onSelectWorkspace = vi.fn();
+    const container = renderChatEditor({
+      gitBranch: 'main',
+      workspaces: [
+        {
+          id: 'api',
+          cwd: '/work/api',
+          label: 'api',
+          primary: true,
+          trusted: true,
+        },
+        {
+          id: 'web',
+          cwd: '/work/web',
+          label: 'web',
+          primary: false,
+          trusted: true,
+        },
+      ],
+      onSelectWorkspace,
+      visibleToolbarActions: ['workspace', 'gitBranch'],
+    });
+    const combined = container.querySelector(
+      '[data-web-shell-workspace-branch]',
+    );
+    const workspaceValue = combined?.querySelector(
+      '[data-slot="select-value"]',
+    );
+    const branchButton = combined?.querySelector(
+      '[aria-label="Current Git branch: main"]',
+    );
+
+    expect(combined).not.toBeNull();
+    expect(workspaceValue?.textContent).toBe('api');
+    expect(combined?.contains(branchButton)).toBe(true);
   });
 });
 

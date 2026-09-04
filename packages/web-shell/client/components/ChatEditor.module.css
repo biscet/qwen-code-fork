@@ -1,7 +1,7 @@
 .editorShell {
   position: relative;
   container-type: inline-size;
-  margin: 0 0 14px;
+  margin: 0 0 18px;
 }
 
 .editorShell[data-web-shell-compact-composer] {
@@ -18,18 +18,14 @@
 .container {
   position: relative;
   container-type: inline-size;
-  border-radius: 12px;
+  border-radius: 22px;
   margin: 0;
   cursor: text;
-  --chat-editor-min-height: 140px;
+  --chat-editor-min-height: 128px;
   --chat-editor-max-height: min(350px, 40vh);
   --chat-editor-input-min-height: 44px;
   --chat-editor-input-max-height: 300px;
   --chat-editor-attachments-max-height: 136px;
-  --dac-glow-on: 0;
-  --dac-glow-pulse: 0;
-  --dac-g1: #6a78ff;
-  --dac-g2: #8a7bff;
   --chat-send-button-disabled-foreground: var(--secondary-foreground);
   --chat-send-button-foreground: #fafafa;
 }
@@ -38,6 +34,9 @@
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  border-radius: 18px;
+  --chat-editor-min-height: 116px;
+  --chat-editor-input-min-height: 36px;
 }
 
 .content {
@@ -49,11 +48,11 @@
   max-height: var(--chat-editor-max-height, min(350px, 40vh));
   flex-direction: column;
   overflow: visible;
-  border: 1.5px solid var(--agent-gray-200);
+  border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   border-radius: inherit;
   background: var(--chat-editor-bg-primary);
   opacity: 1;
-  padding: 12px;
+  padding: 14px 14px 12px;
 }
 
 .editorShell[data-web-shell-compact-composer] .content {
@@ -67,148 +66,6 @@
     var(--primary) 6%,
     var(--chat-editor-bg-primary)
   );
-}
-
-.dacAura,
-.dacHalo {
-  pointer-events: none;
-}
-
-.dacAura {
-  position: absolute;
-  inset: -50px;
-  z-index: 0;
-  opacity: calc(var(--dac-glow-on) * (0.33 + var(--dac-glow-pulse) * 0.17));
-  -webkit-mask: radial-gradient(
-    ellipse 56% 64% at center,
-    transparent 28%,
-    #000 48%,
-    transparent 94%
-  );
-  mask: radial-gradient(
-    ellipse 56% 64% at center,
-    transparent 28%,
-    #000 48%,
-    transparent 94%
-  );
-  will-change: opacity;
-}
-
-.dacAura::before,
-.dacAura::after {
-  position: absolute;
-  inset: 0;
-  content: '';
-  will-change: opacity;
-}
-
-.dacAura::before {
-  background: color-mix(in srgb, var(--dac-g1) 58%, transparent);
-  -webkit-mask:
-    repeating-linear-gradient(90deg, #000 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 5px);
-  -webkit-mask-composite: source-in;
-  mask:
-    repeating-linear-gradient(90deg, #000 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 5px);
-  mask-composite: intersect;
-  opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.dacAura::after {
-  background: color-mix(in srgb, var(--dac-g1) 66%, transparent);
-  -webkit-mask:
-    repeating-linear-gradient(90deg, #000 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(
-      90deg,
-      #000 0,
-      rgba(0, 0, 0, 0.08) 28px,
-      #000 56px
-    );
-  -webkit-mask-composite: source-in, source-in;
-  mask:
-    repeating-linear-gradient(90deg, #000 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(
-      90deg,
-      #000 0,
-      rgba(0, 0, 0, 0.08) 28px,
-      #000 56px
-    );
-  mask-composite: intersect, intersect;
-  opacity: 0;
-  animation: dac-aura-cols 2.4s linear infinite paused;
-  transition: opacity 0.2s ease;
-}
-
-.container[data-dac-typing] .dacAura::before {
-  opacity: 0;
-}
-
-.container[data-dac-typing] .dacAura::after {
-  opacity: 1;
-  animation-play-state: running;
-}
-
-.dacHalo {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: inherit;
-  opacity: calc(var(--dac-glow-on) * 0.5);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--dac-g2) 36%, transparent),
-    0 1px 5px color-mix(in srgb, var(--dac-g1) 18%, transparent),
-    0 6px 30px color-mix(in srgb, var(--dac-g1) 22%, transparent);
-  will-change: opacity;
-}
-
-.dacHalo::after {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: 0 6px 40px color-mix(in srgb, var(--dac-g1) 14%, transparent);
-  content: '';
-  opacity: calc(var(--dac-glow-on) * var(--dac-glow-pulse) * 0.5);
-  will-change: opacity;
-}
-
-@keyframes dac-aura-cols {
-  from {
-    -webkit-mask-position:
-      0 0,
-      0 0,
-      0 0;
-    mask-position:
-      0 0,
-      0 0,
-      0 0;
-  }
-
-  to {
-    -webkit-mask-position:
-      0 0,
-      0 0,
-      56px 0;
-    mask-position:
-      0 0,
-      0 0,
-      56px 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dacAura::after,
-  .container[data-dac-typing] .dacAura::after {
-    opacity: 0;
-    animation: none;
-  }
-
-  .container[data-dac-typing] .dacAura::before {
-    opacity: 1;
-  }
 }
 
 .atPortalLayer {
@@ -1048,8 +905,8 @@
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  padding: 4px 0 0;
-  gap: 8px;
+  padding: 8px 0 0;
+  gap: 10px;
 }
 
 .editorShell[data-web-shell-compact-composer] .toolbar {
@@ -1063,11 +920,11 @@
 .toolbarRight {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .toolbarLeading {
-  margin-left: -5px;
+  margin-left: -4px;
   min-width: 0;
 }
 
@@ -1095,6 +952,67 @@
 .toolbarLeft {
   min-width: 0;
   flex-wrap: nowrap;
+}
+
+/* Project and branch form one context control. Each half keeps its own action
+   (workspace selection vs. git options), while the shared shell reads as one
+   compact piece of context instead of two unrelated pills. */
+.workspaceBranchControl {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 340px;
+  height: 32px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--chat-editor-border-color);
+  border-radius: 9px;
+  background: color-mix(
+    in srgb,
+    var(--chat-editor-text-primary) 3%,
+    transparent
+  );
+  color: var(--chat-editor-text-secondary);
+}
+
+.workspaceBranchControl .workspaceSelectTrigger,
+.workspaceBranchControl .workspaceChip,
+.workspaceBranchControl .workspaceChip.workspaceChipAccented,
+.workspaceBranchControl .gitBranchChipButton,
+.workspaceBranchControl [data-web-shell-git-branch] {
+  height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.workspaceBranchControl .gitBranchChipButton {
+  padding: 0;
+}
+
+.workspaceBranchControl .workspaceSelectTrigger:hover,
+.workspaceBranchControl .workspaceSelectTrigger:focus-visible,
+.workspaceBranchControl .gitBranchChipButton:hover,
+.workspaceBranchControl .gitBranchChipButton:focus-visible,
+.workspaceBranchControl [data-web-shell-git-branch]:hover,
+.workspaceBranchControl [data-web-shell-git-branch]:focus-visible {
+  background: var(--chat-editor-bg-tertiary);
+  color: var(--chat-editor-text-primary);
+}
+
+.workspaceBranchControl .workspaceSelectTrigger:focus-visible,
+.workspaceBranchControl .gitBranchChipButton:focus-visible,
+.workspaceBranchControl [data-web-shell-git-branch]:focus-visible {
+  outline: 2px solid var(--chat-editor-accent-color);
+  outline-offset: -2px;
+}
+
+.workspaceBranchSeparator {
+  width: 1px;
+  height: 16px;
+  flex: 0 0 1px;
+  background: var(--chat-editor-border-color);
 }
 
 .gitBranchChip {
@@ -1305,7 +1223,7 @@
 
 .toolbarRight {
   flex-shrink: 0;
-  margin-right: -5px;
+  margin-right: -2px;
 }
 
 .editorShell[data-web-shell-compact-composer] .toolbarRight {
@@ -1543,16 +1461,16 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 8px;
+  gap: 5px;
+  height: 32px;
+  padding: 0 9px;
   border: none;
   background: transparent;
   color: var(--agent-gray-500);
   font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1690,6 +1608,32 @@
 .contextUsageBtn {
   flex-shrink: 0;
   padding: 0 4px;
+}
+
+.contextUsagePopover {
+  box-sizing: border-box;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(440px, calc(100vh - 96px));
+  gap: 0;
+  overflow: auto;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.contextUsagePopover > div {
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+
+.contextUsageLoading {
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted-foreground);
 }
 
 .contextRingTrack {
@@ -1893,19 +1837,22 @@
 
 .sendBtn {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   border: none;
-  background: var(--agent-gray-200);
-  color: var(--chat-send-button-disabled-foreground);
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+  color: color-mix(in srgb, var(--foreground) 44%, transparent);
   cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   margin-left: 4px;
-  transition: all 0.2s ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .sendBtn:disabled {
@@ -1915,9 +1862,9 @@
 
 .sendBtn:not(:disabled) {
   border: none;
-  background: var(--agent-gray-800);
-  box-shadow: var(--agent-purple-shadow);
-  color: var(--chat-send-button-foreground);
+  background: var(--foreground);
+  box-shadow: none;
+  color: var(--background);
   cursor: pointer;
 }
 
@@ -1932,9 +1879,9 @@
 .sendBtnRunning,
 .sendBtnRunning:not(:disabled) {
   border: none;
-  background: var(--agent-gray-800);
+  background: var(--foreground);
   box-shadow: none;
-  color: var(--chat-send-button-foreground);
+  color: var(--background);
   cursor: pointer;
 }
 
@@ -1944,8 +1891,8 @@
 
 .sendIcon {
   display: inline-block;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .stopIcon {

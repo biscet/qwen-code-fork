@@ -1,9 +1,22 @@
 .mark,
 .loader,
-.spinner {
+.spinner,
+.wordmark {
   display: block;
   flex-shrink: 0;
   overflow: visible;
+}
+
+.wordmarkHome {
+  fill: var(--homecode-wordmark-home, #b9b7b7);
+}
+
+.wordmarkCode {
+  fill: var(--homecode-wordmark-code, #f1efef);
+}
+
+.wordmarkInset {
+  fill: var(--homecode-wordmark-inset, #666464);
 }
 
 .markTile,

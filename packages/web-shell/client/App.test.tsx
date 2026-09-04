@@ -173,7 +173,9 @@ type ChatEditorTestProps = {
   visibleToolbarActions?: string[];
   tokenCount?: number;
   contextWindow?: number;
-  onShowContextUsage?: () => void;
+  onShowContextUsage?: (
+    detail?: boolean,
+  ) => Promise<DaemonSessionContextUsageStatus | undefined>;
   onChatWidthModeChange?: (mode: '1000' | 'wide') => void;
 };
 
@@ -1096,8 +1098,8 @@ vi.mock('./components/messages/SettingsMessage', async () => {
           {
             'data-testid': 'change-language-workspace',
             type: 'button',
-            // Workspace tab language change → /language ui en --project.
-            onClick: () => props.onLanguageChange?.('en', 'workspace'),
+            // Workspace tab language change → /language ui ru --project.
+            onClick: () => props.onLanguageChange?.('ru', 'workspace'),
           },
           'language (workspace)',
         ),
@@ -2300,14 +2302,6 @@ describe('task activity key', () => {
       container.querySelector('button[title="watch server log"]'),
     ).not.toBeNull();
     expect(testState.latestBackgroundTasksRefreshTrigger).toBe(1);
-
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
 
     expect(
       container.querySelector(
@@ -9820,7 +9814,7 @@ describe('App session callbacks', () => {
     expect(container.textContent).not.toContain('qwen-plus::hybrid');
   });
 
-  it('wires the composer context ring from the connection and opens /context on click', async () => {
+  it('wires the composer context ring without writing to the transcript', async () => {
     const usageConnection = mockConnection as typeof mockConnection & {
       tokenCount?: number;
       contextWindow?: number;
@@ -9837,14 +9831,20 @@ describe('App session callbacks', () => {
     expect(testState.latestChatEditorProps?.tokenCount).toBe(338);
     expect(testState.latestChatEditorProps?.contextWindow).toBe(1000);
 
+    mockStore.appendLocalUserMessage.mockClear();
+    mockStore.dispatch.mockClear();
+    let result: DaemonSessionContextUsageStatus | undefined;
     await act(async () => {
-      testState.latestChatEditorProps?.onShowContextUsage?.();
+      result = await testState.latestChatEditorProps?.onShowContextUsage?.();
     });
     await flush();
 
     expect(mockSessionActions.getContextUsage).toHaveBeenCalledWith({
       detail: false,
     });
+    expect(result).toEqual({});
+    expect(mockStore.appendLocalUserMessage).not.toHaveBeenCalled();
+    expect(mockStore.dispatch).not.toHaveBeenCalled();
   });
 
   it('defaults the composer ring props to 0 before any usage arrives', async () => {
@@ -9941,7 +9941,7 @@ describe('App session callbacks', () => {
     ).toBeNull();
   });
 
-  it('opens environment information without restoring composer Git information', () => {
+  it('opens environment information by default without restoring composer Git information', () => {
     mockConnection.gitBranch = 'main';
     mockConnection.gitStatus = {
       v: 2,
@@ -9955,19 +9955,16 @@ describe('App session callbacks', () => {
     );
 
     expect(rightPanelButton).not.toBeNull();
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
-
     expect(
       container.querySelector(
         '[data-testid="environment-panel"]:not([hidden])',
       ),
     ).not.toBeNull();
+    expect(
+      container
+        .querySelector('button[aria-label="Toggle environment information"]')
+        ?.getAttribute('aria-pressed'),
+    ).toBe('true');
     expect(
       testState.latestChatEditorProps?.visibleToolbarActions,
     ).not.toContain('gitBranch');
@@ -10182,13 +10179,8 @@ describe('App session callbacks', () => {
       unstaged: 1,
     };
     const { container } = renderApp();
-    const environmentButton = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Toggle environment information"]',
-    );
-
     act(() => {
       testState.latestChatEditorProps?.onChatWidthModeChange?.('wide');
-      environmentButton?.click();
     });
 
     const environmentPanel = container.querySelector(
@@ -10196,13 +10188,13 @@ describe('App session callbacks', () => {
     );
     expect(environmentPanel?.getAttribute('data-floating')).toBe('true');
     expect(
-      environmentPanel?.parentElement?.contains(
+      environmentPanel?.parentElement?.parentElement?.contains(
         container.querySelector('[data-testid="chat-pane-container"]'),
       ),
     ).toBe(true);
   });
 
-  it('closes environment information at the dock breakpoint and reopens it floating', async () => {
+  it('keeps default environment information open across the dock breakpoint', async () => {
     let availableMessageWidth = 1200;
     const resizeCallbacks = new Set<ResizeObserverCallback>();
     const originalResizeObserver = globalThis.ResizeObserver;
@@ -10238,11 +10230,6 @@ describe('App session callbacks', () => {
       },
     ];
     const { container } = renderApp();
-    const environmentButton = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Toggle environment information"]',
-    );
-
-    act(() => environmentButton?.click());
     expect(
       container.querySelector(
         '[data-testid="environment-panel"]:not([hidden])',
@@ -10253,19 +10240,6 @@ describe('App session callbacks', () => {
       availableMessageWidth = 932;
       resizeCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
       await Promise.resolve();
-    });
-    expect(
-      container.querySelector(
-        '[data-testid="environment-panel"]:not([hidden])',
-      ),
-    ).toBeNull();
-
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
     });
     expect(
       container
@@ -10399,13 +10373,6 @@ describe('App session callbacks', () => {
     act(() => {
       testState.latestChatEditorProps?.onChatWidthModeChange?.('wide');
     });
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
     const backgroundTasksButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
     ).find((button) => button.textContent?.includes('Background tasks'));
@@ -10448,13 +10415,6 @@ describe('App session callbacks', () => {
     act(() => {
       testState.latestChatEditorProps?.onChatWidthModeChange?.('wide');
     });
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
     const backgroundTasksButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
     ).find((button) => button.textContent?.includes('Background tasks'));
@@ -10479,7 +10439,7 @@ describe('App session callbacks', () => {
     expect(testState.latestBackgroundTasksRefreshTrigger).toBe(1);
   });
 
-  it('closes environment information when the active session changes', () => {
+  it('reopens default environment information when the active session changes', () => {
     mockConnection.gitBranch = 'main';
     mockConnection.gitStatus = {
       v: 2,
@@ -10488,6 +10448,12 @@ describe('App session callbacks', () => {
       unstaged: 1,
     };
     const { container, rerender } = renderApp();
+    expect(
+      container.querySelector(
+        '[data-testid="environment-panel"]:not([hidden])',
+      ),
+    ).not.toBeNull();
+
     act(() => {
       container
         .querySelector<HTMLButtonElement>(
@@ -10499,7 +10465,7 @@ describe('App session callbacks', () => {
       container.querySelector(
         '[data-testid="environment-panel"]:not([hidden])',
       ),
-    ).not.toBeNull();
+    ).toBeNull();
 
     mockConnection.sessionId = 'session-2';
     rerender();
@@ -10508,7 +10474,7 @@ describe('App session callbacks', () => {
       container.querySelector(
         '[data-testid="environment-panel"]:not([hidden])',
       ),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
   it('keeps environment information open with its subagent panel', async () => {
@@ -10557,39 +10523,35 @@ describe('App session callbacks', () => {
       await Promise.resolve();
     });
 
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
-    const subagentsButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
-    ).find((button) => button.textContent?.includes('Subagents'));
-    act(() => subagentsButton?.click());
-
     const environmentButton = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Toggle environment information"]',
     );
+    const subagentsPanel = container.querySelector<HTMLElement>(
+      '[data-testid="subagents-panel"]',
+    );
+    expect(
+      subagentsPanel?.querySelector('button[aria-expanded="true"]'),
+    ).not.toBeNull();
+
     act(() => environmentButton?.click());
     expect(
       container.querySelector(
         '[data-testid="environment-panel"]:not([hidden])',
       ),
     ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="subagents-panel"]'),
+    ).not.toBeNull();
     act(() => environmentButton?.click());
     expect(
-      Array.from(
-        container.querySelectorAll<HTMLButtonElement>(
-          '[data-testid="environment-panel"]:not([hidden]) button[aria-expanded="true"]',
-        ),
-      ).some((button) => button.textContent?.includes('Subagents')),
-    ).toBe(true);
+      container.querySelector(
+        '[data-testid="environment-panel"]:not([hidden])',
+      ),
+    ).not.toBeNull();
 
     const agentButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        '[data-testid="environment-panel"]:not([hidden]) ul button',
+        '[data-testid="subagents-panel"] ul button',
       ),
     ).find((button) => button.textContent?.includes('Inspect repository'));
     act(() => agentButton?.click());
@@ -10674,20 +10636,9 @@ describe('App session callbacks', () => {
     ];
     const { container } = renderApp();
 
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
-    const subagentsButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
-    ).find((button) => button.textContent?.includes('Subagents'));
-    act(() => subagentsButton?.click());
     const forkButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        '[data-testid="environment-panel"] ul button',
+        '[data-testid="subagents-panel"] ul button',
       ),
     ).find((button) => button.textContent?.includes('Review current changes'));
 
@@ -10752,20 +10703,9 @@ describe('App session callbacks', () => {
     ];
     const { container } = renderApp();
 
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          'button[aria-label="Toggle environment information"]',
-        )
-        ?.click();
-    });
-    const subagentsButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
-    ).find((button) => button.textContent?.includes('Subagents'));
-    act(() => subagentsButton?.click());
     const forkButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        '[data-testid="environment-panel"] ul button',
+        '[data-testid="subagents-panel"] ul button',
       ),
     ).find((button) => button.textContent?.includes('Review current changes'));
 
@@ -25738,7 +25678,7 @@ describe('App session callbacks', () => {
     expect(qualifiedSetWorkspaceSetting).not.toHaveBeenCalled();
   });
 
-  it('sends /language ui --project for a workspace-scoped language change from Settings', async () => {
+  it('switches to Russian through a workspace-scoped Settings change', async () => {
     const { container } = renderApp();
     await flush();
     testState.prompt = '/settings';
@@ -25757,7 +25697,7 @@ describe('App session callbacks', () => {
 
     expect(
       mockSessionActions.sendPrompt.mock.calls.some(
-        (c) => c[0] === '/language ui en --project',
+        (c) => c[0] === '/language ui ru --project',
       ),
     ).toBe(true);
   });

@@ -6251,12 +6251,12 @@ describe('WebShellSidebar manage workspaces entry', () => {
     expect(settings?.className).toContain('footerButton');
     expect(daemon?.className).toContain('footerButton');
     expect(
-      container.querySelector('[title="Qwen Code 1.0.0"]')?.textContent,
+      container.querySelector('[title="HomeCode 1.0.0"]')?.textContent,
     ).toBe('1.0.0');
     expect(container.querySelector('button[aria-label="Collapse"]')).toBeNull();
   });
 
-  it('opens the Workspaces overview from the end of the Projects section', async () => {
+  it('opens the Workspaces overview from the compact Projects header action', async () => {
     const onOpenWorkspacesOverview = vi.fn();
     renderSidebar({ onOpenWorkspacesOverview });
     await act(async () => {
@@ -6266,7 +6266,9 @@ describe('WebShellSidebar manage workspaces entry', () => {
       '[data-testid="manage-workspaces"]',
     );
     expect(entry).not.toBeNull();
-    expect(entry!.textContent).toContain('Manage workspaces');
+    expect(entry!.getAttribute('aria-label')).toBe('Manage workspaces…');
+    expect(entry!.className).toContain('projectsHeaderAction');
+    expect(entry!.closest('[class*="projectsHeaderActions"]')).not.toBeNull();
     await act(async () => {
       entry!.click();
     });

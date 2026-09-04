@@ -25,6 +25,7 @@ import styles from './EnvironmentPanel.module.css';
 interface EnvironmentPanelProps {
   floating?: boolean;
   hidden?: boolean;
+  agentTasksHidden?: boolean;
   workspaceCwd?: string;
   gitWorkspaceCwd?: string;
   gitCwd?: string;
@@ -109,6 +110,7 @@ function agentColorValue(color: string | undefined): string {
 export function EnvironmentPanel({
   floating = false,
   hidden = false,
+  agentTasksHidden = false,
   workspaceCwd,
   gitWorkspaceCwd,
   gitCwd,
@@ -124,7 +126,7 @@ export function EnvironmentPanel({
   onDismiss,
 }: EnvironmentPanelProps) {
   const { t } = useI18n();
-  const panelRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const agents: readonly EnvironmentAgentTask[] =
     agentTasks ??
     tasks.filter(
@@ -132,10 +134,18 @@ export function EnvironmentPanel({
     );
   const backgroundTasks = tasks.filter((task) => task.kind !== 'agent');
   const [environmentExpanded, setEnvironmentExpanded] = useState(true);
-  const [agentsExpanded, setAgentsExpanded] = useState(false);
+  const [agentsExpanded, setAgentsExpanded] = useState(true);
   const [tasksExpanded, setTasksExpanded] = useState(false);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const previousAgentCountRef = useRef(agents.length);
   const activeBranch = branch ?? gitStatus?.branch;
+
+  useEffect(() => {
+    if (previousAgentCountRef.current === 0 && agents.length > 0) {
+      setAgentsExpanded(true);
+    }
+    previousAgentCountRef.current = agents.length;
+  }, [agents.length]);
 
   useEffect(() => {
     if (hidden || !environmentExpanded || !gitWorkspaceCwd || !activeBranch) {
@@ -195,187 +205,223 @@ export function EnvironmentPanel({
       : undefined,
   ].filter((detail): detail is string => Boolean(detail));
 
+  const environmentVisible =
+    !hidden &&
+    (items.includes('environment') ||
+      (items.includes('backgroundTasks') && backgroundTasks.length > 0));
+  const agentsVisible =
+    !agentTasksHidden && items.includes('subagents') && agents.length > 0;
+
   return (
-    <aside
+    <div
       ref={panelRef}
-      className={`${styles.panel} ${floating ? styles.floating : ''}`}
-      aria-label={t('environment.title')}
-      data-testid="environment-panel"
+      className={`${styles.panelStack} ${floating ? styles.floating : ''}`}
       data-floating={floating}
-      hidden={hidden}
+      hidden={!environmentVisible && !agentsVisible}
     >
-      {items.includes('environment') && (
-        <section className={styles.section}>
-          <button
-            type="button"
-            className={styles.sectionHeader}
-            aria-expanded={environmentExpanded}
-            onClick={() => setEnvironmentExpanded((expanded) => !expanded)}
-          >
-            <span>{t('environment.title')}</span>
-            {!environmentExpanded && <ChevronRightIcon />}
-          </button>
-          {environmentExpanded && (
-            <div className={styles.sectionContent}>
+      {(items.includes('environment') ||
+        (items.includes('backgroundTasks') && backgroundTasks.length > 0)) && (
+        <aside
+          className={`${styles.panel} ${styles.environmentPanel}`}
+          aria-label={t('environment.title')}
+          data-testid="environment-panel"
+          data-floating={floating}
+          hidden={hidden}
+        >
+          {items.includes('environment') && (
+            <section className={styles.section}>
               <button
                 type="button"
-                className={styles.row}
-                disabled={!onOpenGitDiff}
-                onClick={onOpenGitDiff}
+                className={styles.sectionHeader}
+                aria-expanded={environmentExpanded}
+                onClick={() => setEnvironmentExpanded((expanded) => !expanded)}
               >
-                <FileDiffIcon />
-                <span>{t('environment.changes')}</span>
-                <span className={styles.value}>
-                  {gitStatus === undefined
-                    ? t('environment.unavailable')
-                    : gitDetails.length > 0
-                      ? gitDetails.join(' · ')
-                      : t('environment.clean')}
-                </span>
+                <span>{t('environment.title')}</span>
+                {!environmentExpanded && <ChevronRightIcon />}
               </button>
-              <div className={styles.row} title={workspaceCwd}>
-                <FolderClosedIcon className={styles.workspaceIcon} />
-                <span>{t('environment.workspace')}</span>
-                <span className={styles.value}>
-                  {workspaceCwd?.split(/[/\\]/).filter(Boolean).at(-1) ??
-                    t('environment.unavailable')}
-                </span>
-              </div>
-              {gitWorkspaceCwd && activeBranch ? (
-                <BranchPickerPopover
-                  open={branchPickerOpen}
-                  onOpenChange={setBranchPickerOpen}
-                  workspaceCwd={gitWorkspaceCwd}
-                  gitCwd={gitCwd}
-                  side="left"
-                  status={gitStatus}
-                  onOpenDiff={onOpenGitDiff}
-                  onOpenCommit={onOpenGitCommit}
-                >
+              {environmentExpanded && (
+                <div className={styles.sectionContent}>
                   <button
                     type="button"
                     className={styles.row}
-                    title={activeBranch}
+                    disabled={!onOpenGitDiff}
+                    onClick={onOpenGitDiff}
                   >
-                    <GitBranchIcon />
-                    <span className={styles.branchName}>{activeBranch}</span>
-                    <ChevronRightIcon className={styles.rowActionIcon} />
+                    <FileDiffIcon />
+                    <span>{t('environment.changes')}</span>
+                    <span className={styles.value}>
+                      {gitStatus === undefined
+                        ? t('environment.unavailable')
+                        : gitDetails.length > 0
+                          ? gitDetails.join(' · ')
+                          : t('environment.clean')}
+                    </span>
                   </button>
-                </BranchPickerPopover>
-              ) : (
-                <div className={styles.row} title={activeBranch ?? undefined}>
-                  <GitBranchIcon />
-                  <span className={styles.branchName}>
-                    {activeBranch ?? t('environment.unavailable')}
-                  </span>
+                  <div className={styles.row} title={workspaceCwd}>
+                    <FolderClosedIcon className={styles.workspaceIcon} />
+                    <span>{t('environment.workspace')}</span>
+                    <span className={styles.value}>
+                      {workspaceCwd?.split(/[/\\]/).filter(Boolean).at(-1) ??
+                        t('environment.unavailable')}
+                    </span>
+                  </div>
+                  {gitWorkspaceCwd && activeBranch ? (
+                    <BranchPickerPopover
+                      open={branchPickerOpen}
+                      onOpenChange={setBranchPickerOpen}
+                      workspaceCwd={gitWorkspaceCwd}
+                      gitCwd={gitCwd}
+                      side="left"
+                      status={gitStatus}
+                      onOpenDiff={onOpenGitDiff}
+                      onOpenCommit={onOpenGitCommit}
+                    >
+                      <button
+                        type="button"
+                        className={styles.row}
+                        title={activeBranch}
+                      >
+                        <GitBranchIcon />
+                        <span className={styles.branchName}>
+                          {activeBranch}
+                        </span>
+                        <ChevronRightIcon className={styles.rowActionIcon} />
+                      </button>
+                    </BranchPickerPopover>
+                  ) : (
+                    <div
+                      className={styles.row}
+                      title={activeBranch ?? undefined}
+                    >
+                      <GitBranchIcon />
+                      <span className={styles.branchName}>
+                        {activeBranch ?? t('environment.unavailable')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </section>
           )}
-        </section>
-      )}
 
-      {items.includes('subagents') && agents.length > 0 && (
-        <section className={styles.section}>
-          <button
-            type="button"
-            className={styles.sectionHeader}
-            aria-expanded={agentsExpanded}
-            onClick={() => setAgentsExpanded((expanded) => !expanded)}
-          >
-            <span>{t('environment.agents')}</span>
-            {!agentsExpanded && <ChevronRightIcon />}
-          </button>
-          {agentsExpanded && (
-            <ul className={styles.tasks}>
-              {agents.map((task, index) => (
-                <li key={task.id}>
-                  <button
-                    type="button"
-                    className={styles.task}
-                    disabled={!onOpenAgent}
-                    onClick={() => onOpenAgent?.(task)}
-                  >
-                    <span className={styles.taskLabel}>
-                      {!isForkAgent(task) && (
+          {items.includes('backgroundTasks') && backgroundTasks.length > 0 && (
+            <section className={styles.section}>
+              <button
+                type="button"
+                className={styles.sectionHeader}
+                aria-expanded={tasksExpanded}
+                onClick={() => setTasksExpanded((expanded) => !expanded)}
+              >
+                <span>{t('tasks.title')}</span>
+                {!tasksExpanded && <ChevronRightIcon />}
+              </button>
+              {tasksExpanded && (
+                <ul className={styles.tasks}>
+                  {backgroundTasks.map((task) => (
+                    <li key={`${task.kind}:${task.id}`}>
+                      <button
+                        type="button"
+                        className={styles.task}
+                        onClick={() => onOpenTask(task)}
+                      >
+                        <span className={styles.taskIcon}>
+                          {taskIcon(task)}
+                        </span>
+                        <span className={styles.taskLabel}>
+                          <span
+                            className={styles.taskName}
+                            title={taskLabel(task)}
+                          >
+                            {taskLabel(task)}
+                          </span>
+                        </span>
                         <span
-                          className={styles.agentColor}
-                          data-agent-color={task.color ?? 'default'}
-                          style={{
-                            backgroundColor: agentColorValue(task.color),
-                          }}
-                          aria-hidden="true"
-                        />
-                      )}
-                      {isForkAgent(task) && (
-                        <span className={styles.agentTag}>fork</span>
-                      )}
-                      <span className={styles.agentName}>
-                        {(() => {
-                          const name = agentDisplayName(task).trim();
-                          return name && name.toLowerCase() !== 'agent'
-                            ? name
-                            : t('environment.unnamedAgent', {
-                                index: index + 1,
-                              });
-                        })()}
-                      </span>
-                    </span>
-                    <span
-                      className={styles.taskStatus}
-                      data-status={task.status}
-                    >
-                      {taskStatusIcon(task.status)}
-                      {t(taskStatusKey(task.status))}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                          className={styles.taskStatus}
+                          data-status={task.status}
+                        >
+                          {taskStatusIcon(task.status)}
+                          {t(taskStatusKey(task.status))}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
-        </section>
+        </aside>
       )}
 
-      {items.includes('backgroundTasks') && backgroundTasks.length > 0 && (
-        <section className={styles.section}>
-          <button
-            type="button"
-            className={styles.sectionHeader}
-            aria-expanded={tasksExpanded}
-            onClick={() => setTasksExpanded((expanded) => !expanded)}
-          >
-            <span>{t('tasks.title')}</span>
-            {!tasksExpanded && <ChevronRightIcon />}
-          </button>
-          {tasksExpanded && (
-            <ul className={styles.tasks}>
-              {backgroundTasks.map((task) => (
-                <li key={`${task.kind}:${task.id}`}>
-                  <button
-                    type="button"
-                    className={styles.task}
-                    onClick={() => onOpenTask(task)}
-                  >
-                    <span className={styles.taskIcon}>{taskIcon(task)}</span>
-                    <span className={styles.taskLabel}>
-                      <span className={styles.taskName} title={taskLabel(task)}>
-                        {taskLabel(task)}
-                      </span>
-                    </span>
-                    <span
-                      className={styles.taskStatus}
-                      data-status={task.status}
+      {agentsVisible && (
+        <aside
+          className={`${styles.panel} ${styles.agentsPanel}`}
+          aria-label={t('environment.agents')}
+          data-testid="subagents-panel"
+          data-floating={floating}
+        >
+          <section className={styles.section}>
+            <button
+              type="button"
+              className={styles.sectionHeader}
+              aria-expanded={agentsExpanded}
+              onClick={() => setAgentsExpanded((expanded) => !expanded)}
+            >
+              <span>{t('environment.agents')}</span>
+              {!agentsExpanded && <ChevronRightIcon />}
+            </button>
+            {agentsExpanded && (
+              <ul
+                className={`${styles.tasks} ${styles.agentTasks}`}
+                data-scroll-after="5"
+              >
+                {agents.map((task, index) => (
+                  <li key={task.id}>
+                    <button
+                      type="button"
+                      className={styles.task}
+                      disabled={!onOpenAgent}
+                      onClick={() => onOpenAgent?.(task)}
                     >
-                      {taskStatusIcon(task.status)}
-                      {t(taskStatusKey(task.status))}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                      <span className={styles.taskLabel}>
+                        {!isForkAgent(task) && (
+                          <span
+                            className={styles.agentColor}
+                            data-agent-color={task.color ?? 'default'}
+                            style={{
+                              backgroundColor: agentColorValue(task.color),
+                            }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        {isForkAgent(task) && (
+                          <span className={styles.agentTag}>fork</span>
+                        )}
+                        <span className={styles.agentName}>
+                          {(() => {
+                            const name = agentDisplayName(task).trim();
+                            return name && name.toLowerCase() !== 'agent'
+                              ? name
+                              : t('environment.unnamedAgent', {
+                                  index: index + 1,
+                                });
+                          })()}
+                        </span>
+                      </span>
+                      <span
+                        className={styles.taskStatus}
+                        data-status={task.status}
+                      >
+                        {taskStatusIcon(task.status)}
+                        {t(taskStatusKey(task.status))}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </aside>
       )}
-    </aside>
+    </div>
   );
 }

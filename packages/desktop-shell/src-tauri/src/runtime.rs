@@ -63,7 +63,7 @@ impl DesktopRuntime {
             .env("QWEN_SERVER_TOKEN", &token);
 
         let mut child = spawn_runtime_group(&mut command)
-            .map_err(|error| format!("Failed to start bundled Qwen Code runtime: {error}"))?;
+            .map_err(|error| format!("Failed to start bundled HomeCode runtime: {error}"))?;
         let Some(stdout) = child.inner().stdout.take() else {
             stop_runtime_child(&mut child);
             return Err("Bundled runtime stdout was not captured.".to_string());
@@ -176,7 +176,7 @@ impl RuntimeLayout {
         };
         let (node, entry) = layout_from_root(root);
         require_file(&node, "Node.js runtime")?;
-        require_file(&entry, "Qwen Code runtime entry")?;
+        require_file(&entry, "HomeCode runtime entry")?;
         Ok(Self { node, entry })
     }
 }

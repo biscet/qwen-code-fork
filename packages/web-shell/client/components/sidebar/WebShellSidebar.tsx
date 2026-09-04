@@ -82,7 +82,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { HomeCodeMark, HomeCodeSpinner } from '../branding/HomeCodeBrand';
+import { HomeCodeSpinner, HomeCodeWordmark } from '../branding/HomeCodeBrand';
 import { formatDateTime } from '../../utils/formatDateTime';
 import { DialogShell } from '../dialogs/DialogShell';
 import { useWorkspaceRemoval } from '../workspaces/useWorkspaceRemoval';
@@ -5221,18 +5221,15 @@ export function WebShellSidebar({
         )}
         {shouldRenderBrand && (
           <div className={styles.topRow}>
-            {branding?.render ? (
-              branding.render()
-            ) : (
-              <>
-                <span className={styles.brandLogo} aria-hidden="true">
-                  <HomeCodeMark />
-                </span>
-                {!collapsed && (
-                  <span className={styles.brandName}>Qwen Code</span>
+            {branding?.render
+              ? branding.render()
+              : !collapsed && (
+                  <HomeCodeWordmark
+                    className={styles.brandWordmark}
+                    role="img"
+                    aria-label="HomeCode"
+                  />
                 )}
-              </>
-            )}
           </div>
         )}
         {primaryNavItems.has('newTask') && (
@@ -5324,19 +5321,6 @@ export function WebShellSidebar({
               )}
               {primaryNavOptions?.render?.()}
             </div>
-          )}
-          {onLoadStandaloneSession && onStandaloneNotice && (
-            <StandaloneRecents
-              collapsed={collapsed}
-              onExpand={() => onCollapsedChange(false)}
-              currentSessionId={connection.sessionId}
-              onLoadSession={onLoadStandaloneSession}
-              onRenameSession={(sessionId, displayName) =>
-                onSessionRenameConfirmed?.(undefined, sessionId, displayName)
-              }
-              onError={onError}
-              onNotice={onStandaloneNotice}
-            />
           )}
           {/* Workspace navigation is daemon-scoped rather than a control on
               the active session, so it stays available in a projectless chat
@@ -5517,6 +5501,20 @@ export function WebShellSidebar({
                         onClick={onOpenAddWorkspace}
                       >
                         <PlusIcon />
+                      </button>
+                    )}
+                  {projectFeaturesEnabled &&
+                    onOpenWorkspacesOverview &&
+                    !lockedWorkspaceCwd && (
+                      <button
+                        className={styles.projectsHeaderAction}
+                        type="button"
+                        data-testid="manage-workspaces"
+                        title={t('sidebar.manageWorkspaces')}
+                        aria-label={t('sidebar.manageWorkspaces')}
+                        onClick={onOpenWorkspacesOverview}
+                      >
+                        <FolderKanbanIcon />
                       </button>
                     )}
                 </div>
@@ -5919,25 +5917,25 @@ export function WebShellSidebar({
                         ) : null}
                       </Fragment>
                     ))}
-                    {projectFeaturesEnabled &&
-                      onOpenWorkspacesOverview &&
-                      !lockedWorkspaceCwd && (
-                        <button
-                          className={styles.manageWorkspacesRow}
-                          type="button"
-                          data-testid="manage-workspaces"
-                          onClick={onOpenWorkspacesOverview}
-                        >
-                          <FolderKanbanIcon aria-hidden="true" />
-                          <span>{t('sidebar.manageWorkspaces')}</span>
-                        </button>
-                      )}
                   </div>
                 </div>
               </>
             )}
             {archivedSection}
           </SidebarSessionSurface>
+          {onLoadStandaloneSession && onStandaloneNotice && (
+            <StandaloneRecents
+              collapsed={collapsed}
+              onExpand={() => onCollapsedChange(false)}
+              currentSessionId={connection.sessionId}
+              onLoadSession={onLoadStandaloneSession}
+              onRenameSession={(sessionId, displayName) =>
+                onSessionRenameConfirmed?.(undefined, sessionId, displayName)
+              }
+              onError={onError}
+              onNotice={onStandaloneNotice}
+            />
+          )}
         </div>
 
         {(footer !== false || mobileOpen) && (
@@ -5975,7 +5973,7 @@ export function WebShellSidebar({
                 footerItems.has('version') && (
                   <span
                     className={styles.version}
-                    title={`Qwen Code ${displayedVersionLabel}`}
+                    title={`HomeCode ${displayedVersionLabel}`}
                   >
                     {displayedVersionLabel}
                   </span>

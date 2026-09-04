@@ -1,5 +1,4 @@
-import { useI18n } from '../i18n';
-import { HomeCodeMark } from './branding/HomeCodeBrand';
+import { HomeCodeWordmark } from './branding/HomeCodeBrand';
 import styles from './WelcomeHeader.module.css';
 
 export interface WelcomeHeaderProps {
@@ -12,16 +11,12 @@ export interface WelcomeHeaderProps {
 
 export function WelcomeHeader(props: WelcomeHeaderProps) {
   void props;
-  const { t } = useI18n();
 
   return (
     <div className={styles.header}>
-      <HomeCodeMark className={styles.mark} role="img" aria-label="Qwen Code" />
-      <div className={styles.titleRow}>
-        <span>{t('welcome.titlePrefix')}</span>
-        <span className={styles.title}>Qwen Code</span>
-      </div>
-      <div className={styles.subtitle}>{t('welcome.prompt')}</div>
+      <h1 className={styles.title} aria-label="HomeCode">
+        <HomeCodeWordmark className={styles.wordmark} aria-hidden="true" />
+      </h1>
     </div>
   );
 }

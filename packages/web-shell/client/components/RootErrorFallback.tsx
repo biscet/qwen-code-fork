@@ -28,6 +28,11 @@ const COPY: Record<WebShellLanguage, FallbackCopy> = {
     body: '发生意外错误，无法显示此内容。',
     retry: '重试',
   },
+  ru: {
+    title: 'Что-то пошло не так',
+    body: 'Произошла непредвиденная ошибка, поэтому содержимое не удалось показать.',
+    retry: 'Повторить',
+  },
 };
 
 // The boundary wraps the whole App, so this surface renders when the themed

@@ -13,10 +13,41 @@
   line-height: 1.45;
 }
 
+.panel[data-compact='true'] {
+  box-sizing: border-box;
+  gap: 4px;
+  padding: 14px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
 .title {
   margin-bottom: 8px;
   color: var(--agent-blue-500);
   font-weight: 700;
+}
+
+[data-compact='true'] .title {
+  margin-bottom: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.titleValue {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .metaLine {
@@ -29,10 +60,59 @@
   white-space: nowrap;
 }
 
+[data-compact='true'] .metaLine {
+  max-width: none;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.compactModel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .progress {
   max-width: 56ch;
   overflow: hidden;
   white-space: nowrap;
+}
+
+[data-compact='true'] .progress {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  height: 5px;
+  margin: 10px 0 5px;
+  border-radius: 2px;
+  background: var(--subtle-bg-strong);
+  white-space: normal;
+}
+
+[data-compact='true'] .progress > span {
+  display: block;
+  min-width: 0;
+}
+
+.progressFree {
+  flex: 1;
+}
+
+.progressBuffer {
+  flex: 0 0 auto;
+  background: var(--warning-color);
+  opacity: 0.7;
+}
+
+[data-compact='true'] .progress > .accent,
+[data-compact='true'] .progress > .warning,
+[data-compact='true'] .progress > .error {
+  flex: 0 0 auto;
+  background: currentColor;
+  transition: width 160ms ease;
 }
 
 .spacer {
@@ -62,8 +142,22 @@
   padding-left: 4ch;
 }
 
+[data-compact='true'] .row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 22px;
+}
+
+.compactRows {
+  display: flex;
+  flex-direction: column;
+}
+
 .symbol {
   width: 2ch;
+}
+
+[data-compact='true'] .symbol {
+  display: none;
 }
 
 .label {
@@ -75,6 +169,12 @@
   color: var(--muted-foreground);
   text-align: right;
   white-space: nowrap;
+}
+
+[data-compact='true'] .value {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .detailName {
@@ -158,5 +258,18 @@
   .panel {
     font-size: 12px;
     overflow-x: auto;
+  }
+
+  .panel[data-compact='true'] {
+    padding: 14px;
+    overflow-x: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-compact='true'] .progress > .accent,
+  [data-compact='true'] .progress > .warning,
+  [data-compact='true'] .progress > .error {
+    transition: none;
   }
 }

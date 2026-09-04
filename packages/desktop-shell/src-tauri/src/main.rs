@@ -103,7 +103,7 @@ fn main() {
     let app = match builder.build(tauri::generate_context!()) {
         Ok(app) => app,
         Err(error) => {
-            eprintln!("Failed to initialize Qwen Code desktop: {error}");
+            eprintln!("Failed to initialize HomeCode desktop: {error}");
             return;
         }
     };
@@ -188,6 +188,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::write(&log_path, b"");
     let origin = Arc::new(Mutex::new(None));
     let navigation_origin = Arc::clone(&origin);
+    let navigation_dev_url = handle.config().build.dev_url.clone();
     let runtime_exit_handle = handle.clone();
     handle.listen("runtime-process-stopped", move |event| {
         let Ok(stopped) = serde_json::from_str::<RuntimeStopped>(event.payload()) else {
@@ -199,7 +200,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
         stop_runtime(&runtime_exit_handle);
         *lock(&state.origin) = None;
-        let message = format!("Qwen Code stopped: {}", stopped.status);
+        let message = format!("HomeCode stopped: {}", stopped.status);
         *lock(&state.last_error) = Some(message.clone());
         let _ = navigate_to_bootstrap(&runtime_exit_handle);
         let _ = runtime_exit_handle.emit("runtime-failed", message);
@@ -207,10 +208,12 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let (width, height) = default_window_size();
 
     let window = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
-        .title("Qwen Code")
+        .title("HomeCode")
         .inner_size(width, height)
         .min_inner_size(900.0, 600.0)
-        .on_navigation(move |url| is_allowed_navigation(url, &navigation_origin))
+        .on_navigation(move |url| {
+            is_allowed_navigation(url, navigation_dev_url.as_ref(), &navigation_origin)
+        })
         .on_new_window(|url, _features| {
             if is_safe_external_url(&url) {
                 let _ = open::that_detached(url.as_str());
@@ -307,7 +310,7 @@ async fn choose_workspace(
         move || {
             app.dialog()
                 .file()
-                .set_title("Choose a Qwen Code workspace")
+                .set_title("Choose a HomeCode workspace")
                 .blocking_pick_folder()
         }
     })
@@ -365,9 +368,9 @@ async fn install_update(webview: WebviewWindow, app: AppHandle) -> Result<(), St
         move || {
             app.dialog()
                 .message(format!(
-                    "Install Qwen Code Desktop {version} and restart now?"
+                    "Install HomeCode {version} and restart now?"
                 ))
-                .title("Qwen Code update")
+                .title("HomeCode update")
                 .kind(MessageDialogKind::Info)
                 .buttons(MessageDialogButtons::OkCancelCustom(
                     "Install and restart".to_string(),
@@ -648,8 +651,7 @@ fn should_restore_main_window(has_visible_windows: bool, main_needs_restore: boo
 }
 
 fn navigate_to_bootstrap(app: &AppHandle) -> Result<(), String> {
-    let url = Url::parse(BOOTSTRAP_URL)
-        .map_err(|error| format!("Failed to construct bootstrap URL: {error}"))?;
+    let url = resolved_bootstrap_url(app.config().build.dev_url.as_ref())?;
     app.get_webview_window("main")
         .ok_or_else(|| "Desktop window is unavailable.".to_string())?
         .navigate(url)
@@ -660,27 +662,44 @@ fn require_bootstrap_origin(webview: &WebviewWindow) -> Result<(), String> {
     let url = webview
         .url()
         .map_err(|error| format!("Failed to read calling webview URL: {error}"))?;
-    if is_bootstrap_url(&url) {
+    if is_bootstrap_url(
+        &url,
+        webview.app_handle().config().build.dev_url.as_ref(),
+    ) {
         Ok(())
     } else {
         Err("This command is only available from the desktop shell.".to_string())
     }
 }
 
-fn is_allowed_navigation(url: &Url, origin: &Mutex<Option<Url>>) -> bool {
-    is_bootstrap_url(url)
+fn is_allowed_navigation(
+    url: &Url,
+    dev_url: Option<&Url>,
+    origin: &Mutex<Option<Url>>,
+) -> bool {
+    is_bootstrap_url(url, dev_url)
         || lock(origin)
             .as_ref()
             .is_some_and(|allowed| is_same_origin(url, allowed))
 }
 
-fn is_bootstrap_url(url: &Url) -> bool {
+fn is_bootstrap_url(url: &Url, dev_url: Option<&Url>) -> bool {
+    if let Some(configured) = dev_url {
+        return is_same_origin(url, configured);
+    }
     if url.scheme() == "tauri" && url.host_str() == Some("localhost") {
         return true;
     }
     cfg!(target_os = "windows")
         && matches!(url.scheme(), "http" | "https")
         && url.host_str() == Some("tauri.localhost")
+}
+
+fn resolved_bootstrap_url(dev_url: Option<&Url>) -> Result<Url, String> {
+    dev_url.cloned().map(Ok).unwrap_or_else(|| {
+        Url::parse(BOOTSTRAP_URL)
+            .map_err(|error| format!("Failed to construct bootstrap URL: {error}"))
+    })
 }
 
 fn origin_of(url: &Url) -> Result<Url, String> {
@@ -716,9 +735,9 @@ fn check_updates_silently(app: AppHandle) {
             move || {
                 app.dialog()
                     .message(format!(
-                        "Qwen Code Desktop {version} is available. Install and restart now?"
+                        "HomeCode {version} is available. Install and restart now?"
                     ))
-                    .title("Qwen Code update")
+                    .title("HomeCode update")
                     .kind(MessageDialogKind::Info)
                     .buttons(MessageDialogButtons::OkCancelCustom(
                         "Install and restart".to_string(),
@@ -738,9 +757,9 @@ fn check_updates_silently(app: AppHandle) {
                 move || {
                     app.dialog()
                         .message(format!(
-                            "Qwen Code Desktop {version} could not be installed.\n\n{error}\n\nSave your work before quitting. Reinstall Qwen Code if it does not reopen."
+                            "HomeCode {version} could not be installed.\n\n{error}\n\nSave your work before quitting. Reinstall HomeCode if it does not reopen."
                         ))
-                        .title("Qwen Code update failed")
+                        .title("HomeCode update failed")
                         .kind(MessageDialogKind::Error)
                         .blocking_show()
                 }
@@ -783,7 +802,7 @@ mod tests {
     use super::{
         bootstrap_workspace, default_workspace_override_dir, default_workspace_path,
         ensure_workspace_dir, is_allowed_navigation, is_bootstrap_url, is_safe_external_url,
-        is_same_origin, origin_of, BOOTSTRAP_URL,
+        is_same_origin, origin_of, resolved_bootstrap_url, BOOTSTRAP_URL,
     };
     use std::ffi::OsString;
     use std::fs;
@@ -941,27 +960,39 @@ mod tests {
     #[test]
     fn allows_platform_bootstrap_origins() {
         assert!(is_bootstrap_url(
-            &Url::parse("tauri://localhost/").expect("tauri bootstrap")
+            &Url::parse("tauri://localhost/").expect("tauri bootstrap"),
+            None,
         ));
         if cfg!(target_os = "windows") {
             assert!(is_bootstrap_url(
-                &Url::parse("http://tauri.localhost/").expect("windows bootstrap")
+                &Url::parse("http://tauri.localhost/").expect("windows bootstrap"),
+                None,
             ));
         } else {
             assert!(!is_bootstrap_url(
-                &Url::parse("http://tauri.localhost/").expect("not a bootstrap origin")
+                &Url::parse("http://tauri.localhost/").expect("not a bootstrap origin"),
+                None,
             ));
         }
     }
 
     #[test]
-    fn recovery_uses_the_platform_bootstrap_origin() {
+    fn recovery_uses_the_configured_bootstrap_url() {
         let expected = if cfg!(windows) {
             "http://tauri.localhost"
         } else {
             "tauri://localhost"
         };
-        assert_eq!(BOOTSTRAP_URL, expected);
+        assert_eq!(
+            resolved_bootstrap_url(None).expect("production bootstrap URL"),
+            Url::parse(expected).expect("expected bootstrap URL"),
+        );
+
+        let dev_url = Url::parse("http://127.0.0.1:1430/").expect("dev URL");
+        assert_eq!(
+            resolved_bootstrap_url(Some(&dev_url)).expect("dev bootstrap URL"),
+            dev_url,
+        );
     }
 
     #[test]
@@ -992,10 +1023,12 @@ mod tests {
         let origin = Mutex::new(None);
         assert!(is_allowed_navigation(
             &Url::parse(BOOTSTRAP_URL).expect("bootstrap"),
+            None,
             &origin,
         ));
         assert!(!is_allowed_navigation(
             &Url::parse("http://127.0.0.1:49152/").expect("runtime"),
+            None,
             &origin,
         ));
     }
@@ -1007,14 +1040,17 @@ mod tests {
         ));
         assert!(is_allowed_navigation(
             &Url::parse("http://127.0.0.1:49152/session/123").expect("same origin"),
+            None,
             &origin,
         ));
         assert!(!is_allowed_navigation(
             &Url::parse("http://127.0.0.1:49153/").expect("different port"),
+            None,
             &origin,
         ));
         assert!(!is_allowed_navigation(
             &Url::parse("https://example.com/").expect("external"),
+            None,
             &origin,
         ));
     }
@@ -1026,6 +1062,29 @@ mod tests {
         ));
         assert!(is_allowed_navigation(
             &Url::parse(BOOTSTRAP_URL).expect("bootstrap"),
+            None,
+            &origin,
+        ));
+    }
+
+    #[test]
+    fn allows_only_the_configured_dev_server_as_bootstrap() {
+        let origin = Mutex::new(None);
+        let dev_url = Url::parse("http://127.0.0.1:1430/").expect("dev URL");
+
+        assert!(is_allowed_navigation(
+            &Url::parse("http://127.0.0.1:1430/index.html").expect("dev bootstrap"),
+            Some(&dev_url),
+            &origin,
+        ));
+        assert!(!is_allowed_navigation(
+            &Url::parse("http://127.0.0.1:1431/index.html").expect("other dev server"),
+            Some(&dev_url),
+            &origin,
+        ));
+        assert!(!is_allowed_navigation(
+            &Url::parse(BOOTSTRAP_URL).expect("production bootstrap"),
+            Some(&dev_url),
             &origin,
         ));
     }
@@ -1033,13 +1092,16 @@ mod tests {
     #[test]
     fn command_origin_gate_accepts_only_bootstrap() {
         assert!(is_bootstrap_url(
-            &Url::parse(BOOTSTRAP_URL).expect("bootstrap")
+            &Url::parse(BOOTSTRAP_URL).expect("bootstrap"),
+            None,
         ));
         assert!(!is_bootstrap_url(
-            &Url::parse("http://127.0.0.1:49152/").expect("runtime")
+            &Url::parse("http://127.0.0.1:49152/").expect("runtime"),
+            None,
         ));
         assert!(!is_bootstrap_url(
-            &Url::parse("https://example.com/").expect("external")
+            &Url::parse("https://example.com/").expect("external"),
+            None,
         ));
     }
 }

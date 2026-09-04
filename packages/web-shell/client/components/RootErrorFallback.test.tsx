@@ -92,6 +92,19 @@ describe('RootErrorFallback', () => {
     );
   });
 
+  it('renders Russian copy when language is ru', () => {
+    const { container } = mount(
+      <RootErrorFallback
+        error={new Error('x')}
+        onRetry={() => {}}
+        language="ru"
+      />,
+    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Что-то пошло не так',
+    );
+  });
+
   it('catches an App-level render crash instead of white-screening', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     function BrokenApp(): React.ReactElement {

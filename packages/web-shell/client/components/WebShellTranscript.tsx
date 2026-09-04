@@ -48,7 +48,7 @@ const CHAT_SHELL_HORIZONTAL_PADDING = 40;
 export interface WebShellTranscriptProps {
   blocks: readonly DaemonTranscriptBlock[];
   theme?: WebShellTheme;
-  language?: 'en' | 'zh-CN' | 'zh' | 'zh-cn';
+  language?: WebShellLanguage | 'zh' | 'zh-cn' | 'ru-RU' | 'ru-ru' | 'ru_RU';
   className?: string;
   style?: CSSProperties;
   chatMaxWidth?: number;

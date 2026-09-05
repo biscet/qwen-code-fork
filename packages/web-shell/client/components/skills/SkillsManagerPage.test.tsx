@@ -21,6 +21,7 @@ const { skillsState, workspaceState } = vi.hoisted(() => ({
       loading: false,
       error: undefined,
       reload: vi.fn(),
+      getDetail: vi.fn(),
       setEnabled: vi.fn(),
       install: vi.fn(),
       remove: vi.fn(),
@@ -46,10 +47,10 @@ const { I18nProvider } = await import('../../i18n');
 let container: HTMLDivElement;
 let root: Root;
 
-async function renderPage(): Promise<void> {
+async function renderPage(language: 'en' | 'ru' = 'en'): Promise<void> {
   await act(async () => {
     root.render(
-      <I18nProvider language="en">
+      <I18nProvider language={language}>
         <SkillsManagerPage onClose={vi.fn()} onUseSkill={vi.fn()} />
       </I18nProvider>,
     );
@@ -115,6 +116,13 @@ beforeEach(() => {
   skillsState.current.loading = false;
   skillsState.current.error = undefined;
   skillsState.current.reload.mockReset();
+  skillsState.current.getDetail.mockReset().mockResolvedValue({
+    v: 1,
+    workspaceCwd: '/workspace/demo',
+    name: 'skill',
+    level: 'bundled',
+    markdown: '# Skill instructions',
+  });
   skillsState.current.setEnabled.mockReset().mockResolvedValue({
     changed: true,
   });
@@ -131,6 +139,66 @@ afterEach(() => {
 });
 
 describe('SkillsManagerPage', () => {
+  it('loads and renders the selected SKILL.md body on demand', async () => {
+    skillsState.current.skills = [
+      {
+        kind: 'skill',
+        status: 'ok',
+        name: 'coordinate',
+        description: 'Coordinate teammates',
+        level: 'bundled',
+        modelInvocable: true,
+      },
+    ];
+    skillsState.current.getDetail.mockResolvedValue({
+      v: 1,
+      workspaceCwd: '/workspace/demo',
+      name: 'coordinate',
+      level: 'bundled',
+      markdown: '# Coordinate Qwen Code Teammates\n\n## Build one bounded team',
+    });
+
+    await renderPage();
+    const skill = container.querySelector<HTMLElement>(
+      '[aria-label="coordinate"]',
+    );
+    expect(skill).not.toBeNull();
+    await act(async () => {
+      skill!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(skillsState.current.getDetail).toHaveBeenCalledWith({
+      name: 'coordinate',
+      level: 'bundled',
+    });
+    expect(container.textContent).toContain('Coordinate Qwen Code Teammates');
+    expect(container.textContent).toContain('Build one bounded team');
+  });
+
+  it('shows localized descriptions for bundled skills', async () => {
+    skillsState.current.skills = [
+      {
+        kind: 'skill',
+        status: 'ok',
+        name: 'computer-use',
+        description: 'Canonical English description',
+        level: 'bundled',
+        modelInvocable: true,
+      },
+    ];
+
+    await renderPage('ru');
+
+    expect(container.textContent).toContain(
+      'Управление интерфейсами локальных приложений через Computer Use',
+    );
+    expect(container.textContent).not.toContain(
+      'Canonical English description',
+    );
+  });
+
   it('does not treat the retired Skill toggle capability as settings support', async () => {
     workspaceState.current.capabilities.features = ['workspace_skill_toggle'];
     skillsState.current.skills = [

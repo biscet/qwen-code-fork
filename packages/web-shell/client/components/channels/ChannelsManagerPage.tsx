@@ -49,6 +49,7 @@ import {
 } from '../ui/alert-dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   Card,
   CardAction,
@@ -206,6 +207,8 @@ export function ChannelsManagerPage({
     enabled: supportsManagement,
     workspaceCwd: activeWorkspaceCwd,
   });
+  const showInitialLoading =
+    supportsManagement && snapshot === undefined && !error;
   const canManage =
     supportsManagement &&
     hasOperatorAuthority &&
@@ -428,7 +431,11 @@ export function ChannelsManagerPage({
   };
 
   return (
-    <div className={styles.page}>
+    <div
+      className={styles.page}
+      data-motion="detail"
+      aria-busy={showInitialLoading || undefined}
+    >
       <header className={styles.pageHeader}>
         <Button
           variant="ghost"
@@ -531,15 +538,8 @@ export function ChannelsManagerPage({
           </Alert>
         ) : null}
 
-        {loading && instances.length === 0 ? (
-          <div
-            className={styles.loadingState}
-            role="status"
-            aria-label={t('channels.loading')}
-          >
-            <Spinner />
-            {t('channels.loading')}
-          </div>
+        {showInitialLoading ? (
+          <ContentSkeleton label={t('channels.loading')} rows={4} />
         ) : null}
 
         {error ? (
@@ -570,7 +570,7 @@ export function ChannelsManagerPage({
               {t('channels.configured.description')}
             </p>
           </div>
-          {!loading && !error && instances.length === 0 ? (
+          {!showInitialLoading && !error && instances.length === 0 ? (
             <Empty className={styles.emptyState}>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -597,6 +597,7 @@ export function ChannelsManagerPage({
                 return (
                   <Card
                     key={channel.name}
+                    data-motion-item
                     size="sm"
                     className={styles.channelCard}
                   >

@@ -7,6 +7,7 @@ import type {
   DaemonSessionStatsStatus,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { isSessionDisconnectedError } from '../../utils/sessionErrors';
 import { formatDuration } from '../messages/StatsMessage';
 import {
@@ -205,7 +206,12 @@ export function TokenUsagePanel({
       ) : !sessionActions || sessionMismatch ? (
         <div className={styles.empty}>{t('tokenUsage.unavailable')}</div>
       ) : status === null ? (
-        <div className={styles.empty}>{t('common.loading')}</div>
+        <ContentSkeleton
+          className={styles.empty}
+          label={t('common.loading')}
+          variant="table"
+          rows={5}
+        />
       ) : !hasModels ? (
         <div className={styles.empty}>{t('tokenUsage.noData')}</div>
       ) : (

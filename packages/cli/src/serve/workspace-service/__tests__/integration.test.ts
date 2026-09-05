@@ -12,6 +12,8 @@
  */
 
 import * as path from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { createServeApp } from '../../server.js';
@@ -189,6 +191,7 @@ function createTestApp(opts?: {
   workspaceOverrides?: Partial<DaemonWorkspaceService>;
   knownClientIds?: string[];
   token?: string;
+  primaryWorkspaceTrusted?: boolean;
 }) {
   const workspace = mockWorkspaceService(opts?.workspaceOverrides);
   const bridge = minimalBridge({ knownClientIds: opts?.knownClientIds });
@@ -197,6 +200,9 @@ function createTestApp(opts?: {
     bridge,
     workspace,
     boundWorkspace: WS_BOUND,
+    ...(opts?.primaryWorkspaceTrusted !== undefined
+      ? { primaryWorkspaceTrusted: opts.primaryWorkspaceTrusted }
+      : {}),
   });
   return { app, workspace, bridge };
 }
@@ -303,6 +309,69 @@ describe('workspace service REST integration', () => {
       expect(ctx.route).toBe('GET /workspace/skills');
       expect(ctx.workspaceCwd).toBe(WS_BOUND);
       expect(ctx.originatorClientId).toBeUndefined();
+    });
+  });
+
+  describe('GET /workspace/skills/:name/detail', () => {
+    it('reads only the exact selected skill body on demand', async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), 'qwen-skill-route-'));
+      const skillPath = path.join(directory, 'SKILL.md');
+      await writeFile(
+        skillPath,
+        '---\nname: coordinate\ndescription: Coordinate\n---\n# Coordinate instructions\n',
+      );
+      try {
+        const { app } = createTestApp({
+          workspaceOverrides: {
+            getWorkspaceSkillsStatus: vi.fn().mockResolvedValue({
+              v: 1,
+              workspaceCwd: WS_BOUND,
+              initialized: true,
+              skills: [
+                {
+                  kind: 'skill',
+                  status: 'ok',
+                  name: 'coordinate',
+                  description: 'Coordinate',
+                  level: 'bundled',
+                  modelInvocable: true,
+                  installedPath: skillPath,
+                },
+              ],
+            }),
+          },
+        });
+
+        const res = await request(app)
+          .get('/workspace/skills/coordinate/detail?level=bundled')
+          .set(hostHeader());
+
+        expect(res.status).toBe(200);
+        expect(res.body.markdown).toBe('# Coordinate instructions');
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it('rejects untrusted, incomplete, and unknown identities', async () => {
+      const untrusted = createTestApp({ primaryWorkspaceTrusted: false });
+      const forbidden = await request(untrusted.app)
+        .get('/workspace/skills/review/detail?level=bundled')
+        .set(hostHeader());
+      expect(forbidden.status).toBe(403);
+
+      const { app } = createTestApp();
+      const incomplete = await request(app)
+        .get('/workspace/skills/review/detail?level=extension')
+        .set(hostHeader());
+      expect(incomplete.status).toBe(400);
+      expect(incomplete.body.code).toBe('invalid_extension_name');
+
+      const missing = await request(app)
+        .get('/workspace/skills/missing/detail?level=bundled')
+        .set(hostHeader());
+      expect(missing.status).toBe(404);
+      expect(missing.body.code).toBe('skill_not_found');
     });
   });
 

@@ -144,6 +144,7 @@ import {
 import { registerChannelNotifyRoutes } from './routes/channel-notify.js';
 import { registerGoalsRoutes } from './routes/goals.js';
 import { registerUsageStatsRoutes } from './routes/usage-stats.js';
+import { registerHomeChatRoutes } from './routes/homechat.js';
 import {
   collectBoundSessionIds,
   startScheduledTaskKeepalive,
@@ -186,6 +187,7 @@ import {
   type WorkspaceVoiceRouteDeps,
 } from './routes/workspace-voice.js';
 import { registerWorkspaceModelsRoutes } from './routes/workspace-models.js';
+import { registerWorkspaceModelSettingsRoutes } from './routes/workspace-model-settings.js';
 import { WorkspaceVoiceCoordinator } from './voice/workspace-voice-coordinator.js';
 import { registerA2uiActionRoutes } from './routes/a2ui-action.js';
 import { setRateLimiter } from './rate-limit.js';
@@ -2112,6 +2114,7 @@ export function createServeApp(
 
   app.use(
     daemonTelemetryMiddleware((req) => {
+      if (req.path.startsWith('/homechat/')) return undefined;
       const pluralMatch = req.path.match(/^\/workspaces\/([^/]+)/);
       const singularCatalogMatch = req.path.match(
         /^\/workspace\/([^/]+)\/(?:sessions|session-info)(?:\/|$)/,
@@ -2137,6 +2140,8 @@ export function createServeApp(
       return primaryBoundWorkspace;
     }, deps.recordDaemonRequest),
   );
+
+  registerHomeChatRoutes(app, { mutate });
 
   const buildWorkspaceCtx = createBuildWorkspaceCtx(primaryBoundWorkspace);
   const syncModelProvidersRuntime = async (
@@ -2326,6 +2331,7 @@ export function createServeApp(
     workspace: primaryWorkspace,
     mutate,
     sendBridgeError,
+    isWorkspaceTrusted: isPrimaryWorkspaceTrusted,
     captureGenerationAssertion: capturePrimaryGenerationAssertion,
   });
   registerWorkspaceQualifiedStatusRoutes(app, {
@@ -2821,6 +2827,11 @@ export function createServeApp(
     invalidateServeFeaturesCache,
   });
   if (deps.persistSettings) {
+    registerWorkspaceModelSettingsRoutes(app, {
+      workspaceRegistry,
+      mutate,
+      persistSettings: deps.persistSettings,
+    });
     registerWorkspaceModelsRoutes(app, {
       boundWorkspace: primaryBoundWorkspace,
       isWorkspaceTrusted: isPrimaryWorkspaceTrusted,

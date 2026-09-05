@@ -560,6 +560,8 @@ export interface ServeWorkspaceProviderModel {
     video?: boolean;
   };
   baseUrl?: string;
+  /** Registry endpoint identity before provider defaults; null means omitted. */
+  registryBaseUrl?: string | null;
   envKey?: string;
   isCurrent: boolean;
   isRuntime: boolean;

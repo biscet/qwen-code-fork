@@ -7,6 +7,10 @@ export function skillExtensionLabel(skill: DaemonWorkspaceSkillStatus): string {
   return skill.extensionDisplayName ?? skill.extensionName ?? '-';
 }
 
+export function skillIdentity(skill: DaemonWorkspaceSkillStatus): string {
+  return `${skill.level}:${skill.extensionName ?? ''}:${skill.name}`;
+}
+
 export function filterSkills(
   skills: readonly DaemonWorkspaceSkillStatus[],
   query: string,
@@ -24,8 +28,10 @@ export function filterSkills(
 }
 
 export function preserveSkillSelection(
-  name: string | null,
+  identity: string | null,
   skills: readonly DaemonWorkspaceSkillStatus[],
 ): string | null {
-  return name && skills.some((skill) => skill.name === name) ? name : null;
+  return identity && skills.some((skill) => skillIdentity(skill) === identity)
+    ? identity
+    : null;
 }

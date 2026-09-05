@@ -25,6 +25,7 @@ import {
 } from '../../utils/clipboard';
 import { useCopiedFlash } from '../../hooks/useCopiedFlash';
 import { timeAgo } from '../../utils/timeAgo';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { DialogShell } from './DialogShell';
 import styles from './GitLogDialog.module.css';
 
@@ -111,7 +112,7 @@ function CommitRow({
     if (loading) {
       detailBody = (
         <div className={styles.commitDetail}>
-          <span className={styles.fileBinary}>{t('gitLog.loading')}</span>
+          <ContentSkeleton label={t('gitLog.loading')} rows={3} />
         </div>
       );
     } else if (error) {
@@ -299,7 +300,13 @@ export function GitLogContent({
 
   let body: ReactNode;
   if (loading) {
-    body = <div className={styles.placeholder}>{t('gitLog.loading')}</div>;
+    body = (
+      <ContentSkeleton
+        className={styles.placeholder}
+        label={t('gitLog.loading')}
+        rows={5}
+      />
+    );
   } else if (error) {
     body = <div className={styles.placeholder}>{t('gitLog.error')}</div>;
   } else if (!log || !log.available) {

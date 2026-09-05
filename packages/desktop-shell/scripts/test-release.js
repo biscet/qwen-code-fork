@@ -691,7 +691,8 @@ function testUpdaterMirrorConfiguration() {
     main,
     /app\.updater_builder\(\)\s*\.timeout\(UPDATE_CHECK_TIMEOUT\)/,
   );
-  assert.equal((main.match(/check_for_update\(&app\)/g) ?? []).length, 2);
+  assert.equal((main.match(/check_for_update\(&app\)/g) ?? []).length, 1);
+  assert.doesNotMatch(main, /check_updates_silently/);
 }
 
 function testBootstrapBridgeConfiguration() {
@@ -720,6 +721,8 @@ function testBootstrapBridgeConfiguration() {
   assert.deepEqual(capability.permissions, [
     'core:event:allow-listen',
     'core:event:allow-unlisten',
+    'core:window:allow-start-dragging',
+    'core:window:allow-internal-toggle-maximize',
   ]);
 
   const webShellCapability = JSON.parse(
@@ -739,6 +742,8 @@ function testBootstrapBridgeConfiguration() {
   });
   assert.deepEqual(webShellCapability.windows, ['main']);
   assert.deepEqual(webShellCapability.permissions, [
+    'core:window:allow-start-dragging',
+    'core:window:allow-internal-toggle-maximize',
     {
       identifier: 'opener:allow-open-url',
       allow: [{ url: 'http://*' }, { url: 'https://*' }, { url: 'mailto:*' }],

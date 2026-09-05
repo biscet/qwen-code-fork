@@ -795,6 +795,9 @@ describe('ChannelPairingRequests', () => {
     await renderRequests({ channelName: 'other-bot', list });
 
     expect(container.textContent).not.toContain('ABCD1234');
+    expect(
+      container.querySelector('[data-slot="content-skeleton"]'),
+    ).not.toBeNull();
   });
 
   it('does not show approvals from the previous Channel while loading', async () => {
@@ -817,5 +820,8 @@ describe('ChannelPairingRequests', () => {
 
     expect(container.textContent).not.toContain('paired-user');
     expect(container.textContent).not.toContain('group-7');
+    expect(
+      container.querySelector('[data-slot="content-skeleton"]'),
+    ).not.toBeNull();
   });
 });

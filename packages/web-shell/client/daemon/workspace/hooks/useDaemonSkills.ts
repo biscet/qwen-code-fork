@@ -20,6 +20,7 @@ export function useDaemonSkills(options: DaemonResourceOptions = {}) {
     ...result,
     status: result.data,
     skills: result.data?.skills ?? [],
+    getDetail: workspaceActions.loadSkillDetail,
     setEnabled: workspaceActions.setWorkspaceSkillEnabled,
     install: workspaceActions.installWorkspaceSkill,
     remove: workspaceActions.deleteWorkspaceSkill,

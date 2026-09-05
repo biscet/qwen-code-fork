@@ -21,6 +21,7 @@ import {
 import { resolveFenceLanguage } from '../messages/Markdown';
 import { languageForPath } from '../messages/ToolGroup';
 import { sanitizeControlChars } from '../messages/toolFormatting';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { DialogShell } from './DialogShell';
 import styles from './GitDiffDialog.module.css';
 
@@ -336,7 +337,11 @@ function DiffFileRow({
           {file.isBinary ? (
             <div className={styles.filePlaceholder}>{t('gitDiff.binary')}</div>
           ) : loading ? (
-            <div className={styles.filePlaceholder}>{t('gitDiff.loading')}</div>
+            <ContentSkeleton
+              className={styles.filePlaceholder}
+              label={t('gitDiff.loading')}
+              rows={3}
+            />
           ) : error ? (
             <div className={styles.filePlaceholder}>
               {t('gitDiff.fileError')}
@@ -410,7 +415,13 @@ export function GitDiffContent({
 
   let body: ReactNode;
   if (loading) {
-    body = <div className={styles.placeholder}>{t('gitDiff.loading')}</div>;
+    body = (
+      <ContentSkeleton
+        className={styles.placeholder}
+        label={t('gitDiff.loading')}
+        rows={5}
+      />
+    );
   } else if (error) {
     body = <div className={styles.placeholder}>{t('gitDiff.error')}</div>;
   } else if (!diff || !diff.available) {

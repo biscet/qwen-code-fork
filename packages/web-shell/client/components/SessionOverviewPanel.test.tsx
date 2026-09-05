@@ -38,6 +38,7 @@ let connectionState: {
 };
 let workspaceCapabilities: DaemonCapabilities | undefined;
 let sessionsState: {
+  data?: DaemonSessionSummary[];
   sessions: DaemonSessionSummary[];
   loading: boolean;
   error?: Error;
@@ -189,7 +190,7 @@ beforeEach(() => {
     workspaceCwd: '/w',
   };
   workspaceCapabilities = undefined;
-  sessionsState = { sessions: [], loading: false };
+  sessionsState = { data: [], sessions: [], loading: false };
   statusState = { report: { full: { sessions: [] } } };
   otherWorkspaceSessions = {};
   scopedSessionsOptions = {};
@@ -509,6 +510,15 @@ describe('deriveSessionCards', () => {
 });
 
 describe('SessionOverviewPanel', () => {
+  it('shows a table skeleton before the first session page resolves', () => {
+    sessionsState.data = undefined;
+    render();
+    expect(
+      container!.querySelector('[data-slot="content-skeleton"]'),
+    ).not.toBeNull();
+    expect(container!.textContent).toContain('Loading sessions');
+  });
+
   it('renders an empty state when there are no sessions', () => {
     render();
     const empty = container!.querySelector('[data-slot="data-table-empty"]');

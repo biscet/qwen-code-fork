@@ -67,6 +67,19 @@
   gap: 6px;
 }
 
+.disclosureButton {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  margin-inline-start: -6px;
+  color: var(--muted-foreground);
+}
+
+.disclosureButton svg {
+  width: 14px;
+  height: 14px;
+}
+
 .nameLabel {
   min-width: 0;
   overflow: hidden;
@@ -102,4 +115,187 @@
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.workspaceRow {
+  cursor: pointer;
+}
+
+.workspaceRowExpanded {
+  background: color-mix(in srgb, var(--muted) 42%, var(--background));
+}
+
+.sessionsPanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0 16px 12px 40px;
+  border-block-start: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 22%, var(--background));
+}
+
+.sessionsToolbar,
+.selectionToolbar {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+}
+
+.sessionsToolbar {
+  justify-content: space-between;
+  border-block-end: 1px solid var(--border);
+}
+
+.selectAll,
+.selectionToolbar {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.selectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.allActions,
+.sessionActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.allActions svg,
+.sessionActions svg {
+  width: 14px;
+  height: 14px;
+}
+
+.selectionToolbar {
+  border-block-end: 1px solid var(--border);
+}
+
+.selectionToolbar > :first-child {
+  margin-inline-end: 2px;
+}
+
+.deleteAction {
+  color: var(--destructive);
+}
+
+.deleteAction:hover {
+  color: var(--destructive);
+}
+
+.sessionList {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sessionRow {
+  display: grid;
+  min-width: 0;
+  min-height: 42px;
+  grid-template-columns: 18px minmax(180px, 1fr) minmax(130px, auto) 58px;
+  align-items: center;
+  gap: 10px;
+  border-block-end: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  outline: none;
+}
+
+.sessionRow:hover {
+  background: color-mix(in srgb, var(--muted) 44%, transparent);
+}
+
+.sessionOpen {
+  min-width: 0;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  outline: none;
+}
+
+.sessionOpen:focus-visible {
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.sessionOpen:disabled {
+  cursor: default;
+}
+
+.sessionDetails,
+.sessionMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessionTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionId,
+.sessionMeta {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.sessionId {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+}
+
+.sessionMeta {
+  justify-content: flex-end;
+}
+
+.sessionActions {
+  justify-content: flex-end;
+}
+
+.showMore {
+  align-self: flex-start;
+  margin-block-start: 8px;
+  color: var(--muted-foreground);
+}
+
+.sessionsEmpty,
+.sessionsLoading,
+.sessionsError {
+  padding: 14px 0 2px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.sessionsLoadFailure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0 0;
+  color: var(--destructive);
+  font-size: 12px;
+}
+
+.sessionsLoading {
+  display: grid;
+  gap: 8px;
+}
+
+.sessionsError {
+  color: var(--destructive);
 }

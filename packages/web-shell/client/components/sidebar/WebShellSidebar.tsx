@@ -64,6 +64,7 @@ import { WebShellThemeId, type WebShellTheme } from '../../themeContext';
 import { useI18n } from '../../i18n';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Field, FieldGroup, FieldLabel } from '../ui/field';
 import {
@@ -82,7 +83,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { HomeCodeSpinner, HomeCodeWordmark } from '../branding/HomeCodeBrand';
+import { HomeCodeSpinner } from '../branding/HomeCodeBrand';
 import { formatDateTime } from '../../utils/formatDateTime';
 import { DialogShell } from '../dialogs/DialogShell';
 import { useWorkspaceRemoval } from '../workspaces/useWorkspaceRemoval';
@@ -4696,9 +4697,14 @@ export function WebShellSidebar({
     // Gate notices on the resource, not the filtered view: background
     // refreshes set loading/error while retaining the settled page, so a
     // filter-empty or empty-but-settled view must not flash or swap to retry.
-    if (loading && sessionsPage === undefined) {
+    if (sessionsPage === undefined && filteredSessions.length === 0 && !error) {
       return (
-        <div className={styles.notice}>{t('sidebar.loadingSessions')}</div>
+        <ContentSkeleton
+          className={styles.notice}
+          label={t('sidebar.loadingSessions')}
+          variant="navigation"
+          rows={5}
+        />
       );
     }
     if (error && sessionsPage === undefined) {
@@ -4808,7 +4814,6 @@ export function WebShellSidebar({
     groupBusy,
     handleDeleteGroup,
     handleRenameGroup,
-    loading,
     organizationEnabled,
     pinnedExpanded,
     pinnedSessions,
@@ -4868,7 +4873,12 @@ export function WebShellSidebar({
     let content: ReactNode;
     if (effectiveArchivedLoading && allArchivedSessions.length === 0) {
       content = (
-        <div className={styles.notice}>{t('sidebar.loadingSessions')}</div>
+        <ContentSkeleton
+          className={styles.notice}
+          label={t('sidebar.loadingSessions')}
+          variant="navigation"
+          rows={3}
+        />
       );
     } else if (effectiveArchivedError && allArchivedSessions.length === 0) {
       content = retry;
@@ -4917,6 +4927,7 @@ export function WebShellSidebar({
           )}
           type="button"
           data-testid="macos-desktop-sidebar-toggle"
+          style={{ left: collapsed ? 76 : sidebarWidth - 40 }}
           title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
           aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
           aria-expanded={!collapsed}
@@ -5254,16 +5265,7 @@ export function WebShellSidebar({
             className={styles.topRow}
             data-tauri-drag-region={macOSDesktop ? true : undefined}
           >
-            {shouldRenderBrand &&
-              (branding?.render
-                ? branding.render()
-                : !collapsed && (
-                    <HomeCodeWordmark
-                      className={styles.brandWordmark}
-                      role="img"
-                      aria-label="HomeCode"
-                    />
-                  ))}
+            {shouldRenderBrand && branding && branding.render?.()}
           </div>
         )}
         {primaryNavItems.has('newTask') && (

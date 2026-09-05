@@ -5,6 +5,13 @@ body,
   margin: 0;
 }
 
+.homecode-window-drag-region {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: 8px;
+}
+
 /*
  * Mobile overscroll / safe-area fix:
  *

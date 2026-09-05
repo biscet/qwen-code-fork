@@ -63,6 +63,7 @@ import {
 import { ErrorBoundary } from './ErrorBoundary';
 import { SessionDetailsTooltip } from './sidebar/SessionDetailsTooltip';
 import { Button } from './ui/button';
+import { ContentSkeleton } from './ui/content-skeleton';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { Input } from './ui/input';
@@ -411,15 +412,20 @@ function SessionOverviewPanelInner({
     groupWorkspaceCwds: [],
   });
 
-  const { sessions, loading, error, reload } = useScopedSessions(workspaceCwd, {
-    autoLoad: true,
-    pollIntervalMs: liveStateActive ? undefined : LIST_POLL_MS,
-    pageSize: SESSION_LIST_PAGE_SIZE,
-    archiveState: 'active',
-    ...(organizationEnabled
-      ? { view: 'organized' as const, group: 'all' }
-      : {}),
-  });
+  const { data, sessions, loading, error, reload } = useScopedSessions(
+    workspaceCwd,
+    {
+      autoLoad: true,
+      pollIntervalMs: liveStateActive ? undefined : LIST_POLL_MS,
+      pageSize: SESSION_LIST_PAGE_SIZE,
+      archiveState: 'active',
+      ...(organizationEnabled
+        ? { view: 'organized' as const, group: 'all' }
+        : {}),
+    },
+  );
+  const showInitialLoading =
+    sessions.length === 0 && data === undefined && !error;
   // Fold in the live sessions of the daemon's other workspaces (empty on a
   // single-workspace daemon), so the overview is mission control for every
   // workspace, not just the primary one.
@@ -1602,24 +1608,32 @@ function SessionOverviewPanelInner({
           {t('sessionsOverview.loadFailed')}: {error.message}
         </div>
       )}
-      <TooltipProvider delayDuration={300}>
-        <DataTable
-          table={table}
-          emptyContent={
-            cards.length > 0
-              ? t('sessionsOverview.noData')
-              : loading
-                ? t('sessionsOverview.loading')
-                : error
-                  ? `${t('sessionsOverview.loadFailed')}: ${error.message}`
-                  : t('sessionsOverview.empty')
-          }
-          className={styles.tableViewport}
-          rowClassName="cursor-pointer"
-          onRowClick={(row) => row.toggleSelected()}
-          data-web-shell-session-table-viewport
+      {showInitialLoading ? (
+        <ContentSkeleton
+          label={t('sessionsOverview.loading')}
+          variant="table"
+          rows={6}
         />
-      </TooltipProvider>
+      ) : (
+        <TooltipProvider delayDuration={300}>
+          <DataTable
+            table={table}
+            emptyContent={
+              cards.length > 0
+                ? t('sessionsOverview.noData')
+                : loading
+                  ? t('sessionsOverview.loading')
+                  : error
+                    ? `${t('sessionsOverview.loadFailed')}: ${error.message}`
+                    : t('sessionsOverview.empty')
+            }
+            className={styles.tableViewport}
+            rowClassName="cursor-pointer"
+            onRowClick={(row) => row.toggleSelected()}
+            data-web-shell-session-table-viewport
+          />
+        </TooltipProvider>
+      )}
 
       {filteredCards.length > 0 && (
         <div

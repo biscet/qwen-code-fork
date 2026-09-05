@@ -915,6 +915,38 @@ export class ContentGenerationPipeline {
     const reasoningDisabled =
       request.config?.thinkingConfig?.includeThoughts === false ||
       this.contentGeneratorConfig.reasoning === false;
+    const configuredRequest = providerRequest as unknown as Record<
+      string,
+      unknown
+    >;
+    const configuredTemplate = asObject(
+      configuredRequest['chat_template_kwargs'],
+    );
+    if (
+      !isDashScope &&
+      !thinkingMandatory &&
+      model === this.contentGeneratorConfig.model.toLowerCase() &&
+      configuredTemplate &&
+      (typeof configuredTemplate['enable_thinking'] === 'boolean' ||
+        typeof configuredTemplate['reasoning_effort'] === 'string')
+    ) {
+      const reasoning = this.contentGeneratorConfig.reasoning;
+      const template = { ...configuredTemplate };
+      if (reasoningDisabled) {
+        template['enable_thinking'] = false;
+        delete template['reasoning_effort'];
+      } else if (reasoning) {
+        template['enable_thinking'] = true;
+        if (reasoning.effort) {
+          const effort =
+            asObject(configuredRequest['reasoning'])?.['effort'] ??
+            (reasoning.effort === 'max' ? 'xhigh' : reasoning.effort);
+          template['reasoning_effort'] = effort;
+          configuredRequest['reasoning_effort'] = effort;
+        }
+      }
+      configuredRequest['chat_template_kwargs'] = template;
+    }
     if (reasoningDisabled) {
       const typed = providerRequest as unknown as Record<string, unknown>;
       // Provider buildRequest doesn't auto-inject `enable_thinking`, so a

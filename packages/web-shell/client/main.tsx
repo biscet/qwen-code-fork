@@ -8,6 +8,11 @@ import {
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RootErrorFallback } from './components/RootErrorFallback';
 import { WorkspaceSessionProvider } from './components/WorkspaceSessionProvider';
+import { HomeChatApp } from './components/homechat/HomeChatApp';
+import {
+  HomeProductSwitcher,
+  type HomeProduct,
+} from './components/branding/HomeProductSwitcher';
 import {
   getDaemonBaseUrl,
   getDaemonToken,
@@ -26,6 +31,26 @@ const STANDALONE_COMPOSER_TOOLBAR_ADDITIONS = ['addMenu'] as const;
 
 const LANGUAGE_STORAGE_KEY = 'qwen-code-web-shell-language';
 const THEME_STORAGE_KEY = 'qwen-code-web-shell-theme';
+const PRODUCT_STORAGE_KEY = 'homecode-product';
+const DESKTOP_VERSION = '1.3.0';
+
+function readStoredProduct(): HomeProduct {
+  try {
+    return window.localStorage.getItem(PRODUCT_STORAGE_KEY) === 'homechat'
+      ? 'homechat'
+      : 'homecode';
+  } catch {
+    return 'homecode';
+  }
+}
+
+function storeProduct(product: HomeProduct): void {
+  try {
+    window.localStorage.setItem(PRODUCT_STORAGE_KEY, product);
+  } catch {
+    // Keep the selected product for this page even when storage is unavailable.
+  }
+}
 
 function parseTheme(value: string | null): WebShellTheme | undefined {
   if (value === WebShellThemeId.Dark || value === WebShellThemeId.Light) {
@@ -104,9 +129,13 @@ function replaceStandaloneSessionUrl(
   sessionId: string | undefined,
   workspaceId?: string,
   sessionContext?: DaemonProductSessionContext,
+  currentPathname?: string,
 ): void {
   const url = new URL(window.location.href);
-  url.pathname = buildSessionPathname(url.pathname, sessionId);
+  url.pathname = buildSessionPathname(
+    currentPathname ?? url.pathname,
+    sessionId,
+  );
   if (
     sessionContext?.kind === 'standalone' ||
     sessionContext?.kind === 'live'
@@ -132,8 +161,26 @@ function replaceStandaloneSessionUrl(
   window.history.replaceState(null, '', url);
 }
 
+function replaceHomeChatUrl(): void {
+  const url = new URL(window.location.href);
+  url.pathname = '/homechat';
+  url.searchParams.delete('workspace');
+  url.searchParams.delete('context');
+  window.history.replaceState(null, '', url);
+}
+
 export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
+  const macOSDesktop = Boolean(
+    (
+      window as Window & {
+        __HOMECODE_MACOS_DESKTOP__?: boolean;
+      }
+    ).__HOMECODE_MACOS_DESKTOP__,
+  );
   const [theme, setTheme] = useState<WebShellTheme>(() => getInitialTheme());
+  const [product, setProduct] = useState<HomeProduct>(() =>
+    readStoredProduct(),
+  );
   const [language, setLanguage] = useState<WebShellLanguage>(() =>
     getInitialLanguage(),
   );
@@ -160,6 +207,9 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
       meta.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808');
     }
   }, [theme]);
+  useEffect(() => {
+    if (product === 'homechat') replaceHomeChatUrl();
+  }, [product]);
   const handleThemeChange = useCallback((nextTheme: WebShellTheme) => {
     setTheme(nextTheme);
     storeTheme(nextTheme);
@@ -168,6 +218,23 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
     setLanguage(nextLanguage);
     storeLanguage(nextLanguage);
   }, []);
+  const handleProductChange = useCallback(
+    (nextProduct: HomeProduct) => {
+      setProduct(nextProduct);
+      storeProduct(nextProduct);
+      if (nextProduct === 'homechat') {
+        replaceHomeChatUrl();
+      } else {
+        replaceStandaloneSessionUrl(
+          sessionId,
+          workspaceId,
+          sessionContext,
+          '/',
+        );
+      }
+    },
+    [sessionContext, sessionId, workspaceId],
+  );
   const handleSessionIdChange = useCallback(
     (
       nextSessionId?: string,
@@ -199,45 +266,70 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
         <RootErrorFallback error={error} onRetry={reset} language={language} />
       )}
     >
-      <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
-        <WorkspaceSessionProvider
-          sessionId={sessionId}
-          workspaceId={workspaceId}
-          sessionContext={sessionContext}
-          webShellProps={{
-            theme,
-            onThemeChange: handleThemeChange,
-            language,
-            onLanguageChange: handleLanguageChange,
-            onSessionIdChange: handleSessionIdChange,
-            sidebar: {
-              showSessionSourceSwitch: false,
-              showWorkspaceGit: false,
-              primaryNav: {
-                items: ['newTask', 'plugins', 'scheduledTasks'],
-              },
-              footer: {
-                items: ['settings', 'daemonStatus', 'version'],
-                layout: 'stacked',
-                versionLabel: '1.2.0',
-              },
-            },
-            header: {
-              items: ['title', 'environment', 'rightPanel', 'tokenUsage'],
-            },
-            rightPanel: {
-              items: ['review', 'sideTask', 'terminal'],
-            },
-            environmentPanel: {
-              items: ['environment', 'subagents', 'backgroundTasks'],
-            },
-            compactThinking: true,
-            markdownTableMode: 'advanced',
-            composerToolbarAdditionalActions:
-              STANDALONE_COMPOSER_TOOLBAR_ADDITIONS,
-          }}
+      {product === 'homechat' ? (
+        <HomeChatApp
+          baseUrl={baseUrl}
+          token={daemonToken}
+          theme={theme}
+          versionLabel={DESKTOP_VERSION}
+          onProductChange={handleProductChange}
         />
-      </DaemonWorkspaceProvider>
+      ) : (
+        <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
+          {macOSDesktop && (
+            <div
+              className="homecode-window-drag-region"
+              data-tauri-drag-region
+              aria-hidden="true"
+            />
+          )}
+          <WorkspaceSessionProvider
+            sessionId={sessionId}
+            workspaceId={workspaceId}
+            sessionContext={sessionContext}
+            webShellProps={{
+              theme,
+              onThemeChange: handleThemeChange,
+              language,
+              onLanguageChange: handleLanguageChange,
+              onSessionIdChange: handleSessionIdChange,
+              sidebar: {
+                showSessionSourceSwitch: false,
+                showWorkspaceGit: false,
+                branding: {
+                  render: () => (
+                    <HomeProductSwitcher
+                      product="homecode"
+                      onProductChange={handleProductChange}
+                    />
+                  ),
+                },
+                primaryNav: {
+                  items: ['newTask', 'plugins', 'scheduledTasks'],
+                },
+                footer: {
+                  items: ['settings', 'daemonStatus', 'version'],
+                  layout: 'stacked',
+                  versionLabel: DESKTOP_VERSION,
+                },
+              },
+              header: {
+                items: ['title', 'environment', 'rightPanel', 'tokenUsage'],
+              },
+              rightPanel: {
+                items: ['review', 'sideTask', 'terminal'],
+              },
+              environmentPanel: {
+                items: ['environment', 'subagents', 'backgroundTasks'],
+              },
+              compactThinking: true,
+              markdownTableMode: 'advanced',
+              composerToolbarAdditionalActions:
+                STANDALONE_COMPOSER_TOOLBAR_ADDITIONS,
+            }}
+          />
+        </DaemonWorkspaceProvider>
+      )}
     </ErrorBoundary>
   );
 }

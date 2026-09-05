@@ -2406,6 +2406,76 @@ describe('ContentGenerationPipeline', () => {
       expect(apiCall.enable_thinking).toBeUndefined();
     });
 
+    it.each([
+      false,
+      { effort: 'low' },
+      { effort: 'xhigh' },
+      { effort: 'max' },
+    ] as const)(
+      'applies configured alias reasoning %j to the chat template and wire effort',
+      async (reasoning) => {
+        mockContentGeneratorConfig = {
+          ...mockContentGeneratorConfig,
+          baseUrl: 'http://localhost:8080/v1',
+          model: 'local-coder',
+          reasoning,
+          samplingParams: {
+            reasoning_effort: 'medium',
+            chat_template_kwargs: {
+              enable_thinking: true,
+              reasoning_effort: 'medium',
+              preserve_thinking: true,
+            },
+          },
+        } as ContentGeneratorConfig;
+        pipeline = new ContentGenerationPipeline({
+          ...mockConfig,
+          contentGeneratorConfig: mockContentGeneratorConfig,
+        });
+        const realProvider = new DefaultOpenAICompatibleProvider(
+          mockContentGeneratorConfig,
+          {
+            getContentGeneratorConfig: () => ({ enableCacheControl: false }),
+          } as unknown as Config,
+        );
+        (mockProvider.buildRequest as Mock).mockImplementation((req) =>
+          realProvider.buildRequest(req, 'chat'),
+        );
+        (mockConverter.convertLlmRequestToOpenAI as Mock).mockReturnValue([
+          { role: 'user', content: 'Hello' },
+        ]);
+        (mockConverter.convertOpenAIResponseToLlm as Mock).mockReturnValue(
+          new GenerateContentResponse(),
+        );
+        (mockClient.chat.completions.create as Mock).mockResolvedValue({
+          id: 'r',
+          choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+        });
+
+        await pipeline.execute(
+          {
+            model: 'local-coder',
+            contents: [{ parts: [{ text: 'Hello' }], role: 'user' }],
+          },
+          'chat',
+        );
+
+        const apiCall = (mockClient.chat.completions.create as Mock).mock
+          .calls[0][0];
+        const expectedEffort = reasoning
+          ? reasoning.effort === 'max'
+            ? 'xhigh'
+            : reasoning.effort
+          : undefined;
+        expect(apiCall.chat_template_kwargs).toEqual({
+          enable_thinking: reasoning !== false,
+          ...(expectedEffort ? { reasoning_effort: expectedEffort } : {}),
+          preserve_thinking: true,
+        });
+        expect(apiCall.reasoning_effort).toBe(expectedEffort);
+      },
+    );
+
     it('disables coder-model thinking via chat_template_kwargs on a non-DashScope endpoint', async () => {
       // `coder-model` is the QWEN_OAUTH default, but a user can point it at a
       // self-hosted endpoint. The `model === 'coder-model'` arm must reach the

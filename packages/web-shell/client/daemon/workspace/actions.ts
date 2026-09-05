@@ -511,6 +511,18 @@ export function createDaemonWorkspaceActions({
       );
     },
 
+    async loadSkillDetail(skill) {
+      const workspace = requireWorkspaceClient(
+        getClient,
+        getWorkspaceCwd,
+        'Load skill detail failed',
+      );
+      return withActionTimeout(
+        workspace.workspaceSkillDetail(skill),
+        'Load skill detail timed out',
+      );
+    },
+
     async setWorkspaceSkillEnabled(skillName, enabled) {
       const client = requireClient(getClient, 'Set skill enabled failed');
       return withActionTimeout(

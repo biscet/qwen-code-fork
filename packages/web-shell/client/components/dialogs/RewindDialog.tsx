@@ -5,6 +5,7 @@ import type {
 } from '@qwen-code/sdk/daemon';
 import { useI18n } from '../../i18n';
 import { useListboxKeyboard } from '../../hooks/useListboxKeyboard';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { dp } from './dialogStyles';
 import styles from './RewindDialog.module.css';
 
@@ -156,7 +157,13 @@ export function RewindDialog({
   }, [loading, items.length]);
 
   if (loading) {
-    return <div className={dp('picker-empty')}>{t('rewind.loading')}</div>;
+    return (
+      <ContentSkeleton
+        className={dp('picker-empty')}
+        label={t('rewind.loading')}
+        rows={4}
+      />
+    );
   }
 
   if (items.length === 0) {

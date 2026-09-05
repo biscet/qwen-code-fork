@@ -1992,6 +1992,19 @@ export interface DaemonWorkspaceSkillsStatus {
   errors?: DaemonStatusCell[];
 }
 
+export interface DaemonWorkspaceSkillIdentity {
+  name: string;
+  level: DaemonSkillLevel;
+  extensionName?: string;
+}
+
+export interface DaemonWorkspaceSkillDetail
+  extends DaemonWorkspaceSkillIdentity {
+  v: 1;
+  workspaceCwd: string;
+  markdown: string;
+}
+
 export interface DaemonWorkspaceAcpStatusResult {
   channelLive: boolean;
 }
@@ -2041,6 +2054,8 @@ export interface DaemonWorkspaceProviderModel {
     video?: boolean;
   };
   baseUrl?: string;
+  /** Registry endpoint identity before provider defaults; null means omitted. */
+  registryBaseUrl?: string | null;
   envKey?: string;
   isCurrent: boolean;
   isRuntime: boolean;
@@ -3231,6 +3246,72 @@ export interface DaemonSettingUpdateResult {
   scope: 'workspace' | 'user';
   value: unknown;
   requiresRestart: boolean;
+}
+
+export type DaemonModelSettingsScope = 'user' | 'workspace';
+
+export interface DaemonModelSettingsTarget {
+  providerId: string;
+  modelId: string;
+  baseUrl?: string;
+}
+
+export interface DaemonModelSettingsFields extends DaemonModelSettingsTarget {
+  name: string;
+  envKey?: string;
+  contextWindowSize?: number;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  thinking?: boolean;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+}
+
+export interface DaemonModelSettingsEntry extends DaemonModelSettingsFields {
+  authType: string;
+  hasApiKey: boolean;
+  supportedEfforts?: ReadonlyArray<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+}
+
+export interface DaemonModelSettingsSnapshot {
+  v: 1;
+  workspaceCwd: string;
+  scope: DaemonModelSettingsScope;
+  models: DaemonModelSettingsEntry[];
+}
+
+export interface DaemonModelSettingsSaveRequest {
+  scope: DaemonModelSettingsScope;
+  target?: DaemonModelSettingsTarget;
+  model: DaemonModelSettingsFields & { apiKey?: string };
+}
+
+export interface DaemonModelSettingsSaveResult
+  extends DaemonModelSettingsSnapshot {
+  runtimeSync: DaemonModelProviderRuntimeSyncResult;
+}
+
+export interface DaemonModelSettingsDeleteRequest {
+  scope: DaemonModelSettingsScope;
+  target: DaemonModelSettingsTarget;
+}
+
+export interface DaemonModelLimitsCheckRequest {
+  scope: DaemonModelSettingsScope;
+  target: DaemonModelSettingsTarget;
+}
+
+export interface DaemonModelLimitsCheckResult {
+  checkedAt: string;
+  status: 'ok' | 'limited' | 'unavailable';
+  windows: Array<{
+    label: string;
+    limit?: number;
+    remaining?: number;
+    resetAt?: string;
+    period?: 'day' | 'week' | 'minute';
+  }>;
+  message?: string;
 }
 
 /** Identifies a configured model to remove from `modelProviders`. */

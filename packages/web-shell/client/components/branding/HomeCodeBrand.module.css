@@ -15,6 +15,10 @@
   fill: var(--homecode-wordmark-code, #f1efef);
 }
 
+.wordmarkChat {
+  fill: var(--homechat-wordmark-chat, #b9dcf7);
+}
+
 .wordmarkInset {
   fill: var(--homecode-wordmark-inset, #666464);
 }
@@ -39,6 +43,14 @@
 .markPixel,
 .loaderPixel {
   fill: var(--homecode-mark-pixel, #77777a);
+}
+
+.chatBubble {
+  fill: var(--homechat-mark-bubble, #d8d8da);
+}
+
+.chatPixel {
+  fill: var(--homechat-mark-pixel, #7cb6df);
 }
 
 .loaderBracketLeft {

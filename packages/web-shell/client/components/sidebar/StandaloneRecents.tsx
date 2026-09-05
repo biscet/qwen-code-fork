@@ -28,6 +28,7 @@ import {
 import { useI18n } from '../../i18n';
 import { DialogShell } from '../dialogs/DialogShell';
 import { Button } from '../ui/button';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -420,11 +421,6 @@ export function StandaloneRecents({
             onClick={() => setExpanded((value) => !value)}
           >
             <span>{t('sidebar.recents')}</span>
-            {loading && (
-              <span className={styles.recentsLoading}>
-                {t('common.loading')}
-              </span>
-            )}
             {expanded ? (
               <ChevronDownIcon aria-hidden="true" />
             ) : (
@@ -434,6 +430,13 @@ export function StandaloneRecents({
         </div>
         {expanded && (
           <div className={styles.recentsContent}>
+            {loading && active.length === 0 ? (
+              <ContentSkeleton
+                label={t('common.loading')}
+                variant="navigation"
+                rows={5}
+              />
+            ) : null}
             <div className="flex flex-col gap-0.5">
               {active.map((session) => {
                 const isCurrent = session.sessionId === currentSessionId;

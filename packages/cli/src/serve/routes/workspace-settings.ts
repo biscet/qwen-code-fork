@@ -34,6 +34,7 @@ import {
 import type { WorkspaceRegistry } from '../workspace-registry.js';
 
 const TUI_ONLY_SETTINGS = new Set([
+  'general.enableAutoUpdate',
   'general.vimMode',
   'general.terminalBell',
   'general.notificationMode',

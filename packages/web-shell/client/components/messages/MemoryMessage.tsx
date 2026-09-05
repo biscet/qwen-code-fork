@@ -5,6 +5,7 @@ import {
   type DaemonWorkspaceMemoryFile,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import styles from './MemoryMessage.module.css';
 
 type MemoryMode = 'view' | 'edit';
@@ -46,9 +47,8 @@ export function MemoryMessage({
   onMessage,
 }: MemoryMessageProps) {
   const { t } = useI18n();
-  const { files, loading, error, readFile, reload, writeMemory } = useMemory({
-    autoLoad: true,
-  });
+  const { status, files, loading, error, readFile, reload, writeMemory } =
+    useMemory({ autoLoad: true });
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const loadSeqRef = useRef(0);
   const [selectedScope, setSelectedScope] = useState<MemoryScope>('workspace');
@@ -203,8 +203,19 @@ export function MemoryMessage({
   const path = selectedEntry?.file?.path ?? selectedEntry?.fallbackPath ?? '';
   const statusText = message ?? (loading ? t('memory.loading') : null);
 
+  if (status === undefined && !error && files.length === 0) {
+    return (
+      <ContentSkeleton
+        className={styles.page}
+        label={t('memory.loading')}
+        variant="form"
+        rows={5}
+      />
+    );
+  }
+
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-motion="detail">
       <nav className={styles.tabs} aria-label={t('memory.menu')}>
         {entries.map((entry) => {
           const active = entry.scope === selectedScope;
@@ -275,12 +286,15 @@ export function MemoryMessage({
               </button>
             </div>
           </>
+        ) : contentLoading ? (
+          <ContentSkeleton
+            className={styles.content}
+            label={t('memory.loadingFile')}
+            variant="detail"
+            rows={5}
+          />
         ) : (
-          <pre className={styles.content}>
-            {contentLoading
-              ? t('memory.loadingFile')
-              : content || t('memory.noFiles')}
-          </pre>
+          <pre className={styles.content}>{content || t('memory.noFiles')}</pre>
         )}
       </section>
     </div>

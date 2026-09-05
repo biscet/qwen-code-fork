@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { ContentSkeleton } from './ui/content-skeleton';
 import { Spinner } from './ui/spinner';
 import { validateBranchName } from './GitModePopover';
 import { deriveStatus, hasComputedTreeSummary } from './GitBranchIndicator';
@@ -701,8 +702,12 @@ export function BranchPickerPopover({
         </div>
 
         <div className={styles.list}>
-          {loading && (
-            <div className={styles.loading}>{t('branchPicker.loading')}</div>
+          {data === null && !error && (
+            <ContentSkeleton
+              className={styles.loading}
+              label={t('branchPicker.loading')}
+              rows={4}
+            />
           )}
           {error && <div className={styles.empty}>{error}</div>}
 

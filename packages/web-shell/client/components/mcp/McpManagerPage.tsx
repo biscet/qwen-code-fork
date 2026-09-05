@@ -47,14 +47,8 @@ import {
   BreadcrumbSeparator,
 } from '../ui/breadcrumb';
 import { Button } from '../ui/button';
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '../ui/card';
+import { ContentSkeleton } from '../ui/content-skeleton';
+import { Card, CardContent } from '../ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,6 +90,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import type { EmbeddedManagerPage } from '../plugins/manager-page';
+import { mcpToolPresentation } from './mcp-tool-presentation';
 
 type McpStatus = Awaited<ReturnType<DaemonWorkspaceActions['loadMcpStatus']>>;
 type T = ReturnType<typeof useI18n>['t'];
@@ -309,6 +304,7 @@ function DetailField({ label, value }: { label: string; value: string }) {
 
 function ToolDetail({ tool, t }: { tool: DaemonWorkspaceMcpToolStatus; t: T }) {
   const annotations = toolAnnotationText(tool, t);
+  const presentation = mcpToolPresentation(tool, t);
   const schema = tool.schema as
     | { parametersJsonSchema?: unknown; parameters?: unknown }
     | undefined;
@@ -329,7 +325,7 @@ function ToolDetail({ tool, t }: { tool: DaemonWorkspaceMcpToolStatus; t: T }) {
       ) : null}
       <DetailField
         label={t('mcp.description')}
-        value={tool.description?.trim() || t('mcp.noDescription')}
+        value={presentation.description}
       />
       {annotations ? (
         <DetailField label={t('mcp.annotations')} value={annotations} />
@@ -428,7 +424,10 @@ export function McpManagerPage({
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [busyServer, setBusyServer] = useState<string | null>(null);
-  const [initializing, setInitializing] = useState(false);
+  const [initializing, setInitializing] = useState(!initialMessage);
+  const [loadingServerName, setLoadingServerName] = useState<string | null>(
+    null,
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingServer, setEditingServer] =
@@ -595,6 +594,9 @@ export function McpManagerPage({
     : [];
   const selectedTool =
     selectedTools.find((tool) => tool.name === selectedToolName) ?? null;
+  const selectedToolPresentation = selectedTool
+    ? mcpToolPresentation(selectedTool, t)
+    : null;
   const selectedResource =
     selectedResources.find(
       (resource) => resource.uri === selectedResourceUri,
@@ -1074,13 +1076,22 @@ export function McpManagerPage({
     setSelectedResourceUri(null);
     setNotice(null);
     if (server.approvalState) return;
-    void loadServerData(server).catch((error: unknown) => {
-      setNotice({
-        serverName: server.name,
-        text: t('mcp.action.failed', { error: extractErrorDetail(error) }),
-        error: true,
+    setLoadingServerName(server.name);
+    void loadServerData(server)
+      .catch((error: unknown) => {
+        setNotice({
+          serverName: server.name,
+          text: t('mcp.action.failed', { error: extractErrorDetail(error) }),
+          error: true,
+        });
+      })
+      .finally(() => {
+        if (mountedRef.current) {
+          setLoadingServerName((current) =>
+            current === server.name ? null : current,
+          );
+        }
       });
-    });
   };
 
   const showServerList = () => {
@@ -1142,7 +1153,7 @@ export function McpManagerPage({
         {selectedTool || selectedResource ? <BreadcrumbSeparator /> : null}
         {selectedTool ? (
           <BreadcrumbItem>
-            <BreadcrumbPage>{selectedTool.name}</BreadcrumbPage>
+            <BreadcrumbPage>{selectedToolPresentation?.title}</BreadcrumbPage>
           </BreadcrumbItem>
         ) : null}
         {selectedResource ? (
@@ -1158,7 +1169,7 @@ export function McpManagerPage({
     </Breadcrumb>
   );
   const detailLabel = selectedTool
-    ? selectedTool.name
+    ? selectedToolPresentation?.title
     : selectedResource
       ? selectedResource.title || selectedResource.name || selectedResource.uri
       : selectedServer?.name;
@@ -1346,29 +1357,27 @@ export function McpManagerPage({
   );
 
   if (selectedTool && selectedServer) {
+    const presentation = mcpToolPresentation(selectedTool, t);
     return (
       <>
-        <div className="flex w-full flex-col gap-6 pb-8">
+        <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
           {navigation}
           <div className="flex w-full flex-col gap-6">
-            <div className="flex items-center gap-4">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted">
-                <WrenchIcon />
-              </div>
+            <div className="flex items-center gap-3">
+              <WrenchIcon className="size-5 shrink-0 text-muted-foreground" />
               <div className="min-w-0">
                 <h1 className="break-words text-xl font-semibold">
-                  {selectedTool.name}
+                  {presentation.title}
                 </h1>
-                <p className="text-sm text-muted-foreground">
-                  {selectedTool.serverToolName || selectedServer.name}
+                <p className="break-all text-sm text-muted-foreground">
+                  <code>{presentation.technicalId}</code> ·{' '}
+                  {selectedServer.name}
                 </p>
               </div>
             </div>
-            <Card>
-              <CardContent>
-                <ToolDetail tool={selectedTool} t={t} />
-              </CardContent>
-            </Card>
+            <div className="border-y py-5">
+              <ToolDetail tool={selectedTool} t={t} />
+            </div>
           </div>
         </div>
         {editorDialog}
@@ -1379,7 +1388,7 @@ export function McpManagerPage({
   if (selectedResource && selectedServer) {
     return (
       <>
-        <div className="flex w-full flex-col gap-6 pb-8">
+        <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
           {navigation}
           <div className="flex w-full flex-col gap-6">
             <div className="flex items-center gap-4">
@@ -1411,13 +1420,11 @@ export function McpManagerPage({
     const actions = serverActions(selectedServer, t);
     return (
       <>
-        <div className="flex w-full flex-col gap-6 pb-8">
+        <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
           {navigation}
           <div className="flex w-full flex-col gap-6">
-            <div className="flex items-center gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-muted">
-                <ServerIcon />
-              </div>
+            <div className="flex items-center gap-3">
+              <ServerIcon className="size-5 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="break-words text-xl font-semibold">
@@ -1500,7 +1507,7 @@ export function McpManagerPage({
               value={selectedServerTab}
               onValueChange={setSelectedServerTab}
             >
-              <TabsList>
+              <TabsList variant="line">
                 <TabsTrigger value="overview">{t('mcp.basicInfo')}</TabsTrigger>
                 <TabsTrigger value="tools">
                   {t('mcp.tools')} {tools.length}
@@ -1511,88 +1518,89 @@ export function McpManagerPage({
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="overview" className="pt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">
-                      {t('mcp.descriptionTitle')}
-                    </CardTitle>
-                    <CardDescription>
-                      {selectedServer.description?.trim() || '-'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-6 sm:grid-cols-2">
+                <div className="grid gap-6 border-y py-5 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
                     <DetailField
-                      label={t('mcp.source')}
-                      value={sourceLabel(selectedServer, t)}
+                      label={t('mcp.description')}
+                      value={
+                        selectedServer.description?.trim() ||
+                        t('mcp.noDescription')
+                      }
                     />
+                  </div>
+                  <DetailField
+                    label={t('mcp.source')}
+                    value={sourceLabel(selectedServer, t)}
+                  />
+                  <DetailField
+                    label={t('mcp.transport')}
+                    value={selectedServer.transport}
+                  />
+                  <DetailField
+                    label={t('mcp.command')}
+                    value={formatServerCommand(selectedServer, t)}
+                  />
+                  <DetailField
+                    label={t('mcp.workingDirectory')}
+                    value={selectedServer.config?.cwd || status.workspaceCwd}
+                  />
+                  {selectedServer.error ? (
                     <DetailField
-                      label={t('mcp.transport')}
-                      value={selectedServer.transport}
+                      label={t('mcp.invalidReasonLabel')}
+                      value={selectedServer.error}
                     />
+                  ) : null}
+                  {selectedServer.hint ? (
                     <DetailField
-                      label={t('mcp.command')}
-                      value={formatServerCommand(selectedServer, t)}
+                      label={t('mcp.description')}
+                      value={selectedServer.hint}
                     />
-                    <DetailField
-                      label={t('mcp.workingDirectory')}
-                      value={selectedServer.config?.cwd || status.workspaceCwd}
-                    />
-                    {selectedServer.error ? (
-                      <DetailField
-                        label={t('mcp.invalidReasonLabel')}
-                        value={selectedServer.error}
-                      />
-                    ) : null}
-                    {selectedServer.hint ? (
-                      <DetailField
-                        label={t('mcp.description')}
-                        value={selectedServer.hint}
-                      />
-                    ) : null}
-                  </CardContent>
-                </Card>
+                  ) : null}
+                </div>
               </TabsContent>
               <TabsContent value="tools" className="pt-4">
-                {loadErrors?.tools ? (
+                {loadingServerName === selectedServer.name &&
+                !(selectedServer.name in toolsByServer) ? (
+                  <ContentSkeleton label={t('mcp.loadingTools')} rows={4} />
+                ) : loadErrors?.tools ? (
                   <Alert variant="destructive">
                     <AlertCircleIcon />
                     <AlertTitle>{t('mcp.loadingTools')}</AlertTitle>
                     <AlertDescription>{loadErrors.tools}</AlertDescription>
                   </Alert>
                 ) : tools.length ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {tools.map((tool) => (
-                      <Card
-                        key={tool.name}
-                        size="sm"
-                        role="button"
-                        tabIndex={0}
-                        className="cursor-pointer transition-colors hover:bg-accent/50"
-                        onClick={() => setSelectedToolName(tool.name)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            setSelectedToolName(tool.name);
-                          }
-                        }}
-                      >
-                        <CardHeader>
-                          <CardTitle className="break-words">
-                            {tool.name}
-                          </CardTitle>
-                          <CardDescription className="line-clamp-2 text-xs">
-                            {tool.description || t('mcp.noDescription')}
-                          </CardDescription>
-                          {!tool.isValid ? (
-                            <CardAction>
-                              <Badge variant="destructive">
-                                {t('mcp.status.blocked')}
-                              </Badge>
-                            </CardAction>
-                          ) : null}
-                        </CardHeader>
-                      </Card>
-                    ))}
+                  <div className="divide-y rounded-md border">
+                    {tools.map((tool) => {
+                      const presentation = mcpToolPresentation(tool, t);
+                      return (
+                        <button
+                          key={tool.name}
+                          type="button"
+                          className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                          onClick={() => setSelectedToolName(tool.name)}
+                        >
+                          <WrenchIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-start justify-between gap-2">
+                              <span className="text-sm font-medium">
+                                {presentation.title}
+                              </span>
+                              {!tool.isValid ? (
+                                <Badge variant="destructive">
+                                  {t('mcp.status.blocked')}
+                                </Badge>
+                              ) : null}
+                            </span>
+                            <code className="mt-0.5 block break-all text-[11px] text-muted-foreground">
+                              {presentation.technicalId}
+                            </code>
+                            <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
+                              {presentation.description}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
                   <Empty className="rounded-xl border border-dashed">
@@ -1606,38 +1614,35 @@ export function McpManagerPage({
                 )}
               </TabsContent>
               <TabsContent value="resources" className="pt-4">
-                {loadErrors?.resources ? (
+                {loadingServerName === selectedServer.name &&
+                selectedServer.resourceCount !== 0 &&
+                !(selectedServer.name in resourcesByServer) ? (
+                  <ContentSkeleton label={t('common.loading')} rows={3} />
+                ) : loadErrors?.resources ? (
                   <Alert variant="destructive">
                     <AlertCircleIcon />
                     <AlertTitle>{t('mcp.resourcesUnavailable')}</AlertTitle>
                     <AlertDescription>{loadErrors.resources}</AlertDescription>
                   </Alert>
                 ) : resources.length ? (
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="divide-y rounded-md border">
                     {resources.map((resource) => (
-                      <Card
+                      <button
                         key={resource.uri}
-                        size="sm"
-                        role="button"
-                        tabIndex={0}
-                        className="cursor-pointer transition-colors hover:bg-accent/50"
+                        type="button"
+                        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                         onClick={() => setSelectedResourceUri(resource.uri)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            setSelectedResourceUri(resource.uri);
-                          }
-                        }}
                       >
-                        <CardHeader>
-                          <CardTitle className="break-words">
+                        <DatabaseIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-sm font-medium">
                             {resource.title || resource.name || resource.uri}
-                          </CardTitle>
-                          <CardDescription className="break-all">
+                          </span>
+                          <code className="mt-1 block break-all text-[11px] text-muted-foreground">
                             {resource.uri}
-                          </CardDescription>
-                        </CardHeader>
-                      </Card>
+                          </code>
+                        </span>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -1671,7 +1676,7 @@ export function McpManagerPage({
   ];
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-8">
+    <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
       {navigation}
       <div className="flex w-full flex-col gap-6">
         <div className="flex items-start justify-between gap-4">
@@ -1787,66 +1792,45 @@ export function McpManagerPage({
         </ToggleGroup>
 
         {initializing && connectingCount === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
-            <Spinner className="size-6" />
-            <span className="text-sm">{t('mcp.loadingStatus')}</span>
-          </div>
+          <ContentSkeleton label={t('mcp.loadingStatus')} rows={5} />
         ) : filteredServers.length ? (
-          <div
-            className={styles.serverGrid}
-            data-column-count={Math.min(filteredServers.length, 4)}
-          >
+          <div className="divide-y rounded-md border">
             {filteredServers.map((server) => (
-              <Card
+              <button
                 key={server.name}
-                size="sm"
-                role="button"
-                tabIndex={0}
+                data-motion-item
+                type="button"
                 aria-label={server.name}
-                className="cursor-pointer transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                 onClick={() => openServer(server)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    openServer(server);
-                  }
-                }}
               >
-                <CardHeader className="block">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <ServerIcon className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <CardTitle className="min-w-0 flex-1 truncate">
-                          {server.name}
-                        </CardTitle>
-                        <Badge
-                          variant="secondary"
-                          className={`${statusBadgeClass(server)} shrink-0 text-[10px]`}
-                        >
-                          {statusLabel(server, t)}
-                        </Badge>
-                      </div>
-                      <CardDescription className="mt-1 min-w-0 text-xs">
-                        <TooltipProvider delayDuration={300}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block truncate">
-                                {server.description?.trim() || '-'}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {server.description?.trim() || '-'}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-              </Card>
+                <ServerIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-start justify-between gap-2">
+                    <span className="truncate text-sm font-medium">
+                      {server.name}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={`${statusBadgeClass(server)} shrink-0 text-[10px]`}
+                    >
+                      {statusLabel(server, t)}
+                    </Badge>
+                  </span>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
+                          {server.description?.trim() || '-'}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {server.description?.trim() || '-'}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+              </button>
             ))}
           </div>
         ) : (

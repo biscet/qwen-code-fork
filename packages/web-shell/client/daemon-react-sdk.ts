@@ -379,6 +379,8 @@ export type {
   DaemonWorkspaceMemoryFile,
   /** Skill status: name, description, level, model-invocable flag. */
   DaemonWorkspaceSkillStatus,
+  DaemonWorkspaceSkillIdentity,
+  DaemonWorkspaceSkillDetail,
   /** Registered tool: name, displayName, description, enabled flag. */
   DaemonWorkspaceToolStatus,
   /** Individual setting descriptor returned by GET /workspace/settings. */

@@ -16,6 +16,7 @@ import { useI18n } from '../../i18n';
 import { DialogShell } from './DialogShell';
 import { formatRuntime } from '../../utils/formatRuntime';
 import { getGoalActiveTimeMs } from '../GoalStatusStrip';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import styles from './GoalsDialog.module.css';
 
 /**
@@ -242,7 +243,7 @@ export function GoalsDialog({
   );
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-motion="detail">
       <div className={styles.intro}>{t('goals.subtitle')}</div>
 
       <div className={styles.toolbar}>
@@ -349,6 +350,10 @@ export function GoalsDialog({
         </div>
       )}
 
+      {goals === null && !loadError && (
+        <ContentSkeleton label={t('goals.loading')} rows={5} />
+      )}
+
       {goals !== null && goals.length === 0 && !loadError && (
         <div className={styles.empty}>{t('goals.empty')}</div>
       )}
@@ -370,7 +375,12 @@ export function GoalsDialog({
           // Shared with `GoalStatusStrip` so the two gates cannot drift apart.
           const canResume = canResumeGoal(goal);
           return (
-            <div key={item.sessionId} className={styles.card} role="listitem">
+            <div
+              key={item.sessionId}
+              className={styles.card}
+              data-motion-item
+              role="listitem"
+            >
               <div className={styles.cardHeader}>
                 <span
                   className={`${styles.statusDot} ${item.snapshot.activity !== 'idle' ? styles.statusDotRunning : ''}`}

@@ -7,6 +7,7 @@ import { useFilterInput } from '../../hooks/useFilterInput';
 import { SessionRow } from './SessionRow';
 import { sessionMatchesGitQuery } from '../sidebar/sessionSearch';
 import { useScopedSessions } from '../../hooks/useScopedSessions';
+import { ContentSkeleton } from '../ui/content-skeleton';
 
 interface ResumeDialogProps {
   onSelect: (sessionId: string) => void;
@@ -24,11 +25,13 @@ export function ResumeDialog({
 }: ResumeDialogProps) {
   const { t } = useI18n();
   const connection = useConnection();
-  const { sessions, loading, error } = useScopedSessions(workspaceCwd, {
+  const { data, sessions, loading, error } = useScopedSessions(workspaceCwd, {
     autoLoad: true,
     maxAgeMs: 1_000,
   });
   const currentSessionId = connection.sessionId;
+  const showInitialLoading =
+    sessions.length === 0 && data === undefined && !error;
   // -1 = no highlight. The dialog opens with nothing highlighted and resets to
   // none on filter edits, so Enter in the search box cannot confirm a row the
   // user didn't pick — the highlight only appears once they press ↓/↑ or hover.
@@ -121,22 +124,27 @@ export function ResumeDialog({
         )}
         ref={listRef}
       >
-        {loading && (
-          <div className={dp('picker-empty')}>{t('common.loading')}</div>
+        {showInitialLoading && (
+          <ContentSkeleton
+            className={dp('picker-empty')}
+            label={t('common.loading')}
+            rows={4}
+          />
         )}
-        {!loading && error && (
+        {!showInitialLoading && !loading && error && (
           <div className={dp('picker-empty')}>
             {error.message || t('resume.failedToLoad')}
           </div>
         )}
-        {!loading && !error && filtered.length === 0 && (
+        {!showInitialLoading && !loading && !error && filtered.length === 0 && (
           <div className={dp('picker-empty')}>
             {filterQuery
               ? t('resume.noMatch', { query: filterQuery })
               : t('resume.none')}
           </div>
         )}
-        {!loading &&
+        {!showInitialLoading &&
+          !loading &&
           filtered.map((s, index) => (
             <SessionRow
               key={s.sessionId}

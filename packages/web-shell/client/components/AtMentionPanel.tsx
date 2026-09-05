@@ -20,6 +20,7 @@ import { cssUrlVar } from '../utils/cssUrlVar';
 import styles from './ChatEditor.module.css';
 import { HomeCodeSpinner } from './branding/HomeCodeBrand';
 import { isSafeImageSrc } from './messages/Markdown';
+import { Skeleton } from './ui/skeleton';
 
 const AT_PANEL_THEME_VARS = [
   '--chat-editor-accent-color',
@@ -384,7 +385,12 @@ export function AtMentionPanel({
         >
           {menu.loading && rows.length === 0 ? (
             <div className={styles.atEmpty} role="status" aria-live="polite">
-              {t('common.loading')}
+              <span className="sr-only">{t('common.loading')}</span>
+              <div className="grid w-full gap-2">
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
             </div>
           ) : rows.length === 0 ? (
             <div className={styles.atEmpty} role="status" aria-live="polite">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import {
   flexRender,
@@ -138,6 +138,7 @@ export function DataTable<TData>({
   emptyContent,
   onRowClick,
   rowClassName,
+  renderExpandedRow,
   ...props
 }: Omit<
   ComponentProps<'div'>,
@@ -147,6 +148,7 @@ export function DataTable<TData>({
   emptyContent?: ReactNode;
   onRowClick?: (row: Row<TData>) => void;
   rowClassName?: string | ((row: Row<TData>) => string | undefined);
+  renderExpandedRow?: (row: Row<TData>) => ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const rowCount = table.getRowModel().rows.length;
@@ -355,79 +357,98 @@ export function DataTable<TData>({
               </TableCell>
             </TableRow>
           )}
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              className={cn(
-                'group',
-                typeof rowClassName === 'function'
-                  ? rowClassName(row)
-                  : rowClassName,
-              )}
-              data-state={row.getIsSelected() ? 'selected' : undefined}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-            >
-              {row.getVisibleCells().map((cell) => {
-                const meta = columnMeta<TData>(cell.column);
-                const tooltip = meta.tooltip?.(row.original);
-                const content = flexRender(
-                  cell.column.columnDef.cell,
-                  cell.getContext(),
-                );
-                const truncate =
-                  typeof meta.truncate === 'function'
-                    ? meta.truncate(row.original)
-                    : meta.truncate !== false;
-                const constrained =
-                  meta.width !== undefined && !meta.fixedWidth && truncate;
-                return (
-                  <TableCell
-                    key={cell.id}
-                    className={cn(
-                      fixedClassName(
-                        meta,
-                        false,
-                        fixedShadows.left,
-                        fixedShadows.right,
-                        meta.fixed !== 'right' || pinRightColumns,
-                      ),
-                    )}
-                    style={columnStyle(
-                      meta,
-                      distributeFluidWidth,
-                      availableWidth,
-                      widthMetrics.minimum,
-                      widthMetrics.fluidWeight,
-                      fixedOffsets.get(cell.column.id),
-                      meta.fixed !== 'right' || pinRightColumns,
-                    )}
-                    onClick={
-                      meta.stopRowClick
-                        ? (event) => event.stopPropagation()
-                        : undefined
-                    }
+          {table.getRowModel().rows.map((row) => {
+            const expandedRow = renderExpandedRow?.(row);
+            return (
+              <Fragment key={row.id}>
+                <TableRow
+                  className={cn(
+                    'group',
+                    typeof rowClassName === 'function'
+                      ? rowClassName(row)
+                      : rowClassName,
+                  )}
+                  data-state={row.getIsSelected() ? 'selected' : undefined}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = columnMeta<TData>(cell.column);
+                    const tooltip = meta.tooltip?.(row.original);
+                    const content = flexRender(
+                      cell.column.columnDef.cell,
+                      cell.getContext(),
+                    );
+                    const truncate =
+                      typeof meta.truncate === 'function'
+                        ? meta.truncate(row.original)
+                        : meta.truncate !== false;
+                    const constrained =
+                      meta.width !== undefined && !meta.fixedWidth && truncate;
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          fixedClassName(
+                            meta,
+                            false,
+                            fixedShadows.left,
+                            fixedShadows.right,
+                            meta.fixed !== 'right' || pinRightColumns,
+                          ),
+                        )}
+                        style={columnStyle(
+                          meta,
+                          distributeFluidWidth,
+                          availableWidth,
+                          widthMetrics.minimum,
+                          widthMetrics.fluidWeight,
+                          fixedOffsets.get(cell.column.id),
+                          meta.fixed !== 'right' || pinRightColumns,
+                        )}
+                        onClick={
+                          meta.stopRowClick
+                            ? (event) => event.stopPropagation()
+                            : undefined
+                        }
+                      >
+                        {tooltip !== undefined && tooltip !== null ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className={cn(
+                                  constrained && 'min-w-0 truncate',
+                                )}
+                              >
+                                {content}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>{tooltip}</TooltipContent>
+                          </Tooltip>
+                        ) : constrained ? (
+                          <div className="min-w-0 truncate">{content}</div>
+                        ) : (
+                          content
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+                {expandedRow != null && (
+                  <TableRow
+                    data-slot="data-table-expanded-row"
+                    className="hover:bg-transparent"
                   >
-                    {tooltip !== undefined && tooltip !== null ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className={cn(constrained && 'min-w-0 truncate')}
-                          >
-                            {content}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>{tooltip}</TooltipContent>
-                      </Tooltip>
-                    ) : constrained ? (
-                      <div className="min-w-0 truncate">{content}</div>
-                    ) : (
-                      content
-                    )}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          ))}
+                    <TableCell
+                      colSpan={table.getVisibleLeafColumns().length}
+                      className="p-0"
+                    >
+                      {expandedRow}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

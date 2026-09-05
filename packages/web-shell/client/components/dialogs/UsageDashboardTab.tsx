@@ -12,6 +12,7 @@ import {
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
 import { formatMegaTokens } from '../../utils/formatTokenCount';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { TokenHeatmap } from './TokenHeatmap';
 import { SvgLineChart } from './SvgLineChart';
 import styles from './UsageDashboardTab.module.css';
@@ -231,14 +232,17 @@ export function UsageDashboardTab() {
     return (
       <div className={styles.usage}>
         <div className={styles.toolbar}>{periodToggle}</div>
-        {loading ? (
-          <div className={styles.state}>{t('daemon.usage.loading')}</div>
-        ) : error ? (
+        {!error ? (
+          <ContentSkeleton
+            className={styles.state}
+            label={t('daemon.usage.loading')}
+            variant="table"
+            rows={5}
+          />
+        ) : (
           <div className={styles.state}>
             {t('daemon.usage.failed')}: {error.message}
           </div>
-        ) : (
-          <div className={styles.state}>{t('daemon.usage.empty')}</div>
         )}
       </div>
     );

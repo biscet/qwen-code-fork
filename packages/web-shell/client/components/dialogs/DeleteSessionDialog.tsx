@@ -7,6 +7,7 @@ import { useListboxKeyboard } from '../../hooks/useListboxKeyboard';
 import { useFilterInput } from '../../hooks/useFilterInput';
 import { SessionRow } from './SessionRow';
 import { useScopedSessions } from '../../hooks/useScopedSessions';
+import { ContentSkeleton } from '../ui/content-skeleton';
 
 interface DeleteSessionDialogProps {
   onDeleted: (sessionIds: string[]) => void;
@@ -27,6 +28,7 @@ export function DeleteSessionDialog({
   const { t } = useI18n();
   const connection = useConnection();
   const {
+    data,
     sessions,
     loading,
     error: sessionsError,
@@ -37,6 +39,8 @@ export function DeleteSessionDialog({
     maxAgeMs: 1_000,
   });
   const currentSessionId = connection.sessionId;
+  const showInitialLoading =
+    sessions.length === 0 && data === undefined && !sessionsError;
   const [deleting, setDeleting] = useState(false);
   // `selectedIdx` is the keyboard/hover cursor (roving highlight, -1 = none —
   // see ResumeDialog for the rationale); `selectedIds` is the multi-select set
@@ -268,20 +272,28 @@ export function DeleteSessionDialog({
         )}
         ref={listRef}
       >
-        {loading && (
-          <div className={dp('picker-empty')}>{t('common.loading')}</div>
+        {showInitialLoading && (
+          <ContentSkeleton
+            className={dp('picker-empty')}
+            label={t('common.loading')}
+            rows={4}
+          />
         )}
-        {!loading && sessionsError && (
+        {!showInitialLoading && !loading && sessionsError && (
           <div className={dp('picker-empty')}>{sessionsError.message}</div>
         )}
-        {!loading && !sessionsError && filtered.length === 0 && (
-          <div className={dp('picker-empty')}>
-            {filterQuery
-              ? t('delete.noMatch', { query: filterQuery })
-              : t('delete.none')}
-          </div>
-        )}
-        {!loading &&
+        {!showInitialLoading &&
+          !loading &&
+          !sessionsError &&
+          filtered.length === 0 && (
+            <div className={dp('picker-empty')}>
+              {filterQuery
+                ? t('delete.noMatch', { query: filterQuery })
+                : t('delete.none')}
+            </div>
+          )}
+        {!showInitialLoading &&
+          !loading &&
           filtered.map((s, i) => {
             const isCurrent = s.sessionId === currentSessionId;
             const isChecked = selectedIds.has(s.sessionId);

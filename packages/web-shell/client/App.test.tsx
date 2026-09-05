@@ -25969,8 +25969,12 @@ describe('App session callbacks', () => {
       workspaceFeaturesEnabled: false,
     });
     expect(testState.latestStatusBarHideSettings).toBe(true);
+    expect(testState.latestChatEditorProps?.commands).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'auth' })]),
+    );
 
     for (const command of [
+      '/auth',
       '/mcp',
       '/skills',
       '/tools',
@@ -26004,7 +26008,7 @@ describe('App session callbacks', () => {
     expect(mockWorkspaceActions.loadEnv).not.toHaveBeenCalled();
     expect(settingsSetValue).not.toHaveBeenCalled();
     expect(mockSessionActions.loadSession).not.toHaveBeenCalled();
-    expect(onToast).toHaveBeenCalledTimes(10);
+    expect(onToast).toHaveBeenCalledTimes(11);
   });
 
   it('allows ordinary shell commands in a standalone chat', async () => {

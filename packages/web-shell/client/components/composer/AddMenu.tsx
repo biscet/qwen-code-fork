@@ -34,6 +34,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { Skeleton } from '../ui/skeleton';
 import styles from '../ChatEditor.module.css';
 
 export interface AddMenuProps {
@@ -161,8 +162,15 @@ function SearchableProviderSubmenu({
           {t('composerAdd.loadError')}
         </div>
       ) : !searched ? (
-        <div className="px-1.5 py-1 text-xs text-muted-foreground">
-          {t('common.loading')}
+        <div
+          className="grid gap-2 px-1.5 py-1"
+          role="status"
+          aria-label={t('common.loading')}
+        >
+          <span className="sr-only">{t('common.loading')}</span>
+          <Skeleton className="h-3 w-4/5" />
+          <Skeleton className="h-3 w-3/5" />
+          <Skeleton className="h-3 w-2/3" />
         </div>
       ) : items.length === 0 ? (
         <div

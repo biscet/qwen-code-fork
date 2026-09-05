@@ -37,6 +37,7 @@ import type {
 } from '../../config/settings.js';
 import type { WorkspaceVoiceStatus } from '../../services/voice-service.js';
 import type { VoiceMode } from '../../services/voice-settings.js';
+import type { ServeModelProviderReplacement } from '../../runtime/model-provider-replacement.js';
 import type { WorkspaceProvidersStatusProvider } from '../workspace-providers-status.js';
 import type { WorkspaceSkillsStatusProvider } from '../workspace-skills-status.js';
 import type { ServeModelProviderRuntimeSyncResult } from '../types.js';
@@ -51,6 +52,7 @@ export type {
   WorkspaceSkillMutationResult,
   WorkspaceSkillScope,
 } from '../workspace-skill-management.js';
+export type { ServeModelProviderReplacement } from '../../runtime/model-provider-replacement.js';
 
 // ---------------------------------------------------------------------------
 // WorkspaceRequestContext
@@ -250,6 +252,7 @@ export interface DaemonWorkspaceService {
   /** Reload only the runtime model-provider registry and spawn environment. */
   reloadModelProviders(
     ctx: WorkspaceRequestContext,
+    replacement?: ServeModelProviderReplacement,
   ): Promise<ServeModelProviderRuntimeSyncResult>;
 
   /** Drop cached skill status so extension skill changes are re-enumerated. */

@@ -312,6 +312,17 @@ export const RU = {
   'agent.create.modelGenerate.description':
     'Опишите, что вам нужно, затем сгенерируйте и просмотрите описание и системный запрос отдельно.',
   'agent.create.color': 'Цвет',
+  'agent.color.inherit': 'Наследовать',
+  'agent.color.auto': 'Автоматически',
+  'agent.color.automatic': 'Распределён автоматически',
+  'agent.color.red': 'Красный',
+  'agent.color.blue': 'Синий',
+  'agent.color.green': 'Зелёный',
+  'agent.color.yellow': 'Жёлтый',
+  'agent.color.purple': 'Фиолетовый',
+  'agent.color.orange': 'Оранжевый',
+  'agent.color.pink': 'Розовый',
+  'agent.color.cyan': 'Голубой',
   'agent.create.jsonObjectHelp': 'Введите объект JSON или оставьте пустым.',
   'agent.create.save': 'Сохранить агента',
   'agent.create.scope': 'Категория',
@@ -433,6 +444,16 @@ export const RU = {
   'agent.detail.mcp': 'MCP',
   'agent.detail.hooks': 'Хуки',
   'agent.detail.systemPrompt': 'Системный запрос',
+  'agent.overview.instructions':
+    'Системный запрос задаёт порядок работы, ограничения и ожидаемый результат.',
+  'agent.builtin.generalPurpose.description':
+    'Универсальный сабагент для сложных исследований, поиска кода и многошаговых задач.',
+  'agent.builtin.explore.description':
+    'Быстрый сабагент только для чтения: ищет файлы и код и объясняет устройство проекта.',
+  'agent.builtin.statuslineSetup.description':
+    'Настраивает строку состояния HomeCode, сохраняя корректность пользовательских настроек.',
+  'agent.builtin.review.description':
+    'Специализированный участник проверки кода, запускаемый встроенным навыком review.',
   'agent.toolsUpdated': (v) =>
     interpolateRu('Обновлены инструменты для {{HC0}}', [v?.name ?? '']),
   'agent.usingCount': (v) =>
@@ -2079,6 +2100,10 @@ export const RU = {
     'Перечислить запуски рабочих процессов или совместно приостановить/возобновить активный запуск',
   'skilldesc.batch':
     'Выполнение пакетных операций параллельно во многих файлах',
+  'skilldesc.computerUse':
+    'Управление интерфейсами локальных приложений через Computer Use',
+  'skilldesc.coordinate':
+    'Координация небольшой команды агентов с чётко ограниченными обязанностями',
   'skilldesc.dataviz':
     'Проектирование руководств для графиков и визуализации данных',
   'skilldesc.extensionCreator':
@@ -2122,7 +2147,7 @@ export const RU = {
     'Тестирование реальными пользователями с tmux и сохранением логов',
   'skilldesc.triage': 'Сортировка и проверка задач HomeCode и PR',
   'local.approvalMode': 'Изменение режима утверждения',
-  'local.auth': 'Подключить провайдера LLM',
+  'local.auth': 'Открыть настройки моделей',
   'auth.title': 'Подключить провайдера',
   'auth.step.group': 'Тип',
   'auth.step.provider': 'Провайдер',
@@ -2474,6 +2499,41 @@ export const RU = {
   'mcp.loadingTools': 'Загрузка инструментов...',
   'mcp.name': 'Имя',
   'mcp.noDescription': 'Описание отсутствует',
+  'mcp.tool.find_declaration.title': 'Найти объявление',
+  'mcp.tool.find_declaration.description': 'Находит объявление символа.',
+  'mcp.tool.find_implementations.title': 'Найти реализации',
+  'mcp.tool.find_implementations.description':
+    'Находит реализации указанного символа.',
+  'mcp.tool.find_referencing_symbols.title': 'Найти ссылки на символ',
+  'mcp.tool.find_referencing_symbols.description':
+    'Находит символы и участки кода, которые ссылаются на указанный символ.',
+  'mcp.tool.find_symbol.title': 'Найти символ',
+  'mcp.tool.find_symbol.description':
+    'Ищет классы, методы и другие сущности по пути имени.',
+  'mcp.tool.get_diagnostics_for_file.title': 'Проверить файл',
+  'mcp.tool.get_diagnostics_for_file.description':
+    'Возвращает диагностические сообщения для файла, сгруппированные по символам.',
+  'mcp.tool.get_symbols_overview.title': 'Обзор символов файла',
+  'mcp.tool.get_symbols_overview.description':
+    'Показывает классы, функции, методы и другие символы в файле.',
+  'mcp.tool.initial_instructions.title': 'Открыть руководство Serena',
+  'mcp.tool.initial_instructions.description':
+    'Возвращает основные инструкции по работе с инструментами Serena.',
+  'mcp.tool.insert_after_symbol.title': 'Вставить после символа',
+  'mcp.tool.insert_after_symbol.description':
+    'Вставляет код после определения выбранного класса, метода или функции.',
+  'mcp.tool.insert_before_symbol.title': 'Вставить перед символом',
+  'mcp.tool.insert_before_symbol.description':
+    'Вставляет код перед определением выбранного класса, метода или функции.',
+  'mcp.tool.rename_symbol.title': 'Переименовать символ',
+  'mcp.tool.rename_symbol.description':
+    'Переименовывает символ и обновляет его ссылки в проекте.',
+  'mcp.tool.replace_symbol_body.title': 'Заменить тело символа',
+  'mcp.tool.replace_symbol_body.description':
+    'Заменяет тело выбранного класса, метода или функции.',
+  'mcp.tool.safe_delete_symbol.title': 'Безопасно удалить символ',
+  'mcp.tool.safe_delete_symbol.description':
+    'Удаляет символ, если на него нет ссылок; иначе возвращает найденные ссылки.',
   'mcp.noMatches': 'Серверов MCP не найдено.',
   'mcp.add.button': 'Добавить',
   'mcp.add.adding': 'Добавление сервера MCP…',
@@ -2941,6 +3001,11 @@ export const RU = {
         : []),
     ].join(', '),
   'skills.details': 'Детали навыка',
+  'skills.description': 'Описание',
+  'skills.instructions': 'Инструкции из SKILL.md',
+  'skills.instructions.loading': 'Загрузка SKILL.md…',
+  'skills.instructions.empty': 'В этом навыке нет инструкций Markdown.',
+  'skills.instructions.error': 'Не удалось загрузить SKILL.md.',
   'skills.extension': 'Расширение',
   'skills.filter.all': 'Все',
   'skills.filter.bundled': 'Встроенные',
@@ -3484,6 +3549,50 @@ export const RU = {
   'workspacesOverview.newTask': 'Новая задача',
   'workspacesOverview.remove': 'Удалить рабочую область',
   'workspacesOverview.back': 'Назад',
+  'workspacesOverview.expandChats': (v) =>
+    interpolateRu('Показать чаты проекта {{HC0}}', [v?.name ?? '']),
+  'workspacesOverview.collapseChats': (v) =>
+    interpolateRu('Скрыть чаты проекта {{HC0}}', [v?.name ?? '']),
+  'workspacesOverview.chatCount': (v) =>
+    interpolateRu('{{HC0}} чатов', [v?.count ?? 0]),
+  'workspacesOverview.selectAllChats': 'Выбрать все чаты',
+  'workspacesOverview.selectedChats': (v) =>
+    interpolateRu('Выбрано: {{HC0}}', [v?.count ?? 0]),
+  'workspacesOverview.archiveSelected': 'Архивировать выбранные',
+  'workspacesOverview.deleteSelected': 'Удалить выбранные',
+  'workspacesOverview.archiveAll': 'Архивировать все',
+  'workspacesOverview.deleteAll': 'Удалить все',
+  'workspacesOverview.archiveChat': (v) =>
+    interpolateRu('Архивировать {{HC0}}', [v?.name ?? '']),
+  'workspacesOverview.deleteChat': (v) =>
+    interpolateRu('Удалить {{HC0}}', [v?.name ?? '']),
+  'workspacesOverview.openChat': (v) =>
+    interpolateRu('Открыть {{HC0}}', [v?.name ?? '']),
+  'workspacesOverview.emptyChats': 'В этой рабочей области нет активных чатов.',
+  'workspacesOverview.untrustedChats':
+    'Сначала сделайте рабочую область доверенной, чтобы увидеть её чаты.',
+  'workspacesOverview.showMoreChats': (v) =>
+    interpolateRu('Показать ещё {{HC0}}', [v?.count ?? 0]),
+  'workspacesOverview.attentionChat': 'Требует внимания',
+  'workspacesOverview.runningChat': 'Выполняется',
+  'workspacesOverview.actionUnavailable':
+    'Действие недоступно, пока один из чатов активен.',
+  'workspacesOverview.allChatsUnavailable':
+    'Не удалось загрузить полный список чатов.',
+  'workspacesOverview.loadChatsFailed': 'Не удалось загрузить чаты',
+  'workspacesOverview.archiveFailed': 'Не удалось архивировать чаты',
+  'workspacesOverview.deleteFailed': 'Не удалось удалить чаты',
+  'workspacesOverview.confirmArchiveTitle': (v) =>
+    interpolateRu('Архивировать чаты: {{HC0}}?', [v?.count ?? 0]),
+  'workspacesOverview.confirmArchive': (v) =>
+    interpolateRu('{{HC0}} чатов будут перемещены в архив.', [v?.count ?? 0]),
+  'workspacesOverview.confirmDeleteTitle': (v) =>
+    interpolateRu('Удалить чаты: {{HC0}}?', [v?.count ?? 0]),
+  'workspacesOverview.confirmDelete': (v) =>
+    interpolateRu(
+      '{{HC0}} чатов и их история будут удалены безвозвратно. Это действие нельзя отменить.',
+      [v?.count ?? 0],
+    ),
   'splitView.title': 'Разделенный вид',
   'splitView.count': (v) => interpolateRu('{{HC0}} панелей', [v?.count ?? 0]),
   'splitView.addPane': 'Добавить сессию',
@@ -3819,8 +3928,8 @@ export const RU = {
   'settings.footer.theme': '↑↓ Перемещение  Enter Выбор  ESC Назад',
   'settings.scope.user': 'Пользователь',
   'settings.scope.workspace': 'Рабочая область',
-  'settings.value.on': 'ВКЛ',
-  'settings.value.off': 'ВЫКЛ',
+  'settings.value.on': 'Включено',
+  'settings.value.off': 'Выключено',
   'settings.action.edit': 'Редактировать',
   'settings.action.select': 'Выбрать',
   'settings.action.save': 'Сохранить',
@@ -3851,6 +3960,65 @@ export const RU = {
   'localControl.disabledHint':
     'Локальное управление выключено. Включите его в Настройках для сопряжения телефона на той же сети.',
   'localControl.openSettings': 'Открыть настройки',
+  'settings.models.chatDefaults': 'Параметры чата',
+  'settings.models.subtitle': 'Подключения и параметры моделей.',
+  'settings.models.back': 'К моделям',
+  'settings.models.name': 'Название',
+  'settings.models.modelId': 'ID модели',
+  'settings.models.baseUrl': 'Адрес API',
+  'settings.models.apiKey': 'API-ключ',
+  'settings.models.keySaved':
+    'Ключ сохранён · оставьте пустым, чтобы сохранить',
+  'settings.models.keyPlaceholder': 'Вставьте API-ключ',
+  'settings.models.keyHint':
+    'Пустое поле сохраняет текущий ключ. При смене адреса API введите ключ заново.',
+  'settings.models.default': 'По умолчанию',
+  'settings.models.unchanged': 'Без изменений',
+  'settings.models.reasoningHint':
+    'Параметры этой модели. В чате thinking и effort можно менять в меню выбора модели.',
+  'settings.models.contextWindowSize': 'Контекст · токены',
+  'settings.models.maxTokens': 'Максимальный ответ · токены',
+  'settings.models.temperature': 'Температура',
+  'settings.models.topP': 'Top P',
+  'settings.models.advanced': 'Дополнительные настройки',
+  'settings.models.envKey': 'Переменная окружения для ключа',
+  'settings.models.saving': 'Сохранение…',
+  'settings.models.save': 'Сохранить',
+  'settings.models.saved': 'Настройки модели сохранены.',
+  'settings.models.deferred':
+    'Сохранено. Модель получит настройки, когда её процесс будет готов.',
+  'settings.models.retry': 'Повторить',
+  'settings.models.access': 'Доступ',
+  'settings.models.context': 'Контекст',
+  'settings.models.keyConfigured': 'Ключ подключён',
+  'settings.models.keyMissing': 'API-ключ не задан',
+  'settings.models.edit': 'Настроить',
+  'settings.models.checkLimits': 'Проверить остаток',
+  'settings.models.modelscope.quota':
+    'Дневная квота аккаунта и модели. Нужен подтверждённый аккаунт Alibaba Cloud.',
+  'settings.models.orcarouter.quota':
+    'Бесплатный API с ограничением частоты запросов. Фиксированной квоты на день или неделю нет.',
+  'settings.models.unknown': 'Неизвестно',
+  'settings.models.remaining': (v) => `Осталось ${v?.count ?? 0}`,
+  'settings.models.period.day': 'за день',
+  'settings.models.period.week': 'за неделю',
+  'settings.models.period.minute': 'за минуту',
+  'settings.models.resetAt': (v) => `сброс ${v?.time ?? ''}`,
+  'settings.models.checkedAt': (v) =>
+    `Данные сервиса на ${v?.time ?? ''}. Последующие запросы здесь ещё не учтены.`,
+  'settings.models.quotaUnknown': 'Остаток пока не проверен.',
+  'settings.models.checkHint': 'Проверка расходует один короткий запрос к API.',
+  'settings.models.deleted': 'Модель удалена.',
+  'settings.models.deletePrompt': (v) =>
+    `Удалить ${v?.name ?? ''} из этого списка моделей?`,
+  'settings.models.freeServices': 'Fallback бесплатные модели',
+  'settings.models.freeServicesHint':
+    'Бесплатные API для резервного использования без регистрации.',
+  'settings.models.freeServicesAvailable': 'LLM7 · Codestral и GPT-OSS',
+  'settings.models.freeServicesRequestsMinute': 'Запросы в минуту',
+  'settings.models.freeServicesRequestsHour': 'Запросы в час',
+  'settings.models.freeServicesTokensDay': 'Токены в сутки',
+  'settings.models.freeServicesDocs': 'Доступ и лимиты LLM7',
   'settings.models.title': 'Модели',
   'settings.models.add': '+ Добавить модель',
   'settings.models.setCurrent': 'Установить текущей',
@@ -4067,4 +4235,107 @@ export const RU = {
     'Сохранение артефактов Arena',
   'settings.description.agents.arena.preserveArtifacts':
     'После включения артефакты рабочей области Arena и файлы состояния сессии сохраняются после завершения сессии или выхода основного агента.',
+  'settings.label.review.attribution': 'Атрибуция: review',
+  'settings.description.review.attribution':
+    'Добавлять в обзоры и встроенные комментарии GitHub подпись с названием модели и версией CLI. Если отключить, видимая атрибуция ИИ не публикуется: не будет ни подписи, ни маркеров важности «Critical» и «Suggestion». При этом невидимые HTML-маркеры остаются в исходном тексте комментариев и обзора, чтобы автоматизация GitHub и поиск дубликатов по-прежнему распознавали результаты /review. В режиме qwen-autofix «только Critical» такие публикации больше не распознаются как критические и откладываются. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется, поэтому репозиторий не может задавать политику обзора для проверяющих.',
+  'settings.label.review.sandbox': 'Песочница для проверяемого кода: review',
+  'settings.description.review.sandbox':
+    'Запускать команды проверяемого репозитория — npm ci со скриптами установки, сборку, тесты и проверки изменений — внутри контейнера, а не напрямую от имени пользователя. «Авто» использует контейнер, если доступен Docker или Podman, и запускает команды напрямую, если контейнер недоступен. «Обязательно» запрещает запуск без песочницы: зависящие от выполнения доказательства будут недоступны, но сам обзор продолжится. «Выкл.» сохраняет текущее поведение. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется.',
+  'settings.option.review.sandbox.off':
+    'Выкл. (запускать проверяемый код напрямую)',
+  'settings.option.review.sandbox.auto':
+    'Авто (использовать доступный контейнер)',
+  'settings.option.review.sandbox.required':
+    'Обязательно (никогда не запускать без песочницы)',
+  'settings.label.review.effort': 'Уровень усилий по умолчанию: review',
+  'settings.description.review.effort':
+    'Уровень усилий по умолчанию для /review, если не указан --effort и для проекта не сохранён явно выбранный уровень. «Авто» использует встроенное правило: высокий уровень для PR и средний для локальных изменений. Явно указанный или сохранённый уровень имеет приоритет; действующий --comment всегда устанавливает высокий минимум, а --fix — средний. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется.',
+  'settings.option.review.effort.auto':
+    'Авто (высокий для PR, средний для локальных изменений)',
+  'settings.option.review.effort.low': 'Низкий',
+  'settings.option.review.effort.medium': 'Средний',
+  'settings.option.review.effort.high': 'Высокий',
+  'settings.label.review.comment':
+    'Публиковать комментарии по умолчанию: review',
+  'settings.description.review.comment':
+    'Обрабатывать каждый /review для PR так, как если бы был передан --comment: публиковать найденные проблемы в указанном pull request без дополнительного флага. Включайте, только если хотите всегда публиковать результаты обзоров. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется.',
+  'settings.label.review.severityFloor':
+    'Минимальная важность публикации: review',
+  'settings.description.review.severityFloor':
+    'Самый низкий уровень важности, который /review публикует в PR, если не задан --severity-floor. «Авто» сохраняет адаптивное правило: замечания публикуются до 5-го раунда, а с 6-го — только критические проблемы; допустимые замечания с высокой уверенностью записываются и откладываются. В раундах 2–5 новые замечания к неизменённому с прошлого раунда коду также откладываются. «Только Critical» применяет это ограничение с первого раунда, а «Suggestions и Critical» публикует замечания в каждом раунде. Для целей вне PR настройка не действует. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется.',
+  'settings.option.review.severityFloor.auto':
+    'Авто (только Critical с 6-го раунда)',
+  'settings.option.review.severityFloor.critical':
+    'Только Critical (в каждом раунде)',
+  'settings.option.review.severityFloor.suggestion': 'Suggestions и Critical',
+  'settings.label.review.reverseAuditRounds':
+    'Предел раундов обратного аудита: review',
+  'settings.description.review.reverseAuditRounds':
+    'Снижает предел раундов обратного аудита для всех обзоров с высоким уровнем усилий. Обычно предел выбирается по структуре изменений: 10 для небольшого diff, 5 для разбитого на части; для огромного diff — 3 при наличии срока обзора и 5 без него. Эта настройка может только уменьшить предел соответствующего уровня, но не увеличить его. Значение должно быть целым числом в допустимом диапазоне: не ниже 3 и не выше исходного предела; иначе оно игнорируется. Цикл завершается после двух подряд раундов без находок, поэтому снижение предела не ускоряет сходимость, а чаще останавливает обзор до неё. Такая остановка отмечается как непроверенный объём и ограничивает вердикт значением Comment. Для общего снижения затрат на обзоры лучше использовать параметр усилий. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется.',
+  'settings.label.review.approachRounds':
+    'Порог раунда для сигнала о подходе: review',
+  'settings.description.review.approachRounds':
+    'Количество раундов, после которого обзор pull request может добавить справочный абзац о том, что открытым вопросом выглядит сам подход к изменению, а не текущий патч. Абзац появляется только если diff с первого измерения вырос в несколько раз, и никогда не появляется при вердикте Approve. Он не добавляет находок, не меняет вердикт и ничего не блокирует. Значение 0 сохраняет встроенный порог в 5 раундов; увеличьте его для более позднего показа или задайте очень большое значение, чтобы скрыть абзац. Положительное значение должно быть целым, иначе оно игнорируется. Параметр учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значение Рабочей области игнорируется.',
+  'settings.label.output.showTimestamps': 'Показывать время ответов',
+  'settings.description.output.showTimestamps':
+    'Показывать метку времени [ЧЧ:ММ:СС] перед каждым ответом ассистента.',
+  'settings.label.ui.disableWorkflowKeywordTrigger':
+    'Отключить запуск Workflow по ключевому слову',
+  'settings.description.ui.disableWorkflowKeywordTrigger':
+    'Если включено, слово workflow в запросе больше не направляет выполнение к инструменту Workflow, а индикатор «workflow active» не показывается. Действует только при включённых рабочих процессах.',
+  'settings.label.ui.showStatusInTitle':
+    'Показывать состояние в заголовке окна',
+  'settings.description.ui.showStatusInTitle':
+    'Показывать название и состояние сессии HomeCode в заголовке окна терминала.',
+  'settings.label.ui.showResponseTokensPerSecond':
+    'Показывать скорость генерации токенов',
+  'settings.description.ui.showResponseTokensPerSecond':
+    'Во время генерации показывать текущую оценку токенов в секунду рядом со счётчиком токенов ответа. Вступает в силу в следующей сессии.',
+  'settings.label.advisorModel': 'Модель-советник',
+  'settings.description.advisorModel':
+    'Модель, которую /advisor использует для независимой оценки разговора. Оставьте поле пустым, чтобы использовать основную модель. Рекомендуется модель не слабее основной. Недавняя история разговора будет отправлена этой модели, даже если она использует другого провайдера.',
+  'settings.label.modelFallbacks': 'Резервные модели',
+  'settings.description.modelFallbacks':
+    'Упорядоченный список идентификаторов резервных моделей через запятую (не более 3), которые используются при ошибках перегрузки основной модели 429, 503 или 529. Пример: «qwen-plus,qwen-turbo». В CLI задаётся параметром --fallback-model.',
+  'settings.label.voiceModel': 'Модель распознавания речи',
+  'settings.description.voiceModel':
+    'Модель для распознавания речи. Выберите её через /model --voice. Если оставить поле пустым, голосовой ввод будет отключён до выбора модели.',
+  'settings.label.tools.webSearch.enabled': 'Включить веб-поиск',
+  'settings.description.tools.webSearch.enabled':
+    'Включить встроенный инструмент web_search. Также требуется настроить tools.webSearch.model. Переменная окружения ENABLE_WEB_SEARCH имеет приоритет.',
+  'settings.label.tools.webSearch.model': 'Модель поиска',
+  'settings.description.tools.webSearch.model':
+    'Модель для отдельного поискового запроса. Разрешается через modelProviders так же, как fastModel: «modelId» или «authType:modelId». Должна указывать на DashScope-совместимую конфигурацию с envKey. Рекомендуется qwen3.6-plus. Переменная окружения WEB_SEARCH_MODEL имеет приоритет.',
+  'settings.label.tools.webSearch.webExtractor':
+    'Открывать страницы результатов',
+  'settings.description.tools.webSearch.webExtractor':
+    'Разрешить поисковому агенту открывать и читать страницы результатов через DashScope web_extractor, чтобы ответы лучше опирались на источники. DashScope тарифицирует это отдельно. Переменная окружения WEB_SEARCH_EXTRACTOR имеет приоритет.',
+  'settings.label.tools.toolSearch.threshold':
+    'Порог предварительной загрузки отложенных инструментов (%)',
+  'settings.description.tools.toolSearch.threshold':
+    'Доля контекстного окна, выделяемая при запуске сессии на предварительную загрузку обычных отложенных инструментов — встроенных и MCP. Если схемы всех доступных инструментов помещаются в бюджет, они объявляются заранее, а не загружаются по требованию, что сохраняет стабильный префикс запроса для KV-кэша. Инструменты, отложенные через tools.eager, не учитываются и остаются доступными по требованию. Значение 0 всегда загружает отложенные инструменты по требованию.',
+  'settings.label.tools.listDirectory.enabled': 'Включить просмотр каталогов',
+  'settings.description.tools.listDirectory.enabled':
+    'Включить встроенный инструмент list_directory. По умолчанию он отключён, но автоматически включается, если явно указан в списке разрешённых coreTools (--core-tools или tools.core).',
+  'settings.label.tools.workflowsEnabled': 'Динамические рабочие процессы',
+  'settings.description.tools.workflowsEnabled':
+    'Включить инструмент Workflow, с помощью которого модель может создавать и запускать сценарии, координирующие субагентов параллельно. По умолчанию отключено; один запуск может задействовать много субагентов и потратить соответствующее количество токенов. Переменные QWEN_CODE_ENABLE_WORKFLOWS=1 и QWEN_CODE_DISABLE_WORKFLOWS=1 имеют приоритет, при этом отключение важнее. Эта настройка не связана с представлением планирования и обзора сессии; чтобы слово workflow не направляло ход выполнения, используйте настройку отключения запуска по ключевому слову.',
+  'settings.label.goals.modelProposed': 'Цели, предлагаемые моделью',
+  'settings.description.goals.modelProposed':
+    'Управляет инструментом propose_goal, который позволяет модели предложить цель сессии для вашего подтверждения. «Всегда спрашивать» показывает каждое предложение в диалоге и не устанавливает цель до подтверждения; «Отключено» удаляет инструмент. Введённая вручную команда /goal работает независимо. Поскольку настройка влияет на согласие пользователя, она учитывается только в областях Пользователь, Система и Системные значения по умолчанию; значения Рабочей области игнорируются.',
+  'settings.option.goals.modelProposed.alwaysAsk': 'Всегда спрашивать',
+  'settings.option.goals.modelProposed.disabled': 'Отключено',
+  'settings.label.experimental.cron': 'Включить инструменты Cron/Loop',
+  'settings.description.experimental.cron':
+    'Включить инструменты cron/loop внутри сессии. Модель сможет создавать повторяющиеся запросы с помощью cron_create, cron_list и cron_delete. Переменная окружения QWEN_CODE_DISABLE_CRON=1 отключает эту возможность.',
+  'settings.label.experimental.sessionWriterLease':
+    'Включить блокировку записи сессий ACP',
+  'settings.description.experimental.sessionWriterLease':
+    'Включить межпроцессное разграничение записи для сохраняемых сессий ACP и демона. Значение фиксируется при запуске процесса ACP или демона. Все одновременно работающие процессы записи ACP и демона должны включить эту настройку; интерактивные и headless-процессы записи не участвуют в протоколе.',
+  'settings.label.experimental.agentTeam': 'Включить команды агентов',
+  'settings.description.experimental.agentTeam':
+    'Включить экспериментальные инструменты совместной работы команд агентов. Модель сможет создавать и удалять команды, отправлять сообщения и координировать задачи с помощью team_create, team_delete, send_message, task_create, task_update и task_list. Также включается переменной окружения QWEN_CODE_ENABLE_AGENT_TEAM=1.',
+  'settings.label.experimental.artifact': 'Включить артефакты',
+  'settings.description.experimental.artifact':
+    'Включить инструменты артефактов. По умолчанию они включены. В интерактивных сессиях вне SDK модель может публиковать автономную HTML-страницу как интерактивный артефакт и открывать её в браузере. Сессии демона вне SDK могут использовать инструмент record_artifact, сохраняющий только метаданные. Установите false или QWEN_CODE_DISABLE_ARTIFACT=1, чтобы отключить оба варианта.',
 } satisfies Record<string, MessageValue>;

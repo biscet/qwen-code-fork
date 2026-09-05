@@ -115,6 +115,11 @@ describe('createWorkspaceProvidersStatusProvider', () => {
       },
     });
     expect(JSON.stringify(first)).not.toContain('secret');
+    expect(
+      first.providers
+        .flatMap((entry) => entry.models)
+        .find((model) => model.baseModelId === 'model-a')?.registryBaseUrl,
+    ).toBe('https://api-a.example/v1');
 
     await writeUserSettings({
       security: { auth: { selectedType: 'openai' } },
@@ -301,6 +306,43 @@ describe('createWorkspaceProvidersStatusProvider', () => {
     expect(modelIds).toContain('main-model(openai)');
     expect(modelIds).not.toContain('fast-model(openai)');
     expect(modelIds).not.toContain('voice-model(openai)');
+  });
+
+  it('projects configured alias thinking and effort before creating a session', async () => {
+    const provider = createWorkspaceProvidersStatusProvider({ env: {} });
+    await writeUserSettings({
+      security: { auth: { selectedType: 'openai' } },
+      model: { name: 'local-coder' },
+      modelProviders: {
+        openai: [
+          {
+            id: 'local-coder',
+            name: 'Renamed model',
+            apiKey: 'private-test-key',
+            generationConfig: {
+              reasoning: { effort: 'medium' },
+              samplingParams: {
+                chat_template_kwargs: {
+                  enable_thinking: true,
+                  reasoning_effort: 'medium',
+                  preserve_thinking: true,
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await provider(workspace, false);
+    const alias = result.providers
+      .flatMap((entry) => entry.models)
+      .find((model) => model.baseModelId === 'local-coder');
+    expect(alias?.configOptions).toMatchObject([
+      { id: 'reasoning_effort', currentValue: 'medium' },
+    ]);
+    expect(JSON.stringify(result)).not.toContain('private-test-key');
+    expect(JSON.stringify(result)).not.toContain('generationConfig');
   });
 
   it('projects reasoning preview only for the exact stable qwen3.8-max model', async () => {
@@ -535,6 +577,10 @@ describe('createWorkspaceProvidersStatusProvider', () => {
 
     expect(result.current?.modelId).toBe(defaultModel?.modelId);
     expect(defaultModel?.isCurrent).toBe(true);
+    expect(defaultModel?.registryBaseUrl).toBeNull();
+    expect(models.find((m) => m.name === 'Shared Proxy')?.registryBaseUrl).toBe(
+      'https://proxy.example/v1',
+    );
     expect(
       models.find((m) => m.baseUrl === 'https://proxy.example/v1')?.isCurrent,
     ).toBe(false);

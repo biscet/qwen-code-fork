@@ -9,6 +9,7 @@ import {
   BotIcon,
   DatabaseIcon,
   FlaskConicalIcon,
+  MessageSquareIcon,
   PaletteIcon,
   ServerIcon,
   Settings2Icon,
@@ -28,6 +29,10 @@ import {
   useI18n,
   type WebShellLanguage,
 } from '../../i18n';
+import {
+  isHiddenQwenOAuthModelAlias,
+  isHiddenQwenOAuthModelValue,
+} from '../../utils/composerModels';
 import { LiveVoiceSettingsCard } from '../../live/LiveVoiceSettingsCard';
 import type { UseLiveVoiceSetupResult } from '../../live/useLiveVoiceSetup';
 import {
@@ -44,11 +49,16 @@ import {
   ModelManagementSection,
   type ModelManagementProps,
 } from './ModelManagementSection';
+import {
+  ModelSettingsPanel,
+  type ModelSettingsPanelProps,
+} from './ModelSettingsPanel';
 import { LocalControlSettingsCard } from './LocalControlSettingsCard';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   Empty,
   EmptyDescription,
@@ -73,6 +83,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { Separator } from '../ui/separator';
+import { Skeleton } from '../ui/skeleton';
 import { Spinner } from '../ui/spinner';
 import { Switch } from '../ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -88,6 +99,7 @@ interface SettingsMessageProps {
   onChatWidthModeChange: (mode: ChatWidthMode) => void;
   /** Model list/add/delete/select, rendered inside the Model category. */
   modelManagement?: ModelManagementProps;
+  modelSettings?: ModelSettingsPanelProps & { workspaceKey: string };
   embedded?: boolean;
   /** Category to select on open (deep link, e.g. 'Daemon'). */
   initialCategory?: string;
@@ -113,7 +125,12 @@ const SUB_DIALOG_KEYS = new Set([
   'voiceModel',
   'modelFallbacks',
 ]);
+const MODEL_SELECT_SETTING_KEYS = new Set([
+  'advisorModel',
+  'tools.webSearch.model',
+]);
 const HIDDEN_SETTING_KEYS = new Set([
+  'general.enableAutoUpdate',
   'ui.hideTips',
   'ui.enableUserFeedback',
   // Compact behavior is fixed on in the web shell; the daemon schema still
@@ -288,14 +305,27 @@ function CategoryIcon({ category }: { category: string }) {
           ? ShieldIcon
           : normalized.includes('model')
             ? BotIcon
-            : normalized.includes('daemon')
-              ? ServerIcon
-              : normalized.includes('advanced')
-                ? SlidersHorizontalIcon
-                : normalized.includes('experimental')
-                  ? FlaskConicalIcon
-                  : Settings2Icon;
-  return <Icon data-icon="inline-start" aria-hidden="true" />;
+            : normalized === 'chat'
+              ? MessageSquareIcon
+              : normalized.includes('daemon')
+                ? ServerIcon
+                : normalized.includes('advanced')
+                  ? SlidersHorizontalIcon
+                  : normalized.includes('experimental')
+                    ? FlaskConicalIcon
+                    : Settings2Icon;
+  return (
+    <Icon
+      className={
+        normalized.includes('model')
+          ? 'size-4 shrink-0 scale-125'
+          : 'size-4 shrink-0'
+      }
+      strokeWidth={normalized.includes('model') ? 1.6 : 2}
+      data-icon="inline-start"
+      aria-hidden="true"
+    />
+  );
 }
 
 function SettingsRow({
@@ -421,6 +451,7 @@ export function SettingsMessage({
   chatWidthMode,
   onChatWidthModeChange,
   modelManagement,
+  modelSettings,
   embedded = false,
   initialCategory,
 }: SettingsMessageProps) {
@@ -434,7 +465,7 @@ export function SettingsMessage({
   const [message, setMessage] = useState<string | null>(null);
   const [restartPending, setRestartPending] = useState(false);
 
-  const showInitialLoading = loading && !status;
+  const showInitialLoading = !status && !error;
   const categories = useMemo(() => {
     const visibleSettings = settings.filter(
       (setting) =>
@@ -451,6 +482,28 @@ export function SettingsMessage({
         })),
       }),
     );
+    if (
+      (modelSettings || modelManagement) &&
+      !groups.some((group) => group.id === 'Model')
+    ) {
+      groups.push({
+        id: 'Model',
+        label: t('settings.models.title'),
+        items: [],
+      });
+    }
+    const modelGroup = groups.find((group) => group.id === 'Model');
+    if (modelGroup) {
+      modelGroup.label = t('settings.models.title');
+      if (modelSettings && modelGroup.items.length > 0) {
+        groups.splice(groups.indexOf(modelGroup) + 1, 0, {
+          id: 'Chat',
+          label: t('settings.models.chatDefaults'),
+          items: modelGroup.items,
+        });
+        modelGroup.items = [];
+      }
+    }
     const localItem = {
       type: 'local' as const,
       localKey: 'chatWidth' as const,
@@ -497,7 +550,7 @@ export function SettingsMessage({
       });
     }
     return groups;
-  }, [liveSetup, settings, t]);
+  }, [liveSetup, settings, t, modelSettings, modelManagement]);
 
   useEffect(() => {
     if (categories.length === 0) return;
@@ -557,26 +610,86 @@ export function SettingsMessage({
     categories.find((category) => category.id === activeCategory) ??
     categories[0];
 
-  // The model-management block is surfaced inside the "Model" category, detected
-  // by the raw category of its dialog settings (fastModel etc.).
-  const isModelCategory = activeGroup?.items.some(
-    (item) => item.type === 'setting' && item.setting.category === 'Model',
+  const isModelCategory = activeGroup?.id === 'Model';
+
+  const modelSelectOptions = useMemo(() => {
+    const options = new Map<
+      string,
+      { value: string; label: string; current: boolean }
+    >();
+    for (const provider of modelManagement?.providers ?? []) {
+      for (const model of provider.models) {
+        if (
+          isHiddenQwenOAuthModelAlias({
+            authType: provider.authType,
+            modelId: model.modelId,
+            baseModelId: model.baseModelId,
+          })
+        )
+          continue;
+        const current =
+          model.isCurrent ||
+          model.modelId === modelManagement?.currentModelId ||
+          model.baseModelId === modelManagement?.currentModelId;
+        const previous = options.get(model.baseModelId);
+        if (!previous || current) {
+          options.set(model.baseModelId, {
+            value: model.baseModelId,
+            label: model.name || model.baseModelId,
+            current,
+          });
+        }
+      }
+    }
+    return [...options.values()].sort(
+      (left, right) => Number(right.current) - Number(left.current),
+    );
+  }, [modelManagement?.currentModelId, modelManagement?.providers]);
+  const defaultModelOption = modelSelectOptions.find(
+    (option) => option.current,
+  );
+  const visibleModelCount = useMemo(
+    () =>
+      (modelManagement?.providers ?? []).reduce(
+        (count, provider) =>
+          count +
+          provider.models.filter(
+            (model) =>
+              !isHiddenQwenOAuthModelAlias({
+                authType: provider.authType,
+                modelId: model.modelId,
+                baseModelId: model.baseModelId,
+              }),
+          ).length,
+        0,
+      ),
+    [modelManagement?.providers],
+  );
+  const modelCountLoading =
+    modelManagement?.loading === true && modelManagement.providers.length === 0;
+  const visibleBaseModelIds = new Set(
+    modelSelectOptions.map((option) => option.value),
   );
 
   const renderSelect = (
-    value: string,
+    value: string | undefined,
     onChange: (value: string) => void,
     options: Array<{ value: string; label: string }>,
     ariaLabel: string,
     disabled = false,
+    triggerClassName = 'w-[min(160px,50vw)] bg-background max-md:w-full',
   ) => (
-    <Select value={value} disabled={disabled} onValueChange={onChange}>
+    <Select
+      value={value || undefined}
+      disabled={disabled}
+      onValueChange={onChange}
+    >
       <SelectTrigger
         size="sm"
         aria-label={ariaLabel}
-        className="w-[min(160px,50vw)] bg-background max-md:w-full"
+        className={triggerClassName}
       >
-        <SelectValue />
+        <SelectValue placeholder={t('settings.action.select')} />
       </SelectTrigger>
       <SelectContent position="popper" align="end">
         <SelectGroup>
@@ -632,6 +745,18 @@ export function SettingsMessage({
     }
 
     if (SUB_DIALOG_KEYS.has(setting.key)) {
+      const displayValue =
+        typeof value === 'string'
+          ? value
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(
+                (entry) =>
+                  entry &&
+                  !isHiddenQwenOAuthModelValue(entry, visibleBaseModelIds),
+              )
+              .join(', ')
+          : formatValue(setting, scope, t);
       return (
         <Button
           type="button"
@@ -641,8 +766,43 @@ export function SettingsMessage({
           className="max-w-[260px] truncate"
           onClick={() => onSubDialog(setting.key, scope)}
         >
-          {formatValue(setting, scope, t) || t('settings.action.select')}
+          {displayValue || t('settings.action.select')}
         </Button>
+      );
+    }
+
+    if (MODEL_SELECT_SETTING_KEYS.has(setting.key)) {
+      const configuredValue =
+        typeof value === 'string' &&
+        value.trim() &&
+        !isHiddenQwenOAuthModelValue(value, visibleBaseModelIds)
+          ? value.trim()
+          : undefined;
+      const selectedValue =
+        configuredValue ||
+        (setting.key === 'advisorModel'
+          ? defaultModelOption?.value
+          : undefined);
+      const options = modelSelectOptions.map((option) => ({
+        value: option.value,
+        label:
+          setting.key === 'advisorModel' && option.current
+            ? `${option.label} · ${t('settings.models.default')}`
+            : option.label,
+      }));
+      if (
+        configuredValue &&
+        !options.some((option) => option.value === configuredValue)
+      ) {
+        options.unshift({ value: configuredValue, label: configuredValue });
+      }
+      return renderSelect(
+        selectedValue,
+        (next) => handleSetValue(setting.key, next),
+        options,
+        formatSettingLabel(setting, t),
+        disabled || options.length === 0,
+        'w-[min(300px,50vw)] bg-background max-md:w-full',
       );
     }
 
@@ -712,12 +872,9 @@ export function SettingsMessage({
         </div>
       )}
 
-      {(message || showInitialLoading) && (
+      {message && (
         <Alert className="mx-4 mt-3 w-auto">
-          {showInitialLoading && <Spinner />}
-          <AlertDescription>
-            {message || t('settings.loading')}
-          </AlertDescription>
+          <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
 
@@ -748,32 +905,63 @@ export function SettingsMessage({
           <nav
             className="flex min-h-0 flex-col gap-1 overflow-y-auto border-r border-border bg-muted/20 p-3 max-md:flex-row max-md:overflow-x-auto max-md:border-r-0 max-md:border-b"
             aria-label={t('settings.title')}
+            aria-busy={showInitialLoading || undefined}
           >
-            {categories.map((category) => (
-              <Button
-                key={category.id}
-                type="button"
-                variant={category.id === activeCategory ? 'secondary' : 'ghost'}
-                size="sm"
-                aria-current={
-                  category.id === activeCategory ? 'page' : undefined
-                }
-                className="w-full justify-start gap-2 px-2.5 max-md:w-auto max-md:shrink-0"
-                onClick={() => setActiveCategory(category.id)}
-              >
-                <CategoryIcon category={category.id} />
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {category.label}
-                </span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {category.items.length}
-                </span>
-              </Button>
-            ))}
+            {showInitialLoading ? (
+              <ContentSkeleton
+                label={t('settings.loading')}
+                variant="navigation"
+                rows={7}
+              />
+            ) : (
+              categories.map((category) => (
+                <Button
+                  key={category.id}
+                  type="button"
+                  variant={
+                    category.id === activeCategory ? 'secondary' : 'ghost'
+                  }
+                  size="sm"
+                  aria-current={
+                    category.id === activeCategory ? 'page' : undefined
+                  }
+                  className="w-full justify-start gap-2 px-2.5 max-md:w-auto max-md:shrink-0"
+                  onClick={() => setActiveCategory(category.id)}
+                >
+                  <CategoryIcon category={category.id} />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {category.label}
+                  </span>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {category.id === 'Model' ? (
+                      modelCountLoading ? (
+                        <Skeleton className="h-3 w-4" />
+                      ) : (
+                        visibleModelCount
+                      )
+                    ) : (
+                      category.items.length
+                    )}
+                  </span>
+                </Button>
+              ))
+            )}
           </nav>
 
-          <section className="min-h-0 min-w-0 overflow-y-auto bg-background p-5 max-md:p-3">
-            {!loading && !activeGroup && (
+          <section
+            className="min-h-0 min-w-0 overflow-y-auto bg-background p-5 max-md:p-3"
+            aria-busy={showInitialLoading || undefined}
+          >
+            {showInitialLoading ? (
+              <div className="mx-auto w-full max-w-5xl">
+                <ContentSkeleton
+                  label={t('settings.loading')}
+                  variant="form"
+                  rows={5}
+                />
+              </div>
+            ) : null}
+            {!showInitialLoading && !loading && !activeGroup && (
               <Empty className="min-h-60">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
@@ -784,9 +972,24 @@ export function SettingsMessage({
                 </EmptyHeader>
               </Empty>
             )}
-            {activeGroup && (
-              <div className="mx-auto w-full max-w-5xl">
-                <Card>
+            {!showInitialLoading && activeGroup && (
+              <div
+                key={activeGroup.id}
+                data-motion="detail"
+                className="mx-auto w-full max-w-5xl"
+              >
+                {isModelCategory && modelSettings && (
+                  <ModelSettingsPanel
+                    key={`${modelSettings.workspaceKey}:${scope}`}
+                    {...modelSettings}
+                    scope={scope}
+                  />
+                )}
+                <Card
+                  className={
+                    activeGroup.items.length === 0 ? 'hidden' : undefined
+                  }
+                >
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <CategoryIcon category={activeGroup.id} />
@@ -901,7 +1104,7 @@ export function SettingsMessage({
                     </FieldGroup>
                   </CardContent>
                 </Card>
-                {isModelCategory && modelManagement && (
+                {isModelCategory && modelManagement && !modelSettings && (
                   <div className="mt-4">
                     <ModelManagementSection {...modelManagement} />
                   </div>

@@ -353,7 +353,7 @@ describe('WebShellSidebar collapsed session group persistence', () => {
     expect(onCollapsedChange).toHaveBeenCalledWith(false);
   });
 
-  it('renders the macOS wordmark and collapse control in the expanded titlebar', async () => {
+  it('keeps the macOS collapse control without a wordmark in the expanded titlebar', async () => {
     (
       window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
     ).__HOMECODE_MACOS_DESKTOP__ = true;
@@ -361,7 +361,7 @@ describe('WebShellSidebar collapsed session group persistence', () => {
     renderSidebar(false, { footer: false, onCollapsedChange });
     await flushSidebar();
 
-    expect(container.querySelector('[data-homecode-wordmark]')).not.toBeNull();
+    expect(container.querySelector('[data-homecode-wordmark]')).toBeNull();
     const toggle = container.querySelector<HTMLButtonElement>(
       '[data-testid="macos-desktop-sidebar-toggle"]',
     );

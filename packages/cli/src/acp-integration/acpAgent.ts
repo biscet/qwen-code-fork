@@ -267,6 +267,7 @@ import { restoreSessionModelThenAuthenticate } from './session-model-persistence
 import { HistoryReplayer } from './session/history-replayer.js';
 import { renderPreparedGoalUpdate } from './session/recovered-goal-update.js';
 import { ActiveWorkReporter } from './active-work-reporter.js';
+import type { ServeModelProviderReplacement } from '../runtime/model-provider-replacement.js';
 import {
   shouldProbeChildHeap,
   startChildHeapProbe,
@@ -7211,6 +7212,14 @@ class QwenAgent implements Agent {
 
         const isCurrent =
           currentAuth === model.authType && currentAcpModelId === modelId;
+        const generationConfig =
+          model.isRuntimeModel || modelId.startsWith(ACP_ROUTE_ID_PREFIX)
+            ? undefined
+            : config.getResolvedModelConfig?.(
+                model.authType,
+                model.id,
+                model.registryBaseUrl ?? model.baseUrl,
+              )?.generationConfig;
         const configOptions =
           model.isRuntimeModel || modelId.startsWith(ACP_ROUTE_ID_PREFIX)
             ? undefined
@@ -7219,11 +7228,8 @@ class QwenAgent implements Agent {
                 resolvePersistedReasoningConfigState(
                   model.id,
                   this.settings.merged.model?.reasoningEffort,
-                  config.getResolvedModelConfig?.(
-                    model.authType,
-                    model.id,
-                    model.registryBaseUrl ?? model.baseUrl,
-                  )?.generationConfig.thinkingMandatory === true,
+                  generationConfig?.thinkingMandatory === true,
+                  generationConfig,
                 ),
               );
         const providerModel: ServeWorkspaceProviderModel = {
@@ -12718,6 +12724,26 @@ class QwenAgent implements Agent {
         >;
       }
       case SERVE_CONTROL_EXT_METHODS.workspaceModelProvidersReload: {
+        const replacement = params['modelReplacement'];
+        if (
+          replacement !== undefined &&
+          (!isObjectRecord(replacement) ||
+            !['previous', 'next'].every((key) => {
+              const route = replacement[key];
+              return (
+                isObjectRecord(route) &&
+                typeof route['authType'] === 'string' &&
+                typeof route['modelId'] === 'string' &&
+                (route['baseUrl'] === undefined ||
+                  typeof route['baseUrl'] === 'string')
+              );
+            }))
+        ) {
+          throw RequestError.invalidParams(
+            undefined,
+            'Invalid model replacement',
+          );
+        }
         if (
           !this.settings.reloadScopesFromDiskAtomically([
             SettingScope.User,
@@ -12755,7 +12781,9 @@ class QwenAgent implements Agent {
         }
         for (const [id, session] of this.sessions) {
           try {
-            session.reloadModelProvidersFromDisk();
+            session.reloadModelProvidersFromDisk(
+              replacement as ServeModelProviderReplacement | undefined,
+            );
             configsRefreshed += 1;
           } catch {
             configsFailed += 1;
@@ -13590,6 +13618,7 @@ class QwenAgent implements Agent {
         modelId,
         selection,
         generation?.thinkingMandatory === true,
+        generation,
       )
     ) {
       return;
@@ -13820,6 +13849,7 @@ class QwenAgent implements Agent {
       () => this.activeWorkReporter?.notifyChanged(),
       workflowHistory,
       (runId) => this.isWorkflowRunLiveOutsideSession(sessionId, runId),
+      () => this.buildConfigOptions(config),
     );
     const replaySessionHistory = async () => {
       if (
@@ -14144,18 +14174,20 @@ class QwenAgent implements Agent {
       options: configModelOptions,
     };
 
+    const generation = config.getContentGeneratorConfig?.();
     if (
       activeRuntimeSnapshot ||
       currentModelId.startsWith(ACP_ROUTE_ID_PREFIX) ||
       !isReasoningSelectionSupported(
         rawCurrentModelId,
         REASONING_EFFORT_DEFAULT,
+        generation?.thinkingMandatory === true,
+        generation,
       )
     ) {
       return [modeConfigOption, modelConfigOption];
     }
 
-    const generation = config.getContentGeneratorConfig?.();
     if (!generation) {
       return [modeConfigOption, modelConfigOption];
     }
@@ -14220,6 +14252,7 @@ class QwenAgent implements Agent {
           enabled: reasoningEnabled,
           effort: effectiveModelEffort,
           thinkingMandatory: generation.thinkingMandatory === true,
+          generationConfig: generation,
         })
       : undefined) ?? {
       id: 'reasoning_effort',
@@ -14276,7 +14309,10 @@ class QwenAgent implements Agent {
     if (completeModelId.startsWith(ACP_ROUTE_ID_PREFIX)) {
       return undefined;
     }
-    const reasoning = getModelConfiguration(config.getModel())?.reasoning;
+    const reasoning = getModelConfiguration(
+      config.getModel(),
+      config.getContentGeneratorConfig?.(),
+    )?.reasoning;
     return reasoning?.thinking ? reasoning : undefined;
   }
 

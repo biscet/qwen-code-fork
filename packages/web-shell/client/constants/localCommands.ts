@@ -178,6 +178,8 @@ const BUILTIN_COMMAND_DESCRIPTION_KEYS: Record<string, string> = {
 const SKILL_DESCRIPTION_KEYS: Record<string, string> = {
   // Bundled with Qwen Code (packages/core/src/skills/bundled).
   batch: 'skilldesc.batch',
+  'computer-use': 'skilldesc.computerUse',
+  coordinate: 'skilldesc.coordinate',
   dataviz: 'skilldesc.dataviz',
   'extension-creator': 'skilldesc.extensionCreator',
   'goal-draft': 'skilldesc.goalDraft',

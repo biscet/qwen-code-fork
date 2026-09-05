@@ -1423,7 +1423,7 @@ export function createDaemonWorkspaceService(
       };
     },
 
-    async reloadModelProviders(_ctx: WorkspaceRequestContext) {
+    async reloadModelProviders(_ctx: WorkspaceRequestContext, replacement) {
       assertActiveGeneration();
       let failed = false;
       const reloadModelProvidersDaemonEnv =
@@ -1450,7 +1450,10 @@ export function createDaemonWorkspaceService(
           configsFailed?: number;
         }>(
           SERVE_CONTROL_EXT_METHODS.workspaceModelProvidersReload,
-          { cwd: boundWorkspace },
+          {
+            cwd: boundWorkspace,
+            ...(replacement ? { modelReplacement: replacement } : {}),
+          },
           { timeoutMs: 30_000 },
         );
         if ((child.configsFailed ?? 0) > 0) failed = true;

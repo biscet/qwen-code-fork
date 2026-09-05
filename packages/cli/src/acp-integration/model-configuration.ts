@@ -76,32 +76,93 @@ export type ModelReasoningConfigState = {
   enabled?: boolean;
   effort?: ReasoningEffort;
   thinkingMandatory?: boolean;
+  generationConfig?: Partial<ContentGeneratorConfig>;
 };
 
 export function resolvePersistedReasoningConfigState(
   modelId: string | undefined,
   value: unknown,
   thinkingMandatory = false,
+  generationConfig?: Partial<ContentGeneratorConfig>,
 ): ModelReasoningConfigState {
+  const defaults: ModelReasoningConfigState = {
+    thinkingMandatory,
+    ...(generationConfig
+      ? {
+          generationConfig,
+          enabled: generationConfig.reasoning !== false,
+          ...(generationConfig.reasoning
+            ? { effort: generationConfig.reasoning.effort }
+            : {}),
+        }
+      : {}),
+  };
   const selection = parseReasoningSelection(value);
   if (
     !selection ||
     selection === REASONING_EFFORT_DEFAULT ||
-    !isReasoningSelectionSupported(modelId, selection, thinkingMandatory)
+    !isReasoningSelectionSupported(
+      modelId,
+      selection,
+      thinkingMandatory,
+      generationConfig,
+    )
   ) {
-    return { thinkingMandatory };
+    return defaults;
   }
   return selection === REASONING_EFFORT_NONE
-    ? { enabled: false, thinkingMandatory }
-    : { enabled: true, effort: selection, thinkingMandatory };
+    ? { ...defaults, enabled: false }
+    : { ...defaults, enabled: true, effort: selection };
 }
 
-export function getModelConfiguration(modelId: string | undefined):
+export function getModelConfiguration(
+  modelId: string | undefined,
+  generationConfig?: Partial<ContentGeneratorConfig>,
+):
   | {
       readonly reasoning?: ModelReasoningConfiguration;
     }
   | undefined {
-  return modelId ? MODEL_CONFIGURATIONS[modelId] : undefined;
+  if (!modelId) return undefined;
+  const known = MODEL_CONFIGURATIONS[modelId];
+  if (known) return known;
+  if (/^(?:qwen\/)?qwen3\.8-27b(?:-free|:free)?$/i.test(modelId)) {
+    return {
+      reasoning: {
+        thinking: true,
+        efforts: ['low', 'medium', 'xhigh'],
+        defaultEffort: 'xhigh',
+      },
+    };
+  }
+  const template =
+    generationConfig?.extra_body?.['chat_template_kwargs'] ??
+    generationConfig?.samplingParams?.['chat_template_kwargs'];
+  if (!template || typeof template !== 'object' || Array.isArray(template))
+    return undefined;
+  const knobs = template as Record<string, unknown>;
+  if (
+    typeof knobs['enable_thinking'] !== 'boolean' &&
+    typeof knobs['reasoning_effort'] !== 'string'
+  )
+    return undefined;
+  const configuredEffort = generationConfig?.reasoning
+    ? generationConfig.reasoning.effort
+    : undefined;
+  const effort =
+    configuredEffort ??
+    REASONING_EFFORT_TIERS.find(
+      (candidate) => candidate === knobs['reasoning_effort'],
+    );
+  return {
+    reasoning: effort
+      ? {
+          thinking: true,
+          efforts: REASONING_EFFORT_TIERS,
+          defaultEffort: effort,
+        }
+      : { thinking: true, toggleOnly: true },
+  };
 }
 
 export function parseReasoningSelection(
@@ -117,9 +178,10 @@ export function isReasoningSelectionSupported(
   modelId: string | undefined,
   selection: ReasoningSelection,
   thinkingMandatory = false,
+  generationConfig?: Partial<ContentGeneratorConfig>,
 ): boolean {
   if (!modelId) return false;
-  const reasoning = getModelConfiguration(modelId)?.reasoning;
+  const reasoning = getModelConfiguration(modelId, generationConfig)?.reasoning;
   if (!reasoning?.thinking) {
     const normalized = modelId.toLowerCase();
     if (normalized.startsWith('qwen') || normalized === 'coder-model')
@@ -192,7 +254,10 @@ export function buildModelReasoningConfigOption(
   modelId: string | undefined,
   state: ModelReasoningConfigState = {},
 ): SessionConfigOption | undefined {
-  const reasoning = getModelConfiguration(modelId)?.reasoning;
+  const reasoning = getModelConfiguration(
+    modelId,
+    state.generationConfig,
+  )?.reasoning;
   if (!reasoning?.thinking) return undefined;
   const thinkingMandatory = state.thinkingMandatory === true;
 
@@ -253,7 +318,10 @@ export function buildModelReasoningConfigPreview(
   modelId: string | undefined,
   state: ModelReasoningConfigState = {},
 ): SessionConfigOption[] | undefined {
-  const reasoning = getModelConfiguration(modelId)?.reasoning;
+  const reasoning = getModelConfiguration(
+    modelId,
+    state.generationConfig,
+  )?.reasoning;
   if (!reasoning?.thinking) return undefined;
   const option = buildModelReasoningConfigOption(modelId, state);
   return option ? [option] : undefined;

@@ -4,13 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Application, RequestHandler } from 'express';
+import type { Application, Request, RequestHandler, Response } from 'express';
+import type { ServeSkillLevel } from '@qwen-code/acp-bridge/status';
 import type { AcpSessionBridge } from '../acp-session-bridge.js';
 import type { SendBridgeError } from '../server/error-response.js';
 import {
   createBuildWorkspaceCtx,
   MAX_SERVER_NAME_LENGTH,
+  MAX_SKILL_NAME_LENGTH,
 } from '../server/request-helpers.js';
+import {
+  readWorkspaceSkillDetail,
+  WorkspaceSkillDetailError,
+  type WorkspaceSkillIdentity,
+} from '../workspace-skill-detail.js';
 import type { DaemonWorkspaceService } from '../workspace-service/index.js';
 import { resolveTrustedRuntime } from '../workspace-route-runtime.js';
 import type {
@@ -26,7 +33,70 @@ interface RegisterWorkspaceStatusRoutesDeps {
   workspace: DaemonWorkspaceService;
   mutate: (opts?: { strict?: boolean }) => RequestHandler;
   sendBridgeError: SendBridgeError;
+  isWorkspaceTrusted?: () => boolean;
   captureGenerationAssertion?: () => (() => void) | undefined;
+}
+
+const SKILL_LEVELS = new Set<ServeSkillLevel>([
+  'project',
+  'user',
+  'extension',
+  'bundled',
+]);
+
+function parseSkillIdentity(
+  req: Request,
+  res: Response,
+): WorkspaceSkillIdentity | undefined {
+  const name = req.params['name'];
+  if (
+    typeof name !== 'string' ||
+    name.length === 0 ||
+    name.length > MAX_SKILL_NAME_LENGTH
+  ) {
+    res.status(400).json({
+      error: 'A valid skill name path parameter is required',
+      code: 'invalid_skill_name',
+    });
+    return undefined;
+  }
+  const level = req.query['level'];
+  if (
+    typeof level !== 'string' ||
+    !SKILL_LEVELS.has(level as ServeSkillLevel)
+  ) {
+    res.status(400).json({
+      error: 'A valid skill level query parameter is required',
+      code: 'invalid_skill_level',
+    });
+    return undefined;
+  }
+  const extensionName = req.query['extensionName'];
+  if (
+    level === 'extension' &&
+    (typeof extensionName !== 'string' || extensionName.length === 0)
+  ) {
+    res.status(400).json({
+      error: 'Extension skills require an extensionName query parameter',
+      code: 'invalid_extension_name',
+    });
+    return undefined;
+  }
+  return {
+    name,
+    level: level as ServeSkillLevel,
+    ...(typeof extensionName === 'string' && extensionName.length > 0
+      ? { extensionName }
+      : {}),
+  };
+}
+
+function sendSkillDetailError(res: Response, error: unknown): boolean {
+  if (!(error instanceof WorkspaceSkillDetailError)) return false;
+  res
+    .status(error.code === 'skill_not_found' ? 404 : 422)
+    .json({ error: error.message, code: error.code });
+  return true;
 }
 
 async function runInCapturedGeneration<T>(
@@ -144,6 +214,33 @@ export function registerWorkspaceStatusRoutes(
         );
     } catch (err) {
       sendBridgeError(res, err, { route: 'GET /workspace/skills' });
+    }
+  });
+
+  app.get('/workspace/skills/:name/detail', async (req, res) => {
+    if (deps.isWorkspaceTrusted?.() === false) {
+      res.status(403).json({
+        error: 'Workspace is not trusted.',
+        code: 'untrusted_workspace',
+      });
+      return;
+    }
+    const identity = parseSkillIdentity(req, res);
+    if (!identity) return;
+    const route = 'GET /workspace/skills/:name/detail';
+    try {
+      const ctx = buildWorkspaceCtx(route);
+      const detail = await runInCapturedGeneration(
+        deps.captureGenerationAssertion,
+        async () => {
+          const status = await workspace.getWorkspaceSkillsStatus(ctx);
+          return readWorkspaceSkillDetail(status, identity);
+        },
+      );
+      res.status(200).json(detail);
+    } catch (err) {
+      if (sendSkillDetailError(res, err)) return;
+      sendBridgeError(res, err, { route });
     }
   });
 
@@ -330,6 +427,26 @@ export function registerWorkspaceQualifiedStatusRoutes(
           ),
         );
     } catch (err) {
+      sendBridgeError(res, err, { route });
+    }
+  });
+
+  app.get('/workspaces/:workspace/skills/:name/detail', async (req, res) => {
+    const runtime = resolveTrustedRuntime(workspaceRegistry, req, res);
+    if (!runtime) return;
+    const identity = parseSkillIdentity(req, res);
+    if (!identity) return;
+    const route = 'GET /workspaces/:workspace/skills/:name/detail';
+    const ctx = createBuildWorkspaceCtx(runtime.workspaceCwd)(route);
+    try {
+      const detail = await runInRuntimeGeneration(runtime, async () => {
+        const status =
+          await runtime.workspaceService.getWorkspaceSkillsStatus(ctx);
+        return readWorkspaceSkillDetail(status, identity);
+      });
+      res.status(200).json(detail);
+    } catch (err) {
+      if (sendSkillDetailError(res, err)) return;
       sendBridgeError(res, err, { route });
     }
   });

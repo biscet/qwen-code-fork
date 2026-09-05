@@ -289,6 +289,7 @@ import type {
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionNotification,
+  SessionConfigOption,
   SessionUpdate,
   SetSessionModeRequest,
   SetSessionModeResponse,
@@ -336,6 +337,7 @@ import {
   settingExistsInScope,
 } from '../../config/settingsUtils.js';
 import { recordDaemonSessionModel } from '../session-model-persistence.js';
+import type { ServeModelProviderReplacement } from '../../runtime/model-provider-replacement.js';
 import {
   applyReasoningSelection,
   clearReasoningRequestOverrides,
@@ -1918,6 +1920,18 @@ export async function buildAvailableCommandsSnapshot(
   };
 }
 
+function sameModelProviderRoute(
+  left: ServeModelProviderReplacement['previous'],
+  right: ServeModelProviderReplacement['previous'],
+): boolean {
+  return (
+    left.authType === right.authType &&
+    left.modelId === right.modelId &&
+    (left.baseUrl ?? '').replace(/\/+$/, '') ===
+      (right.baseUrl ?? '').replace(/\/+$/, '')
+  );
+}
+
 /**
  * Session represents an active conversation session with the AI model.
  * It uses modular components for consistent event emission:
@@ -2136,6 +2150,9 @@ export class Session implements SessionContext {
   // Implement SessionContext interface
   readonly sessionId: string;
   private sessionReasoningSelection?: ReasoningSelection;
+  private pendingModelProviderReload?: {
+    replacement?: ServeModelProviderReplacement;
+  };
 
   constructor(
     id: string,
@@ -2161,6 +2178,7 @@ export class Session implements SessionContext {
     private readonly isWorkflowRunLiveInSiblingSession: (
       runId: string,
     ) => boolean = () => false,
+    private readonly getSessionConfigOptions?: () => SessionConfigOption[],
   ) {
     this.sessionId = id;
     this.workflowHistory = [...workflowHistory];
@@ -3660,7 +3678,9 @@ export class Session implements SessionContext {
     }
   }
 
-  reloadModelProvidersFromDisk(): void {
+  reloadModelProvidersFromDisk(
+    replacement?: ServeModelProviderReplacement,
+  ): void {
     if (
       !this.settings.reloadScopesFromDiskAtomically([
         SettingScope.User,
@@ -3673,6 +3693,86 @@ export class Session implements SessionContext {
       this.settings.merged.modelProviders,
       this.settings.merged.providerProtocol ?? {},
     );
+    const previous = this.pendingModelProviderReload?.replacement;
+    const current = previous?.next ?? {
+      authType: this.config.getAuthType() ?? '',
+      modelId: this.config.getModel(),
+      baseUrl: this.config.getCurrentModelRegistryBaseUrl?.() ?? undefined,
+    };
+    this.pendingModelProviderReload = {
+      replacement:
+        replacement && sameModelProviderRoute(current, replacement.previous)
+          ? {
+              previous: previous?.previous ?? replacement.previous,
+              next: replacement.next,
+            }
+          : previous,
+    };
+  }
+
+  private async refreshModelProvidersForTurn(): Promise<void> {
+    while (this.pendingModelProviderReload) {
+      const pending = this.pendingModelProviderReload;
+      if (this.config.getActiveRuntimeModelSnapshot?.()) {
+        this.pendingModelProviderReload = undefined;
+        return;
+      }
+      const current = {
+        authType: this.config.getAuthType() ?? '',
+        modelId: this.config.getModel(),
+        baseUrl: this.config.getCurrentModelRegistryBaseUrl?.() ?? undefined,
+      };
+      const target =
+        pending.replacement &&
+        sameModelProviderRoute(current, pending.replacement.previous)
+          ? pending.replacement.next
+          : current;
+      const options = buildAcpModelOptions(
+        this.config.getAllConfiguredModels(),
+      ).filter(({ model }) =>
+        sameModelProviderRoute(target, {
+          authType: model.authType,
+          modelId: model.id,
+          baseUrl: model.registryBaseUrl,
+        }),
+      );
+      const option = options[0];
+      if (options.length !== 1 || !option || option.model.isRuntimeModel) {
+        throw RequestError.invalidParams(
+          undefined,
+          'Подключение выбранной модели изменено или удалено. Выберите настроенную модель, чтобы продолжить.',
+        );
+      }
+      await this.setModel(
+        { sessionId: this.sessionId, modelId: option.modelId },
+        { persistDefault: false },
+      );
+      applyReasoningSelection(
+        this.config,
+        REASONING_EFFORT_DEFAULT,
+        this.getDefaultReasoningConfig(),
+      );
+      this.reconcileReasoningSelection(this.config.getModel(), {
+        persist: false,
+      });
+      if (this.getSessionConfigOptions) {
+        await this.sendUpdate({
+          sessionUpdate: 'config_option_update',
+          configOptions: this.getSessionConfigOptions(),
+        });
+      }
+      if (this.pendingModelProviderReload === pending) {
+        this.pendingModelProviderReload = undefined;
+      } else if (
+        this.pendingModelProviderReload?.replacement &&
+        sameModelProviderRoute(
+          this.pendingModelProviderReload.replacement.previous,
+          current,
+        )
+      ) {
+        this.pendingModelProviderReload.replacement.previous = target;
+      }
+    }
   }
 
   installPendingManagedConversationBinding(
@@ -5153,6 +5253,12 @@ export class Session implements SessionContext {
       this.config.getWorkingDir(),
       async (): Promise<PromptResponse> => {
         await this.assertCanStartTurn();
+        if (pendingSend.signal.aborted) {
+          return { stopReason: 'cancelled' };
+        }
+        if (this.pendingModelProviderReload) {
+          await this.refreshModelProvidersForTurn();
+        }
         if (pendingSend.signal.aborted) {
           return { stopReason: 'cancelled' };
         }
@@ -10517,7 +10623,12 @@ export class Session implements SessionContext {
     let supported =
       selection !== undefined &&
       selection !== REASONING_EFFORT_DEFAULT &&
-      isReasoningSelectionSupported(modelId, selection, thinkingMandatory);
+      isReasoningSelectionSupported(
+        modelId,
+        selection,
+        thinkingMandatory,
+        generation,
+      );
 
     const appliesSessionDefault =
       hasSessionSelection && selection === REASONING_EFFORT_DEFAULT;
@@ -10528,7 +10639,12 @@ export class Session implements SessionContext {
       supported =
         selection !== undefined &&
         selection !== REASONING_EFFORT_DEFAULT &&
-        isReasoningSelectionSupported(modelId, selection, thinkingMandatory);
+        isReasoningSelectionSupported(
+          modelId,
+          selection,
+          thinkingMandatory,
+          generation,
+        );
     }
     if (
       !hasSessionSelection &&
@@ -10546,7 +10662,10 @@ export class Session implements SessionContext {
         );
       }
     }
-    const modelReasoning = getModelConfiguration(modelId)?.reasoning;
+    const modelReasoning = getModelConfiguration(
+      modelId,
+      generation,
+    )?.reasoning;
     if (
       supported &&
       generation &&

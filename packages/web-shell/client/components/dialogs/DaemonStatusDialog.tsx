@@ -15,6 +15,7 @@ import {
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
 import { ErrorBoundary } from '../ErrorBoundary';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { SvgLineChart, type ChartSeries } from './SvgLineChart';
 import { UsageDashboardTab } from './UsageDashboardTab';
 import styles from './DaemonStatusDialog.module.css';
@@ -674,11 +675,18 @@ function DaemonStatusDialogInner() {
   if (!report) {
     return (
       <div className={styles.dialog}>
-        <div className={styles.empty}>
-          {error
-            ? `${t('daemon.loadFailed')}: ${error.message}`
-            : t('daemon.loading')}
-        </div>
+        {error ? (
+          <div className={styles.empty}>
+            {t('daemon.loadFailed')}: {error.message}
+          </div>
+        ) : (
+          <ContentSkeleton
+            className={styles.empty}
+            label={t('daemon.loading')}
+            variant="table"
+            rows={5}
+          />
+        )}
       </div>
     );
   }
@@ -1086,7 +1094,12 @@ function DaemonStatusDialogInner() {
             {fullReport?.full ? (
               <FullDetail report={fullReport} />
             ) : full.loading ? (
-              <div className={styles.empty}>{t('daemon.details.loading')}</div>
+              <ContentSkeleton
+                className={styles.empty}
+                label={t('daemon.details.loading')}
+                variant="detail"
+                rows={6}
+              />
             ) : full.error ? (
               <div className={styles.empty}>
                 {t('daemon.details.failed')}: {full.error.message}

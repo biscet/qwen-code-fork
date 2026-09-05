@@ -266,7 +266,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             let _ = handle.emit("runtime-failed", error);
         }
     }
-    check_updates_silently(handle.clone());
     spawn_window_state_flusher(handle);
     Ok(())
 }
@@ -724,58 +723,6 @@ fn is_same_origin(url: &Url, origin: &Url) -> bool {
     url.scheme() == origin.scheme()
         && url.host_str() == origin.host_str()
         && url.port_or_known_default() == origin.port_or_known_default()
-}
-
-fn check_updates_silently(app: AppHandle) {
-    if cfg!(debug_assertions) {
-        return;
-    }
-    tauri::async_runtime::spawn(async move {
-        let Ok(Some(update)) = check_for_update(&app).await else {
-            return;
-        };
-        let _ = app.emit("update-available", update.version.clone());
-        let version = update.version.clone();
-        let confirmed = tauri::async_runtime::spawn_blocking({
-            let app = app.clone();
-            let version = version.clone();
-            move || {
-                app.dialog()
-                    .message(format!(
-                        "HomeCode {version} is available. Install and restart now?"
-                    ))
-                    .title("HomeCode update")
-                    .kind(MessageDialogKind::Info)
-                    .buttons(MessageDialogButtons::OkCancelCustom(
-                        "Install and restart".to_string(),
-                        "Later".to_string(),
-                    ))
-                    .blocking_show()
-            }
-        })
-        .await;
-        if !matches!(confirmed, Ok(true)) {
-            return;
-        }
-        if let Err(error) = update.download_and_install(|_, _| {}, || {}).await {
-            let _ = tauri::async_runtime::spawn_blocking({
-                let app = app.clone();
-                let version = version.clone();
-                move || {
-                    app.dialog()
-                        .message(format!(
-                            "HomeCode {version} could not be installed.\n\n{error}\n\nSave your work before quitting. Reinstall HomeCode if it does not reopen."
-                        ))
-                        .title("HomeCode update failed")
-                        .kind(MessageDialogKind::Error)
-                        .blocking_show()
-                }
-            })
-            .await;
-            return;
-        }
-        app.request_restart();
-    });
 }
 
 async fn check_for_update(app: &AppHandle) -> Result<Option<Update>, String> {

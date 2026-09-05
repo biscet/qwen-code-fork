@@ -14,6 +14,7 @@ import {
   type SettingsMessageSettingsState,
 } from './SettingsMessage';
 import type { ModelManagementProps } from './ModelManagementSection';
+import type { ModelSettingsPanelProps } from './ModelSettingsPanel';
 import type { UseLiveVoiceSetupResult } from '../../live/useLiveVoiceSetup';
 
 // The Daemon category renders LocalControlSettingsCard, which reads the
@@ -76,6 +77,23 @@ function subDialogSetting(): DaemonSettingDescriptor {
     requiresRestart: false,
     default: '',
     values: { effective: '' },
+  };
+}
+
+function modelSelectSetting(
+  key: 'advisorModel' | 'tools.webSearch.model',
+  label: string,
+  category: 'Model' | 'Tools',
+  effective: string | undefined,
+): DaemonSettingDescriptor {
+  return {
+    key,
+    type: 'string',
+    label,
+    category,
+    requiresRestart: false,
+    default: '',
+    values: { effective },
   };
 }
 
@@ -165,6 +183,37 @@ function makeModelManagement(): ModelManagementProps {
   };
 }
 
+function makeLocalModelManagement(): ModelManagementProps {
+  return {
+    ...makeModelManagement(),
+    currentModelId: 'local-coder(openai)',
+    providers: [
+      {
+        kind: 'model_provider',
+        status: 'ok',
+        authType: 'openai',
+        current: true,
+        models: [
+          {
+            modelId: 'local-coder(openai)',
+            baseModelId: 'local-coder',
+            name: 'Local Qwen3.8-27B',
+            isCurrent: true,
+            isRuntime: false,
+          },
+          {
+            modelId: 'gpt-4o(openai)',
+            baseModelId: 'gpt-4o',
+            name: 'GPT-4o',
+            isCurrent: false,
+            isRuntime: false,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 const noop = () => {};
 
 function renderPanel(
@@ -172,6 +221,7 @@ function renderPanel(
   overrides: Partial<{
     onSubDialog: (key: string, scope: 'workspace' | 'user') => void;
     modelManagement: ModelManagementProps;
+    modelSettings: ModelSettingsPanelProps & { workspaceKey: string };
     initialCategory: string;
   }> = {},
 ): HTMLElement {
@@ -187,6 +237,7 @@ function renderPanel(
         chatWidthMode="1000"
         onChatWidthModeChange={noop}
         modelManagement={overrides.modelManagement}
+        modelSettings={overrides.modelSettings}
       />
     </I18nProvider>,
   );
@@ -515,6 +566,174 @@ describe('SettingsMessage user-scope editing', () => {
     expect(onSubDialog).toHaveBeenCalledWith('fastModel', 'user');
   });
 
+  it('uses the current local model as the advisor select default', () => {
+    const container = renderPanel(
+      makeState(
+        [modelSelectSetting('advisorModel', 'Advisor Model', 'Model', '')],
+        vi.fn(),
+      ),
+      { modelManagement: makeLocalModelManagement() },
+    );
+
+    expect(
+      container.querySelector('input[aria-label="Advisor Model"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[role="combobox"][aria-label="Advisor Model"]',
+      )?.textContent,
+    ).toContain('Local Qwen3.8-27B · Default');
+  });
+
+  it('hides the built-in Qwen OAuth coder alias from model selects', () => {
+    const management = makeLocalModelManagement();
+    management.providers.unshift({
+      kind: 'model_provider',
+      status: 'ok',
+      authType: 'qwen-oauth',
+      current: true,
+      models: [
+        {
+          modelId: 'coder-model(qwen-oauth)',
+          baseModelId: 'coder-model',
+          name: 'Qwen 3.7 Max',
+          isCurrent: true,
+          isRuntime: false,
+        },
+      ],
+    });
+    const container = renderPanel(
+      makeState(
+        [modelSelectSetting('advisorModel', 'Advisor Model', 'Model', '')],
+        vi.fn(),
+      ),
+      { modelManagement: management },
+    );
+
+    expect(container.textContent).not.toContain('Qwen 3.7 Max');
+    expect(container.textContent).not.toContain('coder-model');
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[role="combobox"][aria-label="Advisor Model"]',
+      )?.textContent,
+    ).toContain('Local Qwen3.8-27B · Default');
+  });
+
+  it('does not restore a persisted coder alias into a model select', () => {
+    const container = renderPanel(
+      makeState(
+        [
+          modelSelectSetting(
+            'advisorModel',
+            'Advisor Model',
+            'Model',
+            'coder-model',
+          ),
+        ],
+        vi.fn(),
+      ),
+      { modelManagement: makeLocalModelManagement() },
+    );
+
+    expect(container.textContent).not.toContain('coder-model');
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[role="combobox"][aria-label="Advisor Model"]',
+      )?.textContent,
+    ).toContain('Local Qwen3.8-27B · Default');
+  });
+
+  it('preserves a custom model that uses the same bare id', () => {
+    const management = makeLocalModelManagement();
+    management.providers[0]!.models.push({
+      modelId: 'coder-model(openai)',
+      baseModelId: 'coder-model',
+      name: 'Custom coder endpoint',
+      isCurrent: false,
+      isRuntime: false,
+    });
+    const container = renderPanel(
+      makeState(
+        [
+          modelSelectSetting(
+            'advisorModel',
+            'Advisor Model',
+            'Model',
+            'coder-model',
+          ),
+        ],
+        vi.fn(),
+      ),
+      { modelManagement: management },
+    );
+
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[role="combobox"][aria-label="Advisor Model"]',
+      )?.textContent,
+    ).toContain('Custom coder endpoint');
+  });
+
+  it('does not show a persisted coder alias on a model dialog trigger', () => {
+    const hiddenFastModel = {
+      ...subDialogSetting(),
+      values: { effective: 'qwen-oauth:coder-model' },
+    };
+    const container = renderPanel(makeState([hiddenFastModel], vi.fn()));
+
+    expect(container.textContent).not.toContain('coder-model');
+    expect(container.textContent).toContain('Select');
+  });
+
+  it('renders the search model as a select without inventing a default', () => {
+    const container = renderPanel(
+      makeState(
+        [
+          modelSelectSetting(
+            'tools.webSearch.model',
+            'Search Model',
+            'Tools',
+            undefined,
+          ),
+        ],
+        vi.fn(),
+      ),
+      { modelManagement: makeLocalModelManagement() },
+    );
+
+    expect(
+      container.querySelector('input[aria-label="Search Model"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[role="combobox"][aria-label="Search Model"]',
+      )?.textContent,
+    ).toContain('Select');
+  });
+
+  it('keeps a configured model visible when it is absent from providers', () => {
+    const container = renderPanel(
+      makeState(
+        [
+          modelSelectSetting(
+            'tools.webSearch.model',
+            'Search Model',
+            'Tools',
+            'dashscope-search',
+          ),
+        ],
+        vi.fn(),
+      ),
+      { modelManagement: makeLocalModelManagement() },
+    );
+
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[role="combobox"][aria-label="Search Model"]',
+      )?.textContent,
+    ).toContain('dashscope-search');
+  });
+
   it('shows a fallback UI category with a readable label when no theme setting exists', () => {
     const setValue = vi.fn(() =>
       Promise.resolve({} as DaemonSettingUpdateResult),
@@ -555,6 +774,27 @@ describe('SettingsMessage user-scope editing', () => {
     expect(container.textContent).not.toContain('Compact Mode');
   });
 
+  it('keeps the CLI automatic update setting out of the Web Shell panel', () => {
+    const setValue = vi.fn(() =>
+      Promise.resolve({} as DaemonSettingUpdateResult),
+    );
+    const automaticUpdate: DaemonSettingDescriptor = {
+      key: 'general.enableAutoUpdate',
+      type: 'boolean',
+      label: 'Enable Auto Update',
+      category: 'General',
+      requiresRestart: false,
+      default: true,
+      values: { effective: true },
+    };
+    const container = renderPanel(
+      makeState([boolSetting(), automaticUpdate], setValue),
+    );
+
+    expect(container.textContent).toContain('Test Flag');
+    expect(container.textContent).not.toContain('Enable Auto Update');
+  });
+
   it('keeps model.reasoningEffort out of the generic settings panel', () => {
     const setValue = vi.fn(() =>
       Promise.resolve({} as DaemonSettingUpdateResult),
@@ -577,6 +817,51 @@ describe('SettingsMessage user-scope editing', () => {
     expect(container.textContent).not.toContain('Reasoning Effort');
   });
 
+  it('keeps Models available when the schema has no Model settings', () => {
+    const setValue = vi.fn(() =>
+      Promise.resolve({} as DaemonSettingUpdateResult),
+    );
+    const container = renderPanel(makeState([], setValue), {
+      modelManagement: makeModelManagement(),
+      initialCategory: 'Model',
+    });
+    expect(
+      container.querySelector('button[aria-current="page"]')?.textContent,
+    ).toContain('Models');
+    expect(
+      container.querySelector('[data-testid="model-management"]'),
+    ).toBeTruthy();
+  });
+
+  it('shows the number of visible models in the Models category', () => {
+    const management = makeModelManagement();
+    management.providers.unshift({
+      kind: 'model_provider',
+      status: 'ok',
+      authType: 'qwen-oauth',
+      current: false,
+      models: [
+        {
+          modelId: 'coder-model(qwen-oauth)',
+          baseModelId: 'coder-model',
+          name: 'Hidden built-in alias',
+          isCurrent: false,
+          isRuntime: false,
+        },
+      ],
+    });
+    const container = renderPanel(makeState([], vi.fn()), {
+      modelManagement: management,
+      initialCategory: 'Model',
+    });
+    const modelCategory = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('nav button'),
+    ).find((button) => button.textContent?.includes('Models'));
+
+    expect(modelCategory?.textContent).toContain('1');
+    expect(modelCategory?.textContent).not.toContain('2');
+  });
+
   it('renders the model-management block inside the Model category', () => {
     const setValue = vi.fn(() =>
       Promise.resolve({} as DaemonSettingUpdateResult),
@@ -589,5 +874,43 @@ describe('SettingsMessage user-scope editing', () => {
     const block = container.querySelector('[data-testid="model-management"]');
     expect(block).toBeTruthy();
     expect(block?.textContent).toContain('GPT-4o');
+  });
+
+  it('separates chat defaults from model connections and preserves their scope', async () => {
+    const onSubDialog = vi.fn();
+    const container = renderPanel(makeState([subDialogSetting()], vi.fn()), {
+      initialCategory: 'Model',
+      onSubDialog,
+      modelSettings: {
+        workspaceKey: '/workspace',
+        actions: {
+          loadModelSettings: vi.fn().mockResolvedValue({ models: [] }),
+          loadProviders: vi.fn().mockResolvedValue({ providers: [] }),
+          saveModelSettings: vi.fn(),
+          deleteModelSettings: vi.fn(),
+          checkModelLimits: vi.fn(),
+        },
+        onSelectModel: noop,
+        onSaved: noop,
+      },
+    });
+    await act(async () => {});
+
+    const content = container.querySelector('section')!;
+    expect(
+      content.querySelector('[data-testid="model-settings"]'),
+    ).not.toBeNull();
+    expect(content.textContent).not.toContain('Fast Model');
+    expect(content.textContent).not.toContain('Chat defaults');
+
+    const chatCategory = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('nav button'),
+    ).find((button) => button.textContent?.includes('Chat defaults'))!;
+    act(() => chatCategory.click());
+    expect(content.querySelector('[data-testid="model-settings"]')).toBeNull();
+    expect(content.textContent).toContain('Fast Model');
+    clickUserTab(container);
+    act(() => content.querySelector<HTMLButtonElement>('button')!.click());
+    expect(onSubDialog).toHaveBeenCalledWith('fastModel', 'user');
   });
 });

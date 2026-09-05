@@ -12,12 +12,15 @@ import {
 import {
   useSkills,
   useWorkspace,
+  type DaemonWorkspaceSkillDetail,
   type DaemonWorkspaceSkillStatus,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
+import { skillDescriptionKey } from '../../constants/localCommands';
 import {
   filterSkills,
   preserveSkillSelection,
+  skillIdentity,
   skillExtensionLabel,
   type SkillLevelFilter,
   type SkillStatusFilter,
@@ -34,13 +37,7 @@ import {
   BreadcrumbSeparator,
 } from '../ui/breadcrumb';
 import { Button } from '../ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '../ui/card';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '../ui/empty';
 import { Input } from '../ui/input';
 import {
@@ -51,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Spinner } from '../ui/spinner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   Select,
   SelectContent,
@@ -76,8 +74,8 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import type { EmbeddedManagerPage } from '../plugins/manager-page';
+import { Markdown } from '../messages/Markdown';
 import { SkillInstallDialog } from './SkillInstallDialog';
-import styles from './SkillsManagerPage.module.css';
 
 interface SkillsManagerPageProps {
   onClose: () => void;
@@ -169,6 +167,7 @@ export function SkillsManagerPage({
     loading,
     error,
     reload,
+    getDetail,
     setEnabled,
     install,
     remove,
@@ -184,7 +183,11 @@ export function SkillsManagerPage({
   const [levelFilter, setLevelFilter] = useState<SkillLevelFilter>('all');
   const [statusFilter, setStatusFilter] =
     useState<SkillStatusFilter>('enabled');
-  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
+  const [skillDetail, setSkillDetail] =
+    useState<DaemonWorkspaceSkillDetail | null>(null);
+  const [skillDetailLoading, setSkillDetailLoading] = useState(false);
+  const [skillDetailError, setSkillDetailError] = useState<string | null>(null);
   const [busySkill, setBusySkill] = useState<string | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -194,10 +197,24 @@ export function SkillsManagerPage({
     text: string;
     error: boolean;
   } | null>(null);
-  const displayedSkills = skills;
+  const showInitialLoading =
+    skills.length === 0 && status === undefined && !error;
+  const displayedSkills = useMemo(
+    () =>
+      skills.map((skill) => {
+        const descriptionKey = skillDescriptionKey(skill.name);
+        return descriptionKey
+          ? { ...skill, description: t(descriptionKey) }
+          : skill;
+      }),
+    [skills, t],
+  );
   const selectedSkill = useMemo(
-    () => displayedSkills.find((skill) => skill.name === selectedName),
-    [displayedSkills, selectedName],
+    () =>
+      displayedSkills.find(
+        (skill) => skillIdentity(skill) === selectedIdentity,
+      ),
+    [displayedSkills, selectedIdentity],
   );
   const filteredSkills = useMemo(
     () => filterSkills(displayedSkills, query, levelFilter, statusFilter),
@@ -219,8 +236,48 @@ export function SkillsManagerPage({
   ];
 
   useEffect(() => {
-    setSelectedName((name) => preserveSkillSelection(name, displayedSkills));
+    setSelectedIdentity((identity) =>
+      preserveSkillSelection(identity, displayedSkills),
+    );
   }, [displayedSkills]);
+
+  useEffect(() => {
+    if (!selectedSkill) {
+      setSkillDetail(null);
+      setSkillDetailError(null);
+      setSkillDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSkillDetail(null);
+    setSkillDetailError(null);
+    setSkillDetailLoading(true);
+    void getDetail({
+      name: selectedSkill.name,
+      level: selectedSkill.level,
+      ...(selectedSkill.extensionName
+        ? { extensionName: selectedSkill.extensionName }
+        : {}),
+    })
+      .then((detail) => {
+        if (!cancelled) setSkillDetail(detail);
+      })
+      .catch((detailError: unknown) => {
+        if (!cancelled) {
+          setSkillDetailError(
+            detailError instanceof Error
+              ? detailError.message
+              : t('skills.instructions.error'),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSkillDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getDetail, selectedSkill, t]);
 
   useEffect(() => {
     embedded?.onDetailChange(Boolean(selectedSkill));
@@ -275,7 +332,7 @@ export function SkillsManagerPage({
     try {
       await remove(selectedSkill.name, scope);
       setDeleteOpen(false);
-      setSelectedName(null);
+      setSelectedIdentity(null);
       setListNotice(t('skills.delete.succeeded', { name: selectedSkill.name }));
       await reload().catch(() => undefined);
     } catch (deleteError) {
@@ -294,7 +351,7 @@ export function SkillsManagerPage({
   }
 
   function returnToList(): void {
-    setSelectedName(null);
+    setSelectedIdentity(null);
     void reload();
   }
 
@@ -363,13 +420,11 @@ export function SkillsManagerPage({
       selectedSkill.argumentHint ? ` ${selectedSkill.argumentHint}` : ''
     }`;
     return (
-      <div className="flex w-full flex-col gap-6 pb-8">
+      <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
         {navigation}
         <div className="flex w-full flex-col gap-6">
-          <div className="flex items-center gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-muted">
-              <SparklesIcon />
-            </div>
+          <div className="flex items-center gap-3">
+            <SparklesIcon className="size-5 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="break-words text-xl font-semibold text-balance">
@@ -468,45 +523,80 @@ export function SkillsManagerPage({
             </Alert>
           ) : null}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">{t('skills.details')}</CardTitle>
-              <CardDescription>
-                {selectedSkill.description || t('skills.noDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-6 sm:grid-cols-2">
-              <DetailField label={t('skills.invocation')} value={invocation} />
-              <DetailField
-                label={t('skills.level')}
-                value={skillLevelLabel(selectedSkill, t)}
-              />
-              <DetailField
-                label={t('skills.modelAccess')}
-                value={
-                  selectedSkill.modelInvocable
-                    ? t('skills.modelAccess.enabled')
-                    : t('skills.modelAccess.disabled')
-                }
-              />
-              <DetailField
-                label={t('skills.model')}
-                value={selectedSkill.model || '-'}
-              />
-              <DetailField
-                label={t('skills.extension')}
-                value={skillExtensionLabel(selectedSkill)}
-              />
-              {selectedSkill.hint ? (
+          <Tabs defaultValue="instructions">
+            <TabsList variant="line" className="max-w-full overflow-x-auto">
+              <TabsTrigger value="instructions">
+                {t('skills.instructions')}
+              </TabsTrigger>
+              <TabsTrigger value="details">{t('skills.details')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="instructions" className="pt-4">
+              <div className="border-y py-5">
+                {skillDetailLoading ? (
+                  <ContentSkeleton
+                    label={t('skills.instructions.loading')}
+                    variant="detail"
+                    rows={4}
+                  />
+                ) : skillDetailError ? (
+                  <Alert variant="destructive">
+                    <AlertCircleIcon />
+                    <AlertDescription>{skillDetailError}</AlertDescription>
+                  </Alert>
+                ) : skillDetail?.markdown ? (
+                  <Markdown content={skillDetail.markdown} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t('skills.instructions.empty')}
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+            <TabsContent value="details" className="pt-4">
+              <div className="grid gap-6 border-y py-5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <DetailField
-                    label={t('skills.hint')}
-                    value={selectedSkill.hint}
+                    label={t('skills.description')}
+                    value={
+                      selectedSkill.description || t('skills.noDescription')
+                    }
                   />
                 </div>
-              ) : null}
-            </CardContent>
-          </Card>
+                <DetailField
+                  label={t('skills.invocation')}
+                  value={invocation}
+                />
+                <DetailField
+                  label={t('skills.level')}
+                  value={skillLevelLabel(selectedSkill, t)}
+                />
+                <DetailField
+                  label={t('skills.modelAccess')}
+                  value={
+                    selectedSkill.modelInvocable
+                      ? t('skills.modelAccess.enabled')
+                      : t('skills.modelAccess.disabled')
+                  }
+                />
+                <DetailField
+                  label={t('skills.model')}
+                  value={selectedSkill.model || '-'}
+                />
+                <DetailField
+                  label={t('skills.extension')}
+                  value={skillExtensionLabel(selectedSkill)}
+                />
+                {selectedSkill.hint ? (
+                  <div className="sm:col-span-2">
+                    <DetailField
+                      label={t('skills.hint')}
+                      value={selectedSkill.hint}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </TabsContent>
+          </Tabs>
           <AlertDialog
             open={deleteOpen}
             onOpenChange={(open) => {
@@ -547,7 +637,11 @@ export function SkillsManagerPage({
   }
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-8">
+    <div
+      data-motion="detail"
+      className="flex w-full flex-col gap-6 pb-8"
+      aria-busy={showInitialLoading || undefined}
+    >
       {navigation}
       <div className="flex w-full flex-col gap-6">
         <div className="flex items-start justify-between gap-4">
@@ -659,67 +753,51 @@ export function SkillsManagerPage({
           </Select>
         </div>
 
-        {filteredSkills.length ? (
-          <div
-            className={styles.skillGrid}
-            data-column-count={Math.min(filteredSkills.length, 4)}
-          >
+        {showInitialLoading ? (
+          <ContentSkeleton label={t('skills.loading')} rows={5} />
+        ) : filteredSkills.length ? (
+          <div className="divide-y rounded-md border">
             {filteredSkills.map((skill) => (
-              <Card
-                key={skill.name}
-                size="sm"
-                role="button"
-                tabIndex={0}
+              <button
+                key={skillIdentity(skill)}
+                data-motion-item
+                type="button"
                 aria-label={skill.name}
-                className="cursor-pointer transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                onClick={() => setSelectedName(skill.name)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setSelectedName(skill.name);
-                  }
-                }}
+                className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                onClick={() => setSelectedIdentity(skillIdentity(skill))}
               >
-                <CardHeader className="block">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <SparklesIcon className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <CardTitle className="min-w-0 flex-1 truncate">
-                          {skill.name}
-                        </CardTitle>
-                        <div className="flex shrink-0 gap-1">
-                          <Badge
-                            variant="secondary"
-                            className={`${skillStatusBadgeClass(skill)} text-[10px]`}
-                          >
-                            {skillStatusLabel(skill, t)}
-                          </Badge>
-                          {!skill.modelInvocable ? (
-                            <ManualReferenceBadge compact />
-                          ) : null}
-                        </div>
-                      </div>
-                      <CardDescription className="mt-1 min-w-0 text-xs">
-                        <TooltipProvider delayDuration={300}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block truncate">
-                                {skill.description || t('skills.noDescription')}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {skill.description || t('skills.noDescription')}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-              </Card>
+                <SparklesIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-start justify-between gap-2">
+                    <span className="truncate text-sm font-medium">
+                      {skill.name}
+                    </span>
+                    <span className="flex shrink-0 gap-1">
+                      <Badge
+                        variant="secondary"
+                        className={`${skillStatusBadgeClass(skill)} text-[10px]`}
+                      >
+                        {skillStatusLabel(skill, t)}
+                      </Badge>
+                      {!skill.modelInvocable ? (
+                        <ManualReferenceBadge compact />
+                      ) : null}
+                    </span>
+                  </span>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
+                          {skill.description || t('skills.noDescription')}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {skill.description || t('skills.noDescription')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+              </button>
             ))}
           </div>
         ) : (

@@ -166,6 +166,13 @@ function buildWorkspaceProvidersStatus(
 
       const isCurrent =
         currentAuth === model.authType && currentAcpModelId === modelId;
+      const generationConfig = modelId.startsWith(ACP_ROUTE_ID_PREFIX)
+        ? undefined
+        : modelsConfig.getResolvedModel(
+            model.authType,
+            model.id,
+            model.registryBaseUrl ?? model.baseUrl,
+          )?.generationConfig;
       const configOptions = modelId.startsWith(ACP_ROUTE_ID_PREFIX)
         ? undefined
         : buildModelReasoningConfigPreview(
@@ -173,11 +180,8 @@ function buildWorkspaceProvidersStatus(
             resolvePersistedReasoningConfigState(
               model.id,
               settings.model?.reasoningEffort,
-              modelsConfig.getResolvedModel(
-                model.authType,
-                model.id,
-                model.registryBaseUrl ?? model.baseUrl,
-              )?.generationConfig.thinkingMandatory === true,
+              generationConfig?.thinkingMandatory === true,
+              generationConfig,
             ),
           );
       const providerModel: ServeWorkspaceProviderModel = {
@@ -199,6 +203,10 @@ function buildWorkspaceProvidersStatus(
         ...(model.baseUrl !== undefined
           ? { baseUrl: sanitizeProviderBaseUrl(model.baseUrl) }
           : {}),
+        registryBaseUrl:
+          model.registryBaseUrl !== undefined
+            ? sanitizeProviderBaseUrl(model.registryBaseUrl)
+            : null,
         ...(model.envKey !== undefined ? { envKey: model.envKey } : {}),
         isCurrent,
         isRuntime: false,

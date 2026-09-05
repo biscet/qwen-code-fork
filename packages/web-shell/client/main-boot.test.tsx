@@ -5,7 +5,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { ReactNode } from 'react';
+import { createElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const testState = vi.hoisted(() => ({
@@ -49,6 +50,8 @@ describe('web shell boot', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    delete (window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean })
+      .__HOMECODE_MACOS_DESKTOP__;
   });
 
   it('clears the boot fallback when the app mounts after the grace period', async () => {
@@ -78,5 +81,22 @@ describe('web shell boot', () => {
     await vi.waitFor(() => expect(testState.containers).toHaveLength(1));
 
     expect(testState.containers[0]).toBe(root);
+  });
+
+  it('adds the native drag region only in the macOS desktop shell', async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const { StandaloneApp } = await import('./main');
+
+    expect(
+      renderToStaticMarkup(createElement(StandaloneApp, {})),
+    ).not.toContain('data-tauri-drag-region');
+
+    (
+      window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
+    ).__HOMECODE_MACOS_DESKTOP__ = true;
+    const markup = renderToStaticMarkup(createElement(StandaloneApp, {}));
+
+    expect(markup).toContain('class="homecode-window-drag-region"');
+    expect(markup).toContain('data-tauri-drag-region="true"');
   });
 });

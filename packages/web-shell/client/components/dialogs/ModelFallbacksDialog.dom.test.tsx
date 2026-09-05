@@ -110,6 +110,25 @@ describe('ModelFallbacksDialog', () => {
     expect(options(container)).toHaveLength(5);
   });
 
+  it('drops a persisted coder alias while preserving other unavailable models', () => {
+    const { container, props } = renderDialog({
+      current: ['coder-model', 'removed-model'],
+    });
+    expect(container.textContent).not.toContain('coder-model');
+    expect(container.textContent).toContain('removed-model');
+    clickConfirm(container);
+    expect(props.onConfirm).toHaveBeenCalledWith(['removed-model']);
+  });
+
+  it('keeps a custom configured model that genuinely uses the same bare id', () => {
+    const { container } = renderDialog({
+      models: [{ baseId: 'coder-model', label: 'Custom coder endpoint' }],
+      current: ['coder-model'],
+    });
+    expect(container.textContent).toContain('Custom coder endpoint');
+    expect(options(container)[0]?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('normalizes a persisted list that is oversized and has duplicates/blanks', () => {
     // Hand-edited/legacy value: duplicates, whitespace, blanks, and more than
     // max. Confirming without touching anything must write the trimmed, deduped,

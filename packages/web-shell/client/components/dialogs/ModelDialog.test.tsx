@@ -38,6 +38,28 @@ afterEach(() => {
 });
 
 describe('ModelDialog current marker', () => {
+  it('hides the built-in Qwen OAuth coder alias in every dialog mode', () => {
+    mount(
+      <ModelDialog
+        mode="fast"
+        onSelect={vi.fn()}
+        models={[
+          { id: 'coder-model(qwen-oauth)' },
+          { id: 'coder-model', authType: 'qwen-oauth' },
+          { id: 'coder-model', authType: 'openai' },
+          { id: 'qwen3.7-plus(openai)' },
+        ]}
+      />,
+    );
+
+    const options = Array.from(container!.querySelectorAll('[role="option"]'));
+    expect(options).toHaveLength(2);
+    expect(options[0]?.textContent).toContain('coder-model');
+    expect(options[0]?.textContent).toContain('openai');
+    expect(options[1]?.textContent).toContain('qwen3.7-plus');
+    expect(container!.textContent).not.toContain('qwen-oauth');
+  });
+
   it('marks exactly one row current when two models share an id', () => {
     // Two providers expose the same model id "qwen"; `currentModel` is only an
     // id, so both used to be flagged. Only the first match should be current.

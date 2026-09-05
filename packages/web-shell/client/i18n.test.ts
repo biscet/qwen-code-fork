@@ -43,6 +43,78 @@ describe('Russian Web Shell localization', () => {
     expect(t('language.usage')).toContain('ru');
   });
 
+  it('translates every schema-derived setting string shown by Web Shell', () => {
+    const keys = [
+      'settings.label.review.attribution',
+      'settings.description.review.attribution',
+      'settings.label.review.sandbox',
+      'settings.description.review.sandbox',
+      'settings.option.review.sandbox.off',
+      'settings.option.review.sandbox.auto',
+      'settings.option.review.sandbox.required',
+      'settings.label.review.effort',
+      'settings.description.review.effort',
+      'settings.option.review.effort.auto',
+      'settings.option.review.effort.low',
+      'settings.option.review.effort.medium',
+      'settings.option.review.effort.high',
+      'settings.label.review.comment',
+      'settings.description.review.comment',
+      'settings.label.review.severityFloor',
+      'settings.description.review.severityFloor',
+      'settings.option.review.severityFloor.auto',
+      'settings.option.review.severityFloor.critical',
+      'settings.option.review.severityFloor.suggestion',
+      'settings.label.review.reverseAuditRounds',
+      'settings.description.review.reverseAuditRounds',
+      'settings.label.review.approachRounds',
+      'settings.description.review.approachRounds',
+      'settings.label.output.showTimestamps',
+      'settings.description.output.showTimestamps',
+      'settings.label.ui.disableWorkflowKeywordTrigger',
+      'settings.description.ui.disableWorkflowKeywordTrigger',
+      'settings.label.ui.showStatusInTitle',
+      'settings.description.ui.showStatusInTitle',
+      'settings.label.ui.showResponseTokensPerSecond',
+      'settings.description.ui.showResponseTokensPerSecond',
+      'settings.label.advisorModel',
+      'settings.description.advisorModel',
+      'settings.label.modelFallbacks',
+      'settings.description.modelFallbacks',
+      'settings.label.voiceModel',
+      'settings.description.voiceModel',
+      'settings.label.tools.webSearch.enabled',
+      'settings.description.tools.webSearch.enabled',
+      'settings.label.tools.webSearch.model',
+      'settings.description.tools.webSearch.model',
+      'settings.label.tools.webSearch.webExtractor',
+      'settings.description.tools.webSearch.webExtractor',
+      'settings.label.tools.toolSearch.threshold',
+      'settings.description.tools.toolSearch.threshold',
+      'settings.label.tools.listDirectory.enabled',
+      'settings.description.tools.listDirectory.enabled',
+      'settings.label.tools.workflowsEnabled',
+      'settings.description.tools.workflowsEnabled',
+      'settings.label.goals.modelProposed',
+      'settings.description.goals.modelProposed',
+      'settings.option.goals.modelProposed.alwaysAsk',
+      'settings.option.goals.modelProposed.disabled',
+      'settings.label.experimental.cron',
+      'settings.description.experimental.cron',
+      'settings.label.experimental.sessionWriterLease',
+      'settings.description.experimental.sessionWriterLease',
+      'settings.label.experimental.agentTeam',
+      'settings.description.experimental.agentTeam',
+      'settings.label.experimental.artifact',
+      'settings.description.experimental.artifact',
+    ];
+    const t = getTranslator('ru');
+
+    for (const key of keys) {
+      expect(t(key)).not.toBe(key);
+    }
+  });
+
   it('does not expose translation-pipeline artifacts', () => {
     const renderedMessages = Object.values(RU).map((message) =>
       typeof message === 'function' ? message() : message,

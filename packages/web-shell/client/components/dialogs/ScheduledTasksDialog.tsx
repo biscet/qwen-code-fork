@@ -42,6 +42,7 @@ import { getComposerTagIconUrl } from '../../utils/composerTag';
 import { cssUrlValue } from '../../utils/cssUrlVar';
 import { workspaceLabel, workspaceLabelForCwd } from '../../utils/workspace';
 import { DialogShell } from './DialogShell';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   buildCron,
   describeCron,
@@ -1267,7 +1268,7 @@ export function ScheduledTasksDialog({
       : null;
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-motion="detail">
       <div className={styles.intro}>{t('scheduledTasks.subtitle')}</div>
 
       <div className={styles.toolbar}>
@@ -1605,6 +1606,10 @@ export function ScheduledTasksDialog({
 
       {loadError && <div className={styles.loadError}>{loadError}</div>}
 
+      {tasks === null && !loadError && (
+        <ContentSkeleton label={t('scheduledTasks.loading')} rows={5} />
+      )}
+
       {tasks !== null && tasks.length === 0 && !loadError && (
         <div className={styles.empty}>{t('scheduledTasks.empty')}</div>
       )}
@@ -1616,6 +1621,7 @@ export function ScheduledTasksDialog({
           return (
             <div
               key={taskKey(task)}
+              data-motion-item
               className={`${styles.card} ${task.enabled ? '' : styles.cardDisabled}`}
             >
               <div className={styles.cardHeader}>

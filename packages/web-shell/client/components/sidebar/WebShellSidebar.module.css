@@ -221,32 +221,9 @@
   min-width: 0;
 }
 
-.brandWordmark {
-  width: 118px;
-  height: auto;
-  --homecode-wordmark-home: color-mix(
-    in srgb,
-    var(--sidebar-foreground) 72%,
-    var(--sidebar)
-  );
-  --homecode-wordmark-code: var(--sidebar-foreground);
-  --homecode-wordmark-inset: color-mix(
-    in srgb,
-    var(--sidebar-foreground) 42%,
-    var(--sidebar)
-  );
-}
-
-.macOSDesktop .brandWordmark {
-  width: 100px;
-  max-width: 100%;
-  pointer-events: none;
-}
-
 .macOSDesktopSidebarToggle {
   position: fixed;
   top: 6px;
-  left: 76px;
   z-index: 2;
 }
 

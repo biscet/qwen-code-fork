@@ -16,6 +16,60 @@ import {
 } from './model-configuration.js';
 
 describe('model configuration manifest', () => {
+  it.each(['Qwen3.8-27B', 'Qwen/Qwen3.8-27B', 'qwen/qwen3.8-27b-free'])(
+    'exposes the supported Qwen 27B efforts for %s',
+    (modelId) => {
+      expect(buildModelReasoningConfigOption(modelId)).toMatchObject({
+        currentValue: 'xhigh',
+        options: [
+          { value: 'none' },
+          { value: 'low' },
+          { value: 'medium' },
+          { value: 'xhigh' },
+        ],
+      });
+      expect(isReasoningSelectionSupported(modelId, 'high')).toBe(false);
+    },
+  );
+
+  it('projects configured alias controls without inferring its model family', () => {
+    const generationConfig = {
+      reasoning: { effort: 'medium' as const },
+      samplingParams: {
+        reasoning_effort: 'medium',
+        chat_template_kwargs: {
+          enable_thinking: true,
+          reasoning_effort: 'medium',
+          preserve_thinking: true,
+        },
+      },
+    };
+    expect(
+      buildModelReasoningConfigPreview(
+        'local-coder',
+        resolvePersistedReasoningConfigState(
+          'local-coder',
+          undefined,
+          false,
+          generationConfig,
+        ),
+      ),
+    ).toMatchObject([
+      {
+        currentValue: 'medium',
+        options: [
+          { value: 'none' },
+          { value: 'low' },
+          { value: 'medium' },
+          { value: 'high' },
+          { value: 'xhigh' },
+          { value: 'max' },
+        ],
+      },
+    ]);
+    expect(buildModelReasoningConfigPreview('local-coder')).toBeUndefined();
+  });
+
   it('registers the exact stable qwen3.8-max reasoning controls', () => {
     expect(getModelConfiguration('qwen3.8-max')).toEqual({
       reasoning: {

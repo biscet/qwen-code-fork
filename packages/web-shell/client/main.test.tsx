@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, type ReactNode } from 'react';
+import { act, type ReactElement, type ReactNode } from 'react';
+import type { HomeProduct } from './components/branding/HomeProductSwitcher';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonProductSessionContext } from '@qwen-code/web-shell/daemon-react-sdk';
@@ -30,6 +31,9 @@ vi.mock('./components/WorkspaceSessionProvider', () => ({
     return null;
   },
 }));
+vi.mock('./components/homechat/HomeChatApp', () => ({
+  HomeChatApp: () => null,
+}));
 vi.mock('./config/daemon', () => ({
   getDaemonBaseUrl: () => '',
   getDaemonToken: () => 'token',
@@ -45,6 +49,7 @@ describe('StandaloneApp', () => {
 
   beforeEach(() => {
     testState.props = undefined;
+    window.localStorage.removeItem('homecode-product');
     window.history.replaceState(null, '', '/');
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -82,18 +87,49 @@ describe('StandaloneApp', () => {
   it('uses the simplified Desktop sidebar', () => {
     act(() => root.render(<StandaloneApp daemonToken="token" />));
 
-    expect(testState.props?.webShellProps.sidebar).toEqual({
+    expect(testState.props?.webShellProps.sidebar).toMatchObject({
       showSessionSourceSwitch: false,
       showWorkspaceGit: false,
+      branding: {
+        render: expect.any(Function),
+      },
       primaryNav: {
         items: ['newTask', 'plugins', 'scheduledTasks'],
       },
       footer: {
         items: ['settings', 'daemonStatus', 'version'],
         layout: 'stacked',
-        versionLabel: '1.2.0',
+        versionLabel: '1.3.0',
       },
     });
+  });
+
+  it('switches to a workspace-free HomeChat URL and restores HomeCode', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/session/session-a?workspace=workspace-a',
+    );
+    act(() => root.render(<StandaloneApp daemonToken="token" />));
+    const branding = testState.props?.webShellProps.sidebar;
+    if (!branding || branding === false || branding.branding === false) {
+      throw new Error('Expected HomeCode branding');
+    }
+    const switcher = branding.branding?.render?.() as ReactElement<{
+      onProductChange: (product: HomeProduct) => void;
+    }>;
+
+    act(() => switcher.props.onProductChange('homechat'));
+    expect(window.location.pathname).toBe('/homechat');
+    expect(new URLSearchParams(window.location.search).has('workspace')).toBe(
+      false,
+    );
+
+    act(() => switcher.props.onProductChange('homecode'));
+    expect(window.location.pathname).toBe('/session/session-a');
+    expect(new URLSearchParams(window.location.search).get('workspace')).toBe(
+      'workspace-a',
+    );
   });
 
   it('round-trips standalone context without a workspace selector', () => {

@@ -10,6 +10,7 @@ import { useListboxKeyboard } from '../../hooks/useListboxKeyboard';
 import { useFilterInput } from '../../hooks/useFilterInput';
 import { SessionRow } from './SessionRow';
 import { useScopedSessions } from '../../hooks/useScopedSessions';
+import { ContentSkeleton } from '../ui/content-skeleton';
 
 interface ReleaseSessionDialogProps {
   onReleased: (sessionId: string) => void;
@@ -30,6 +31,7 @@ export function ReleaseSessionDialog({
   const { t } = useI18n();
   const connection = useConnection();
   const {
+    data,
     sessions,
     loading,
     error: sessionsError,
@@ -39,6 +41,8 @@ export function ReleaseSessionDialog({
     maxAgeMs: 1_000,
   });
   const currentSessionId = connection.sessionId;
+  const showInitialLoading =
+    sessions.length === 0 && data === undefined && !sessionsError;
   const [deleting, setDeleting] = useState(false);
   // -1 = no highlight; see ResumeDialog for the rationale.
   const [cursorIdx, setCursorIdx] = useState(-1);
@@ -205,17 +209,22 @@ export function ReleaseSessionDialog({
         )}
         ref={listRef}
       >
-        {loading && (
-          <div className={dp('picker-empty')}>{t('common.loading')}</div>
+        {showInitialLoading && (
+          <ContentSkeleton
+            className={dp('picker-empty')}
+            label={t('common.loading')}
+            rows={4}
+          />
         )}
-        {!loading && filtered.length === 0 && (
+        {!showInitialLoading && !loading && filtered.length === 0 && (
           <div className={dp('picker-empty')}>
             {filterQuery
               ? t('release.noMatch', { query: filterQuery })
               : t('release.none')}
           </div>
         )}
-        {!loading &&
+        {!showInitialLoading &&
+          !loading &&
           filtered.map((s, i) => {
             const isCurrent = s.sessionId === currentSessionId;
             const isReleasable =

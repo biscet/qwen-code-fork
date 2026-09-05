@@ -11,9 +11,34 @@
  */
 export const HIDDEN_COMPOSER_MODEL_IDS = new Set(['coder-model(qwen-oauth)']);
 
+export function isHiddenQwenOAuthModelAlias(model: {
+  id?: string;
+  modelId?: string;
+  baseModelId?: string;
+  authType?: string;
+}): boolean {
+  return (
+    (model.id !== undefined && HIDDEN_COMPOSER_MODEL_IDS.has(model.id)) ||
+    (model.authType === 'qwen-oauth' &&
+      (model.baseModelId ?? model.modelId ?? model.id) === 'coder-model')
+  );
+}
+
+export function isHiddenQwenOAuthModelValue(
+  value: string,
+  visibleBaseModelIds?: ReadonlySet<string>,
+): boolean {
+  const selector = value.split('\0', 1)[0]?.trim();
+  return (
+    (selector === 'coder-model' && !visibleBaseModelIds?.has(selector)) ||
+    selector === 'qwen-oauth:coder-model' ||
+    selector === 'coder-model(qwen-oauth)'
+  );
+}
+
 /** Whether a model may appear in the composer's model picker. */
 export function isVisibleComposerModel(model: { id: string }): boolean {
-  return !HIDDEN_COMPOSER_MODEL_IDS.has(model.id);
+  return !isHiddenQwenOAuthModelAlias(model);
 }
 
 /**

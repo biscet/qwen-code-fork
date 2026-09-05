@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { isHiddenQwenOAuthModelValue } from '../../utils/composerModels';
 import styles from './ModelFallbacksDialog.module.css';
 
 export interface FallbackModelOption {
@@ -30,10 +31,12 @@ export function ModelFallbacksDialog({
   // written back verbatim.
   const [selected, setSelected] = useState<string[]>(() => {
     const seen = new Set<string>();
+    const known = new Set(models.map((model) => model.baseId));
     const out: string[] = [];
     for (const raw of current) {
       const id = raw.trim();
-      if (!id || seen.has(id)) continue;
+      if (!id || seen.has(id) || isHiddenQwenOAuthModelValue(id, known))
+        continue;
       seen.add(id);
       out.push(id);
       if (out.length >= max) break;

@@ -6,6 +6,7 @@ import {
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
 import { useListboxKeyboard } from '../../hooks/useListboxKeyboard';
+import { ContentSkeleton } from '../ui/content-skeleton';
 
 function toolLabel(tool: DaemonWorkspaceToolStatus): string {
   return tool.displayName || tool.name;
@@ -74,11 +75,9 @@ export function ToolsDialog() {
           <span className={dp('picker-search-hint')}>{summary}</span>
         </div>
       )}
-      {(message || loading) && (
+      {message && (
         <div className={dp('picker-search')}>
-          <span className={dp('picker-search-hint')}>
-            {message || t('tools.loading')}
-          </span>
+          <span className={dp('picker-search-hint')}>{message}</span>
         </div>
       )}
 
@@ -98,7 +97,14 @@ export function ToolsDialog() {
         )}
         ref={listRef}
       >
-        {!loading && tools.length === 0 && (
+        {status === undefined && !error && tools.length === 0 && (
+          <ContentSkeleton
+            className={dp('picker-empty')}
+            label={t('tools.loading')}
+            rows={5}
+          />
+        )}
+        {status !== undefined && !loading && tools.length === 0 && (
           <div className={dp('picker-empty')}>{t('tools.empty')}</div>
         )}
         {tools.map((tool, i) => {

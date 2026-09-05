@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { Spinner } from '../ui/spinner';
+import { Skeleton } from '../ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Textarea } from '../ui/textarea';
 import {
@@ -669,7 +670,7 @@ export function AgentCreatePage({
                     'cyan',
                   ].map((value) => (
                     <SelectItem key={value} value={value}>
-                      {value}
+                      {t(`agent.color.${value}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1203,9 +1204,10 @@ function approvalModeDescription(value: string, t: Translate): string {
 
 function LoadingRow({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner />
-      {label}
+    <div className="grid gap-2" role="status" aria-label={label}>
+      <span className="sr-only">{label}</span>
+      <Skeleton className="h-3 w-2/5" />
+      <Skeleton className="h-8 w-full" />
     </div>
   );
 }

@@ -8,73 +8,67 @@ const WORDMARK_GAP = 12;
 
 type WordmarkGlyph = {
   letter: string;
-  tone: 'home' | 'code';
+  tone: 'home' | 'code' | 'chat';
   rows: readonly string[];
   insets: ReadonlyArray<readonly [number, number, number, number]>;
 };
 
-const WORDMARK_GLYPHS: readonly WordmarkGlyph[] = [
-  {
-    letter: 'h',
-    tone: 'home',
+type WordmarkGlyphShape = Omit<WordmarkGlyph, 'letter' | 'tone'>;
+
+const WORDMARK_GLYPH_SHAPES: Record<string, WordmarkGlyphShape> = {
+  h: {
     rows: ['1000', '1000', '1111', '1001', '1001', '1001'],
     insets: [[1, 4, 2, 2]],
   },
-  {
-    letter: 'o',
-    tone: 'home',
+  o: {
     rows: ['0000', '1111', '1001', '1001', '1001', '1111'],
     insets: [[1, 3, 2, 2]],
   },
-  {
-    letter: 'm',
-    tone: 'home',
+  m: {
     rows: ['00000', '11111', '10101', '10101', '10101', '10101'],
     insets: [
       [1, 3, 1, 3],
       [3, 3, 1, 3],
     ],
   },
-  {
-    letter: 'e',
-    tone: 'home',
+  e: {
     rows: ['0000', '1111', '1000', '1111', '1000', '1111'],
     insets: [[1, 4, 3, 1]],
   },
-  {
-    letter: 'c',
-    tone: 'code',
+  c: {
     rows: ['0000', '1111', '1000', '1000', '1000', '1111'],
     insets: [[1, 3, 3, 2]],
   },
-  {
-    letter: 'o',
-    tone: 'code',
-    rows: ['0000', '1111', '1001', '1001', '1001', '1111'],
-    insets: [[1, 3, 2, 2]],
-  },
-  {
-    letter: 'd',
-    tone: 'code',
+  d: {
     rows: ['0001', '1111', '1001', '1001', '1001', '1111'],
     insets: [[1, 3, 2, 2]],
   },
-  {
-    letter: 'e',
-    tone: 'code',
-    rows: ['0000', '1111', '1000', '1111', '1000', '1111'],
-    insets: [[1, 4, 3, 1]],
+  a: {
+    rows: ['0000', '1111', '0001', '1111', '1001', '1111'],
+    insets: [[1, 4, 2, 1]],
   },
-];
+  t: {
+    rows: ['0100', '1111', '0100', '0100', '0100', '0011'],
+    insets: [],
+  },
+};
 
 type PositionedWordmarkGlyph = WordmarkGlyph & {
   x: number;
   path: string;
 };
 
-const WORDMARK_LAYOUT = WORDMARK_GLYPHS.reduce<PositionedWordmarkGlyph[]>(
-  (glyphs, glyph) => {
-    const previous = glyphs.at(-1);
+function buildWordmarkLayout(
+  word: string,
+  productTone: 'code' | 'chat',
+): PositionedWordmarkGlyph[] {
+  const glyphs: WordmarkGlyph[] = [...word].map((letter, index) => ({
+    letter,
+    tone: index < 4 ? 'home' : productTone,
+    ...WORDMARK_GLYPH_SHAPES[letter],
+  }));
+  return glyphs.reduce<PositionedWordmarkGlyph[]>((layout, glyph) => {
+    const previous = layout.at(-1);
     const x = previous
       ? previous.x + previous.rows[0].length * WORDMARK_CELL + WORDMARK_GAP
       : 0;
@@ -91,32 +85,42 @@ const WORDMARK_LAYOUT = WORDMARK_GLYPHS.reduce<PositionedWordmarkGlyph[]>(
         ),
       )
       .join('');
-    glyphs.push({ ...glyph, x, path });
-    return glyphs;
-  },
-  [],
-);
+    layout.push({ ...glyph, x, path });
+    return layout;
+  }, []);
+}
 
-const FINAL_WORDMARK_GLYPH = WORDMARK_LAYOUT.at(-1)!;
-const WORDMARK_WIDTH =
-  FINAL_WORDMARK_GLYPH.x + FINAL_WORDMARK_GLYPH.rows[0].length * WORDMARK_CELL;
+function wordmarkWidth(layout: PositionedWordmarkGlyph[]): number {
+  const last = layout.at(-1)!;
+  return last.x + last.rows[0].length * WORDMARK_CELL;
+}
 
-export function HomeCodeWordmark({ className, ...props }: BrandSvgProps) {
+const HOMECODE_WORDMARK_LAYOUT = buildWordmarkLayout('homecode', 'code');
+const HOMECHAT_WORDMARK_LAYOUT = buildWordmarkLayout('homechat', 'chat');
+
+function Wordmark({
+  layout,
+  className,
+  ...props
+}: BrandSvgProps & { layout: PositionedWordmarkGlyph[] }) {
   return (
     <svg
       {...props}
       className={`${styles.wordmark} ${className ?? ''}`.trim()}
-      viewBox={`0 0 ${WORDMARK_WIDTH} ${WORDMARK_CELL * 6}`}
+      viewBox={`0 0 ${wordmarkWidth(layout)} ${WORDMARK_CELL * 6}`}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       shapeRendering="crispEdges"
-      data-homecode-wordmark
     >
-      {WORDMARK_LAYOUT.map((glyph, index) => (
+      {layout.map((glyph, index) => (
         <g key={`${glyph.letter}-${index}`}>
           <path
             className={
-              glyph.tone === 'home' ? styles.wordmarkHome : styles.wordmarkCode
+              glyph.tone === 'home'
+                ? styles.wordmarkHome
+                : glyph.tone === 'chat'
+                  ? styles.wordmarkChat
+                  : styles.wordmarkCode
             }
             d={glyph.path}
           />
@@ -133,6 +137,28 @@ export function HomeCodeWordmark({ className, ...props }: BrandSvgProps) {
         </g>
       ))}
     </svg>
+  );
+}
+
+export function HomeCodeWordmark({ className, ...props }: BrandSvgProps) {
+  return (
+    <Wordmark
+      {...props}
+      className={className}
+      layout={HOMECODE_WORDMARK_LAYOUT}
+      data-homecode-wordmark
+    />
+  );
+}
+
+export function HomeChatWordmark({ className, ...props }: BrandSvgProps) {
+  return (
+    <Wordmark
+      {...props}
+      className={className}
+      layout={HOMECHAT_WORDMARK_LAYOUT}
+      data-homechat-wordmark
+    />
   );
 }
 
@@ -190,6 +216,35 @@ export function HomeCodeMark({ className, ...props }: BrandSvgProps) {
       data-homecode-mark
     >
       <PixelMarkPaths />
+    </svg>
+  );
+}
+
+export function HomeChatMark({ className, ...props }: BrandSvgProps) {
+  return (
+    <svg
+      {...props}
+      className={`${styles.mark} ${className ?? ''}`.trim()}
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      shapeRendering="crispEdges"
+      data-homechat-mark
+    >
+      <rect
+        className={styles.markTile}
+        x="4"
+        y="4"
+        width="92"
+        height="92"
+        rx="20"
+      />
+      <path
+        className={styles.chatBubble}
+        d="M23 25H77V65H54L42 77V65H23V25ZM32 34V56H48V63L55 56H68V34H32Z"
+      />
+      <rect className={styles.chatPixel} x="38" y="42" width="8" height="8" />
+      <rect className={styles.chatPixel} x="54" y="42" width="8" height="8" />
     </svg>
   );
 }

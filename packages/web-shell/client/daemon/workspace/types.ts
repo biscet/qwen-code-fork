@@ -77,6 +77,8 @@ import type {
   DaemonWorkspaceUpdate,
   DaemonWorkspacePreflightStatus,
   DaemonWorkspaceProvidersStatus,
+  DaemonWorkspaceSkillDetail,
+  DaemonWorkspaceSkillIdentity,
   DaemonWorkspaceSkillsStatus,
   DaemonSkillToggleResult,
   DaemonSkillInstallRequest,
@@ -478,6 +480,9 @@ export interface DaemonWorkspaceActions {
 
   // Skills
   loadSkillsStatus(): Promise<DaemonWorkspaceSkillsStatus>;
+  loadSkillDetail(
+    skill: DaemonWorkspaceSkillIdentity,
+  ): Promise<DaemonWorkspaceSkillDetail>;
   setWorkspaceSkillEnabled(
     skillName: string,
     enabled: boolean,

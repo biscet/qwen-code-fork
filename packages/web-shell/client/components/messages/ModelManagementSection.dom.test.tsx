@@ -102,6 +102,32 @@ describe('ModelManagementSection', () => {
     expect(container.textContent).toContain('openai');
   });
 
+  it('hides the built-in Qwen OAuth coder alias', () => {
+    const { container } = renderSection({
+      providers: [
+        ...providers(),
+        {
+          kind: 'model_provider',
+          status: 'ok',
+          authType: 'qwen-oauth',
+          current: false,
+          models: [
+            {
+              modelId: 'coder-model(qwen-oauth)',
+              baseModelId: 'coder-model',
+              name: 'Qwen 3.7 Max',
+              isCurrent: false,
+              isRuntime: false,
+            },
+          ],
+        },
+      ],
+    });
+    expect(container.textContent).not.toContain('Qwen 3.7 Max');
+    expect(container.textContent).not.toContain('qwen-oauth');
+    expect(container.textContent).toContain('GPT-4o');
+  });
+
   it('marks the current model and hides its "set current" button', () => {
     const { container } = renderSection();
     const setButtons = Array.from(
@@ -200,6 +226,12 @@ describe('ModelManagementSection', () => {
     const { container, props } = renderSection();
     act(() => buttonByText(container, '+ Add Model').click());
     expect(props.onAddModel).toHaveBeenCalled();
+  });
+
+  it('does not offer adding a provider when model creation is unavailable', () => {
+    const { container } = renderSection({ onAddModel: undefined });
+    expect(container.textContent).not.toContain('+ Add Model');
+    expect(container.textContent).toContain('Set current');
   });
 
   it('shows the empty state when there are no models', () => {

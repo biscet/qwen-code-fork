@@ -4,6 +4,8 @@ import type {
   DaemonWorkspaceProviderStatus,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
+import { isHiddenQwenOAuthModelAlias } from '../../utils/composerModels';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import styles from './ModelManagementSection.module.css';
 
 export interface ModelDeleteTarget {
@@ -22,7 +24,7 @@ export interface ModelManagementProps {
   busy: boolean;
   onSelectModel: (modelId: string) => void;
   onDeleteModel: (target: ModelDeleteTarget) => void;
-  onAddModel: () => void;
+  onAddModel?: () => void;
 }
 
 function rowKeyFor(
@@ -71,6 +73,17 @@ export function ModelManagementSection({
 }: ModelManagementProps) {
   const { t } = useI18n();
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
+  const visibleProviders = providers.map((provider) => ({
+    ...provider,
+    models: provider.models.filter(
+      (model) =>
+        !isHiddenQwenOAuthModelAlias({
+          authType: provider.authType,
+          modelId: model.modelId,
+          baseModelId: model.baseModelId,
+        }),
+    ),
+  }));
 
   // Escape dismisses the inline delete confirmation — the conventional gesture,
   // so keyboard users don't have to Tab to Cancel.
@@ -83,32 +96,34 @@ export function ModelManagementSection({
     return () => document.removeEventListener('keydown', onKey);
   }, [confirmKey]);
 
-  const hasModels = providers.some((p) => p.models.length > 0);
-  const currentRowKey = findCurrentRowKey(providers, currentModelId);
+  const hasModels = visibleProviders.some((p) => p.models.length > 0);
+  const currentRowKey = findCurrentRowKey(visibleProviders, currentModelId);
 
   return (
     <div className={styles.section} data-testid="model-management">
       <div className={styles.header}>
         <span className={styles.title}>{t('settings.models.title')}</span>
-        <button
-          type="button"
-          className={styles.addButton}
-          disabled={busy}
-          onClick={onAddModel}
-        >
-          {t('settings.models.add')}
-        </button>
+        {onAddModel && (
+          <button
+            type="button"
+            className={styles.addButton}
+            disabled={busy}
+            onClick={onAddModel}
+          >
+            {t('settings.models.add')}
+          </button>
+        )}
       </div>
 
       {error && <div className={styles.hint}>{error.message}</div>}
       {loading && !hasModels && (
-        <div className={styles.hint}>{t('settings.models.loading')}</div>
+        <ContentSkeleton label={t('settings.models.loading')} rows={3} />
       )}
       {!loading && !hasModels && !error && (
         <div className={styles.empty}>{t('settings.models.empty')}</div>
       )}
 
-      {providers.map((provider, providerIndex) =>
+      {visibleProviders.map((provider, providerIndex) =>
         provider.models.length === 0 ? null : (
           // Include the index: two providers can share an authType (e.g. two
           // OpenAI-compatible endpoints), which would collide on authType alone.

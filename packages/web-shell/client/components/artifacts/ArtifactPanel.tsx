@@ -55,6 +55,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   buildCron,
   describeCron,
@@ -1117,7 +1118,14 @@ function ArtifactDetailTab({
     );
   }
   if (loading) {
-    return <div className={styles.empty}>Loading artifact...</div>;
+    return (
+      <ContentSkeleton
+        className={styles.empty}
+        label="Loading artifact..."
+        variant="detail"
+        rows={4}
+      />
+    );
   }
   if (error) {
     return <div className={styles.empty}>{error}</div>;
@@ -1396,9 +1404,14 @@ function ScheduledTaskDetail({
   const previewLabel = previewCron ? describeCron(previewCron, t) : null;
 
   return (
-    <div className={styles.detail}>
+    <div className={styles.detail} data-motion="detail">
       {loading && (
-        <div className={styles.empty}>{t('scheduledTasks.loading')}</div>
+        <ContentSkeleton
+          className={styles.empty}
+          label={t('scheduledTasks.loading')}
+          variant="form"
+          rows={5}
+        />
       )}
       {loadError && <div className={taskStyles.loadError}>{loadError}</div>}
       {isDeleted && (
@@ -2943,7 +2956,14 @@ function TextAttachmentPreview({
   }, [data, t]);
   if (error) return <div className={styles.previewError}>{error}</div>;
   if (content === undefined) {
-    return <div className={styles.empty}>{t('attachment.loadingFile')}</div>;
+    return (
+      <ContentSkeleton
+        className={styles.empty}
+        label={t('attachment.loadingFile')}
+        variant="detail"
+        rows={4}
+      />
+    );
   }
   return (
     <WorkspaceFilePreview
@@ -2981,7 +3001,12 @@ function PdfAttachmentPreview({
       title={`Preview ${title}`}
     />
   ) : (
-    <div className={styles.empty}>{t('attachment.loadingPreview')}</div>
+    <ContentSkeleton
+      className={styles.empty}
+      label={t('attachment.loadingPreview')}
+      variant="detail"
+      rows={4}
+    />
   );
 }
 

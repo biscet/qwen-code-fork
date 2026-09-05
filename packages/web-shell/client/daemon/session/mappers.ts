@@ -345,6 +345,42 @@ export function updateConnectionFromDaemonEvent(
         skills,
       }));
     }
+    if (getString(update, 'sessionUpdate') === 'config_option_update') {
+      const configOptions = update?.['configOptions'];
+      if (!Array.isArray(configOptions)) return;
+      const modelOption = configOptions
+        .map(getRecord)
+        .find((option) => getString(option, 'id') === 'model');
+      const rawOptions = modelOption?.['options'];
+      const choices = Array.isArray(rawOptions)
+        ? rawOptions.flatMap((raw) => {
+            const option = getRecord(raw);
+            return Array.isArray(option?.['options'])
+              ? option['options']
+              : [raw];
+          })
+        : undefined;
+      setConnection((current) => ({
+        ...current,
+        currentModel:
+          getString(modelOption, 'currentValue') ?? current.currentModel,
+        models: choices
+          ? choices.flatMap((raw): DaemonModelInfo[] => {
+              const option = getRecord(raw);
+              const id = getString(option, 'value');
+              if (!id) return [];
+              return [
+                {
+                  ...current.models?.find((model) => model.id === id),
+                  id,
+                  label: getString(option, 'name') ?? id,
+                },
+              ];
+            })
+          : current.models,
+        reasoning: mapReasoningControls(configOptions),
+      }));
+    }
     return;
   }
 

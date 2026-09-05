@@ -181,6 +181,8 @@ export type {
   DaemonWorkspaceMcpResourcesStatus,
   DaemonWorkspaceMemoryFile,
   DaemonWorkspaceSkillStatus,
+  DaemonWorkspaceSkillIdentity,
+  DaemonWorkspaceSkillDetail,
   DaemonWorkspaceToolStatus,
   DaemonSettingDescriptor,
   DaemonWorkspaceSettingsStatus,

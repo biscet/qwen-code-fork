@@ -37,6 +37,7 @@ import {
 } from '../ui/alert-dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { Spinner } from '../ui/spinner';
 import styles from './ChannelPairingRequests.module.css';
 
@@ -394,6 +395,10 @@ export function ChannelPairingRequests({
         </div>
       ) : null}
 
+      {loading && requests.length === 0 ? (
+        <ContentSkeleton label={t('common.loading')} rows={3} />
+      ) : null}
+
       {!loading && !error && requests.length === 0 ? (
         <div className={styles.empty}>
           <UsersRoundIcon aria-hidden="true" />
@@ -514,6 +519,10 @@ export function ChannelPairingRequests({
             <CheckIcon />
             {revokeSuccess}
           </div>
+        ) : null}
+
+        {approvalsLoading && approvedTargets.length === 0 ? (
+          <ContentSkeleton label={t('common.loading')} rows={3} />
         ) : null}
 
         {!approvalsLoading &&

@@ -5,6 +5,8 @@ import {
   HomeCodeMark,
   HomeCodeSpinner,
   HomeCodeWordmark,
+  HomeChatMark,
+  HomeChatWordmark,
 } from './HomeCodeBrand';
 
 describe('HomeCode branding primitives', () => {
@@ -38,5 +40,17 @@ describe('HomeCode branding primitives', () => {
     expect(wordmark).toContain('shape-rendering="crispEdges"');
     expect(wordmark).toContain('aria-label="HomeCode"');
     expect(wordmark).not.toContain('Qwen Code');
+  });
+
+  it('renders a distinct HomeChat mark and modular wordmark', () => {
+    const mark = renderToStaticMarkup(<HomeChatMark aria-label="HomeChat" />);
+    const wordmark = renderToStaticMarkup(
+      <HomeChatWordmark role="img" aria-label="HomeChat" />,
+    );
+
+    expect(mark).toContain('data-homechat-mark');
+    expect(wordmark).toContain('data-homechat-wordmark');
+    expect(wordmark).toContain('shape-rendering="crispEdges"');
+    expect(wordmark).toContain('aria-label="HomeChat"');
   });
 });

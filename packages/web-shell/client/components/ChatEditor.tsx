@@ -94,6 +94,7 @@ import {
 import { FileTypeIcon } from './FileTypeIcon';
 import { HomeCodeSpinner } from './branding/HomeCodeBrand';
 import { Spinner } from './ui/spinner';
+import { Skeleton } from './ui/skeleton';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import {
   Popover,
@@ -1658,13 +1659,11 @@ export const ChatEditor = memo(
     const [contextUsageStatus, setContextUsageStatus] = useState<
       DaemonSessionContextUsageStatus | undefined
     >(undefined);
-    const [contextUsageLoading, setContextUsageLoading] = useState(false);
     const contextUsageRequestRef = useRef(0);
 
     const loadContextUsage = useCallback(
       async (detail: boolean) => {
         const request = ++contextUsageRequestRef.current;
-        setContextUsageLoading(true);
         try {
           const status = await onShowContextUsage?.(detail);
           if (contextUsageRequestRef.current !== request) return;
@@ -1676,10 +1675,6 @@ export const ChatEditor = memo(
         } catch {
           if (contextUsageRequestRef.current === request) {
             setContextUsagePopoverOpen(false);
-          }
-        } finally {
-          if (contextUsageRequestRef.current === request) {
-            setContextUsageLoading(false);
           }
         }
       },
@@ -1693,7 +1688,6 @@ export const ChatEditor = memo(
           void loadContextUsage(false);
         } else {
           contextUsageRequestRef.current += 1;
-          setContextUsageLoading(false);
         }
       },
       [loadContextUsage],
@@ -1703,7 +1697,6 @@ export const ChatEditor = memo(
       contextUsageRequestRef.current += 1;
       setContextUsagePopoverOpen(false);
       setContextUsageStatus(undefined);
-      setContextUsageLoading(false);
     }, [sessionId]);
 
     useImperativeHandle(ref, () => core.handle, [core.handle]);
@@ -3383,9 +3376,16 @@ export const ChatEditor = memo(
                           <div
                             className={styles.contextUsageLoading}
                             role="status"
+                            aria-label={t('common.loading')}
                           >
-                            {contextUsageLoading && <Spinner />}
-                            <span>{t('common.loading')}</span>
+                            <span className="sr-only">
+                              {t('common.loading')}
+                            </span>
+                            <div className="grid w-full gap-2">
+                              <Skeleton className="h-3 w-2/5" />
+                              <Skeleton className="h-2 w-full" />
+                              <Skeleton className="h-3 w-3/5" />
+                            </div>
                           </div>
                         )}
                       </PopoverContent>

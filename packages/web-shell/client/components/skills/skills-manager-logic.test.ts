@@ -3,6 +3,7 @@ import type { DaemonWorkspaceSkillStatus } from '@qwen-code/web-shell/daemon-rea
 import {
   filterSkills,
   preserveSkillSelection,
+  skillIdentity,
   skillExtensionLabel,
 } from './skills-manager-logic';
 
@@ -57,8 +58,22 @@ describe('skills manager logic', () => {
   });
 
   it('preserves only a selection that still exists', () => {
-    expect(preserveSkillSelection('review', skills)).toBe('review');
+    expect(preserveSkillSelection(skillIdentity(skills[1]), skills)).toBe(
+      'user::review',
+    );
     expect(preserveSkillSelection('removed', skills)).toBeNull();
+  });
+
+  it('uses extension identity to distinguish same-name skills', () => {
+    expect(skillIdentity(skills[0])).toBe(
+      'extension:design-pack:frontend-design',
+    );
+    expect(
+      skillIdentity({
+        ...skills[0],
+        extensionName: 'other-pack',
+      }),
+    ).not.toBe(skillIdentity(skills[0]));
   });
 
   it('uses the extension display name only for presentation', () => {

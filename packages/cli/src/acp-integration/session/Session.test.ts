@@ -1130,6 +1130,225 @@ describe('Session', () => {
     expect(mockConfig.reloadModelProvidersConfig).not.toHaveBeenCalled();
   });
 
+  describe('model-provider settings applied at the next turn', () => {
+    const endpoint = 'http://localhost:8080/v1';
+    const prompt = {
+      sessionId: 'test-session-id',
+      prompt: [{ type: 'text' as const, text: 'hello' }],
+    };
+
+    function configureReload(
+      getConfigOptions?: ConstructorParameters<typeof Session>[8],
+    ) {
+      if (getConfigOptions) {
+        session = new Session(
+          'test-session-id',
+          mockConfig,
+          mockClient,
+          mockSettings,
+          undefined,
+          undefined,
+          [],
+          undefined,
+          getConfigOptions,
+        );
+      }
+      currentModel = 'local-coder';
+      let baseUrl = endpoint;
+      const live = {
+        model: currentModel,
+        authType: AuthType.USE_OPENAI,
+        reasoning: { effort: 'medium' },
+      } as ContentGeneratorConfig;
+      const availableModel = (id: string, url = endpoint) => ({
+        id,
+        label: id,
+        authType: AuthType.USE_OPENAI,
+        baseUrl: url,
+        registryBaseUrl: url,
+      });
+      vi.mocked(mockConfig.getAllConfiguredModels).mockReturnValue([
+        availableModel(currentModel),
+      ]);
+      vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue(live);
+      Object.assign(mockConfig, {
+        getCurrentModelRegistryBaseUrl: vi.fn(() => baseUrl),
+        getResolvedModelConfig: vi.fn(() => ({
+          generationConfig: { reasoning: { effort: 'low' } },
+        })),
+      });
+      switchModelSpy.mockImplementation(async (authType, modelId, options) => {
+        currentAuthType = authType;
+        currentModel = modelId;
+        baseUrl = options?.baseUrl ?? endpoint;
+        live.model = modelId;
+      });
+      mockChat.sendMessageStream = vi
+        .fn()
+        .mockImplementation(async () => createEmptyStream());
+      return { availableModel, live };
+    }
+
+    it('reloads the exact active connection once before sending with its new defaults', async () => {
+      const { live } = configureReload();
+      session.reloadModelProvidersFromDisk();
+      expect(mockConfig.switchModel).not.toHaveBeenCalled();
+
+      await session.prompt(prompt);
+
+      expect(mockConfig.switchModel).toHaveBeenCalledWith(
+        AuthType.USE_OPENAI,
+        'local-coder',
+        { baseUrl: endpoint },
+      );
+      expect(live.reasoning).toEqual({ effort: 'low' });
+      expect(switchModelSpy.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(mockChat.sendMessageStream).mock.invocationCallOrder[0]!,
+      );
+      await session.prompt(prompt);
+      expect(mockConfig.switchModel).toHaveBeenCalledOnce();
+    });
+
+    it('publishes refreshed configuration after applying defaults and before sending', async () => {
+      const getConfigOptions = vi.fn(() => {
+        const reasoning = mockConfig.getContentGeneratorConfig().reasoning;
+        return [
+          {
+            id: 'reasoning_effort',
+            name: 'Reasoning effort',
+            type: 'select' as const,
+            currentValue: reasoning ? (reasoning.effort ?? 'default') : 'none',
+            options: [{ value: 'low', name: 'Low' }],
+          },
+        ];
+      });
+      configureReload(getConfigOptions);
+      session.reloadModelProvidersFromDisk();
+
+      await session.prompt(prompt);
+
+      expect(mockClient.sessionUpdate).toHaveBeenCalledWith({
+        sessionId: 'test-session-id',
+        update: {
+          sessionUpdate: 'config_option_update',
+          configOptions: [expect.objectContaining({ currentValue: 'low' })],
+        },
+      });
+      expect(getConfigOptions.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(mockChat.sendMessageStream).mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('follows an exact ID and endpoint replacement without changing another route', async () => {
+      const { availableModel } = configureReload();
+      const nextUrl = 'http://localhost:9090/v1';
+      vi.mocked(mockConfig.getAllConfiguredModels).mockReturnValue([
+        availableModel('renamed-coder', nextUrl),
+        availableModel('local-coder', 'http://other.example/v1'),
+      ]);
+      session.reloadModelProvidersFromDisk({
+        previous: {
+          authType: AuthType.USE_OPENAI,
+          modelId: 'local-coder',
+          baseUrl: endpoint,
+        },
+        next: {
+          authType: AuthType.USE_OPENAI,
+          modelId: 'renamed-coder',
+          baseUrl: nextUrl,
+        },
+      });
+
+      await session.prompt(prompt);
+
+      expect(mockConfig.switchModel).toHaveBeenCalledWith(
+        AuthType.USE_OPENAI,
+        'renamed-coder',
+        { baseUrl: nextUrl },
+      );
+    });
+
+    it.each(['local-coder', 'renamed-coder'])(
+      'preserves the default endpoint registry identity when reloading %s',
+      async (modelId) => {
+        const { availableModel } = configureReload();
+        const resolvedEndpoint = 'https://api.openai.com/v1';
+        vi.mocked(mockConfig.getCurrentModelRegistryBaseUrl).mockReturnValue(
+          null,
+        );
+        vi.mocked(mockConfig.getAllConfiguredModels).mockReturnValue([
+          {
+            id: modelId,
+            label: 'Default connection',
+            authType: AuthType.USE_OPENAI,
+            baseUrl: resolvedEndpoint,
+          },
+          availableModel(modelId, resolvedEndpoint),
+        ]);
+        session.reloadModelProvidersFromDisk(
+          modelId === 'local-coder'
+            ? undefined
+            : {
+                previous: {
+                  authType: AuthType.USE_OPENAI,
+                  modelId: 'local-coder',
+                },
+                next: { authType: AuthType.USE_OPENAI, modelId },
+              },
+        );
+
+        await session.prompt(prompt);
+
+        expect(mockConfig.switchModel).toHaveBeenCalledWith(
+          AuthType.USE_OPENAI,
+          modelId,
+          undefined,
+        );
+        expect(mockChat.sendMessageStream).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('refuses a removed active endpoint instead of using another connection', async () => {
+      const { availableModel } = configureReload();
+      vi.mocked(mockConfig.getAllConfiguredModels).mockReturnValue([
+        availableModel('local-coder', 'http://other.example/v1'),
+      ]);
+      session.reloadModelProvidersFromDisk();
+
+      await expect(session.prompt(prompt)).rejects.toThrow(
+        'Подключение выбранной модели изменено или удалено',
+      );
+      expect(mockConfig.switchModel).not.toHaveBeenCalled();
+      expect(mockChat.sendMessageStream).not.toHaveBeenCalled();
+    });
+
+    it('defers generator replacement until an active turn has completed', async () => {
+      configureReload();
+      let release!: () => void;
+      const streaming = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.mocked(mockChat.sendMessageStream).mockResolvedValueOnce(
+        (async function* () {
+          await streaming;
+          yield* [];
+        })(),
+      );
+      const first = session.prompt(prompt);
+      await vi.waitFor(() =>
+        expect(mockChat.sendMessageStream).toHaveBeenCalledOnce(),
+      );
+      session.reloadModelProvidersFromDisk();
+      expect(mockConfig.switchModel).not.toHaveBeenCalled();
+      release();
+      await first;
+      expect(mockConfig.switchModel).not.toHaveBeenCalled();
+
+      await session.prompt(prompt);
+      expect(mockConfig.switchModel).toHaveBeenCalledOnce();
+    });
+  });
+
   it('bounds textual tool results at the live ACP delivery boundary', async () => {
     const source = `head-${'x'.repeat(499_999)}-tail`;
     await session.sendUpdate({

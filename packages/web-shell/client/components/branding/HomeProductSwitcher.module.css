@@ -1,0 +1,83 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 30px;
+  padding: 3px 7px 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  border-color: var(--border);
+  background: var(--muted);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.trigger > svg:first-child {
+  width: 22px;
+  height: 22px;
+}
+
+.trigger > svg:last-child {
+  width: 13px;
+  height: 13px;
+  color: var(--muted-foreground);
+}
+
+.menu {
+  width: 254px;
+  padding: 4px;
+}
+
+.item {
+  min-height: 54px;
+  gap: 9px;
+  padding: 7px;
+}
+
+.item > svg:first-child {
+  width: 30px;
+  height: 30px;
+}
+
+.itemCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemCopy strong {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.itemCopy small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check {
+  width: 14px;
+  height: 14px;
+  color: var(--foreground);
+}

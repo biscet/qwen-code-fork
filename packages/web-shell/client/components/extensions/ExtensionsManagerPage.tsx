@@ -37,7 +37,6 @@ import {
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
 import { trimDialogLabel } from '../../utils/dialogLabels';
-import styles from './ExtensionsManagerPage.module.css';
 import {
   filterExtensions,
   preserveSelectedExtensionName,
@@ -67,6 +66,7 @@ import {
   BreadcrumbSeparator,
 } from '../ui/breadcrumb';
 import { Button } from '../ui/button';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   Card,
   CardContent,
@@ -445,7 +445,7 @@ export function ExtensionsManagerPage({
   const [updateStates, setUpdateStates] = useState<
     Record<string, DaemonExtensionUpdateState>
   >({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [checkingName, setCheckingName] = useState<string | null>(null);
   const [busyName, setBusyName] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -473,7 +473,7 @@ export function ExtensionsManagerPage({
   const mutationInFlightRef = useRef(false);
   const uninstallInFlightNameRef = useRef<string | null>(null);
   const interactionOperationIdRef = useRef<string | null>(null);
-  const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   const archiveInputRef = useRef<HTMLInputElement>(null);
   const returnFocusNameRef = useRef<string | null>(null);
   const [pendingMutation, setPendingMutation] = useState<{
@@ -1154,6 +1154,7 @@ export function ExtensionsManagerPage({
     () => filterExtensions(extensions, query),
     [extensions, query],
   );
+  const showInitialLoading = loading && extensions.length === 0;
 
   const archiveTooLarge =
     installArchive !== null &&
@@ -1257,7 +1258,7 @@ export function ExtensionsManagerPage({
     const contextFiles = details?.contextFiles ?? [];
 
     return (
-      <div className="flex w-full flex-col gap-6 pb-8">
+      <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
         {navigation}
         <div className="flex w-full flex-col gap-6">
           <div className="flex items-center gap-4">
@@ -1446,7 +1447,7 @@ export function ExtensionsManagerPage({
           </Card>
 
           <Tabs defaultValue="overview">
-            <TabsList className="max-w-full overflow-x-auto">
+            <TabsList variant="line" className="max-w-full overflow-x-auto">
               <TabsTrigger value="overview">
                 {t('extensions.manage.overview')}
               </TabsTrigger>
@@ -1619,7 +1620,11 @@ export function ExtensionsManagerPage({
   }
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-8">
+    <div
+      data-motion="detail"
+      className="flex w-full flex-col gap-6 pb-8"
+      aria-busy={showInitialLoading || undefined}
+    >
       {navigation}
       <div className="flex w-full flex-col gap-6">
         <div className="flex items-start justify-between gap-4">
@@ -1687,84 +1692,66 @@ export function ExtensionsManagerPage({
           />
         </div>
 
-        {filteredExtensions.length ? (
-          <div
-            className={styles.extensionGrid}
-            data-column-count={Math.min(filteredExtensions.length, 4)}
-          >
+        {showInitialLoading ? (
+          <ContentSkeleton label={t('common.loading')} rows={5} />
+        ) : filteredExtensions.length ? (
+          <div className="divide-y rounded-md border">
             {filteredExtensions.map((extension) => {
               const state =
                 updateStates[extension.name] ?? extension.updateState;
               return (
-                <Card
+                <button
                   key={extension.id || extension.name}
+                  data-motion-item
+                  type="button"
                   ref={(node) => {
                     if (node) cardRefs.current.set(extension.name, node);
                     else cardRefs.current.delete(extension.name);
                   }}
-                  size="sm"
-                  role="button"
-                  tabIndex={0}
                   aria-label={extensionTitle(extension)}
-                  className="cursor-pointer transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                   onClick={() => setSelectedName(extension.name)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedName(extension.name);
-                    }
-                  }}
                 >
-                  <CardHeader className="block">
-                    <div className="flex items-start gap-3">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <PackageIcon className="size-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-start justify-between gap-2">
-                          <CardTitle className="min-w-0 truncate">
-                            {extensionTitle(extension)}
-                          </CardTitle>
-                          <div className="flex shrink-0 justify-end">
-                            <Badge
-                              variant="secondary"
-                              className={
-                                extensionIsActive(extension)
-                                  ? 'bg-[var(--success-bg)] text-[10px] text-[var(--success-color)]'
-                                  : 'text-[10px]'
-                              }
-                            >
-                              {statusLabel(extension, t)}
-                            </Badge>
-                          </div>
-                        </div>
+                  <PackageIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-start justify-between gap-2">
+                      <span className="truncate text-sm font-medium">
+                        {extensionTitle(extension)}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
                         {state === UPDATE_AVAILABLE ? (
-                          <div className="mt-1">
-                            <Badge className="text-[10px]">
-                              {updateLabel(state, t)}
-                            </Badge>
-                          </div>
+                          <Badge className="text-[10px]">
+                            {updateLabel(state, t)}
+                          </Badge>
                         ) : null}
-                        <CardDescription className="mt-1 min-w-0 text-xs">
-                          <TooltipProvider delayDuration={300}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="block truncate">
-                                  {extension.description ||
-                                    t('extensions.manage.noDescription')}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {extension.description ||
-                                  t('extensions.manage.noDescription')}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            extensionIsActive(extension)
+                              ? 'bg-[var(--success-bg)] text-[10px] text-[var(--success-color)]'
+                              : 'text-[10px]'
+                          }
+                        >
+                          {statusLabel(extension, t)}
+                        </Badge>
+                      </span>
+                    </span>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="mt-1 block truncate text-xs text-muted-foreground">
+                            {extension.description ||
+                              t('extensions.manage.noDescription')}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {extension.description ||
+                            t('extensions.manage.noDescription')}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </span>
+                </button>
               );
             })}
           </div>

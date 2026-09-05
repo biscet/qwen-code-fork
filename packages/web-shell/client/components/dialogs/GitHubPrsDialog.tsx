@@ -21,6 +21,7 @@ import type {
 import { useI18n } from '../../i18n';
 import { useExternalLinkOpener } from '../../hooks/useExternalLinkOpener';
 import { timeAgo } from '../../utils/timeAgo';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import styles from './GitHubPrsDialog.module.css';
 
 function errorCode(error: unknown): string | null {
@@ -175,7 +176,13 @@ export function GitHubPrsContent({
 
   let body: ReactNode;
   if (loading) {
-    body = <div className={styles.placeholder}>{t('githubPrs.loading')}</div>;
+    body = (
+      <ContentSkeleton
+        className={styles.placeholder}
+        label={t('githubPrs.loading')}
+        rows={5}
+      />
+    );
   } else if (failure === 'github_cli_unavailable') {
     body = (
       <div className={styles.placeholder}>{t('githubPrs.cliUnavailable')}</div>

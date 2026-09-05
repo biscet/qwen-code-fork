@@ -59,12 +59,22 @@ let overviewCalls: Array<{
 }>;
 const refreshCapabilities = vi.fn();
 const invalidateWorkspace = vi.fn();
+const refreshWorkspace = vi.fn();
 const workspaceGit = vi.fn();
+const archiveSessionsData = vi.fn();
+const deleteSessionsData = vi.fn();
 const workspaceByCwd = vi.fn((cwd: string) => ({
   workspaceGit: (options?: unknown) => workspaceGit(cwd, options),
+  archiveSessionsData: (ids: string[]) => archiveSessionsData(cwd, ids),
+  deleteSessionsData: (ids: string[]) => deleteSessionsData(cwd, ids),
 }));
 const removeWorkspace = vi.fn();
-const workspaceClient = { workspaceByCwd };
+const workspaceClient = {
+  workspaceByCwd,
+  archiveSessionsData: (ids: string[]) => archiveSessionsData('/w', ids),
+  deleteSessionsData: (ids: string[]) => deleteSessionsData('/w', ids),
+  listWorkspaceSessionsPage: vi.fn(),
+};
 
 vi.mock('@qwen-code/web-shell/daemon-react-sdk', () => ({
   useConnection: () => connectionState,
@@ -77,7 +87,10 @@ vi.mock('@qwen-code/web-shell/daemon-react-sdk', () => ({
 }));
 
 vi.mock('../../session-catalog/session-catalog-hooks', () => ({
-  useSessionCatalogController: () => ({ invalidateWorkspace }),
+  useSessionCatalogController: () => ({
+    invalidateWorkspace,
+    refreshWorkspace,
+  }),
   useSessionCatalogQuery: (
     _client: unknown,
     query: { workspaceCwd: string },
@@ -160,7 +173,23 @@ beforeEach(() => {
   overviewCalls = [];
   refreshCapabilities.mockReset();
   invalidateWorkspace.mockReset();
+  refreshWorkspace.mockReset();
   removeWorkspace.mockReset().mockResolvedValue({ removed: true });
+  archiveSessionsData
+    .mockReset()
+    .mockImplementation((_cwd: string, ids: string[]) =>
+      Promise.resolve({
+        archived: ids,
+        alreadyArchived: [],
+        notFound: [],
+        errors: [],
+      }),
+    );
+  deleteSessionsData
+    .mockReset()
+    .mockImplementation((_cwd: string, ids: string[]) =>
+      Promise.resolve({ removed: ids, notFound: [], errors: [] }),
+    );
   workspaceGit.mockReset().mockImplementation((cwd: string) =>
     Promise.resolve({
       v: 2,
@@ -176,7 +205,11 @@ beforeEach(() => {
   connectionState = {
     capabilities: {
       qwenCodeVersion: '1.2.3',
-      features: ['workspace_runtime_removal'],
+      features: [
+        'workspace_runtime_removal',
+        'session_archive',
+        'workspace_qualified_rest_core',
+      ],
     } as DaemonCapabilities,
   };
   workspaceCapabilities = {
@@ -250,6 +283,242 @@ describe('WorkspacesOverviewPanel', () => {
     expect(rowByLabel('API').textContent).toContain('/other');
     expect(rowByLabel('/locked').textContent).toContain('untrusted');
     expect(container.textContent).not.toContain('live:demo');
+  });
+
+  it('expands a workspace and reveals chats five at a time', async () => {
+    sessionPages['/other'] = {
+      sessions: Array.from({ length: 11 }, (_, index) =>
+        session({
+          sessionId: `chat-${index + 1}`,
+          displayName: `Chat ${index + 1}`,
+        }),
+      ),
+    };
+    await render();
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const panel = container.querySelector(
+      '[data-testid="workspace-chats-other"]',
+    )!;
+    expect(panel).not.toBeNull();
+    expect(panel.textContent).toContain('Chat 5');
+    expect(panel.textContent).not.toContain('Chat 6');
+    const showMore = Array.from(panel.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Show 5 more',
+    )!;
+    await act(async () => {
+      showMore.click();
+    });
+    expect(panel.textContent).toContain('Chat 10');
+    expect(panel.textContent).not.toContain('Chat 11');
+    await act(async () => {
+      showMore.click();
+    });
+    expect(panel.textContent).toContain('Chat 11');
+    expect(panel.textContent).not.toContain('Show 5 more');
+  });
+
+  it('opens a chat from the expanded workspace', async () => {
+    const onOpenSession = vi.fn();
+    sessionPages['/other'] = {
+      sessions: [
+        session({ sessionId: 'chat-a', displayName: 'Open this chat' }),
+      ],
+    };
+    await render({ onOpenSession });
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const chat = container.querySelector(
+      '[aria-label="Open Open this chat"]',
+    ) as HTMLElement;
+    await act(async () => {
+      chat.click();
+    });
+    expect(onOpenSession).toHaveBeenCalledWith('chat-a', '/other');
+  });
+
+  it('archives multiple selected chats through the owning workspace', async () => {
+    sessionPages['/other'] = {
+      sessions: [
+        session({ sessionId: 'chat-a', displayName: 'Chat A' }),
+        session({ sessionId: 'chat-b', displayName: 'Chat B' }),
+        session({ sessionId: 'chat-c', displayName: 'Chat C' }),
+      ],
+    };
+    await render();
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const panel = container.querySelector(
+      '[data-testid="workspace-chats-other"]',
+    )!;
+    for (const label of ['Select Chat A', 'Select Chat B']) {
+      const checkbox = panel.querySelector(`[aria-label="${label}"]`)!;
+      await act(async () => {
+        (checkbox as HTMLElement).click();
+      });
+    }
+    const archiveSelected = Array.from(panel.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Archive selected',
+    )!;
+    await act(async () => {
+      archiveSelected.click();
+    });
+    const confirm = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Archive',
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    expect(archiveSessionsData).toHaveBeenCalledWith('/other', [
+      'chat-a',
+      'chat-b',
+    ]);
+    expect(refreshWorkspace).toHaveBeenCalledWith('/other');
+  });
+
+  it('deletes multiple selected chats through the owning workspace', async () => {
+    sessionPages['/other'] = {
+      sessions: [
+        session({ sessionId: 'chat-a', displayName: 'Chat A' }),
+        session({ sessionId: 'chat-b', displayName: 'Chat B' }),
+        session({ sessionId: 'chat-c', displayName: 'Chat C' }),
+      ],
+    };
+    await render();
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const panel = container.querySelector(
+      '[data-testid="workspace-chats-other"]',
+    )!;
+    for (const label of ['Select Chat A', 'Select Chat C']) {
+      await act(async () => {
+        (panel.querySelector(`[aria-label="${label}"]`) as HTMLElement).click();
+      });
+    }
+    const deleteSelected = Array.from(panel.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Delete selected',
+    )!;
+    await act(async () => {
+      deleteSelected.click();
+    });
+    const confirm = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Delete',
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    expect(deleteSessionsData).toHaveBeenCalledWith('/other', [
+      'chat-a',
+      'chat-c',
+    ]);
+  });
+
+  it('archives every chat after confirmation', async () => {
+    sessionPages['/other'] = {
+      sessions: [
+        session({ sessionId: 'chat-a', displayName: 'Chat A' }),
+        session({ sessionId: 'chat-b', displayName: 'Chat B' }),
+      ],
+    };
+    await render();
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const panel = container.querySelector(
+      '[data-testid="workspace-chats-other"]',
+    )!;
+    const archiveAll = Array.from(panel.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Archive all',
+    )!;
+    await act(async () => {
+      archiveAll.click();
+      await Promise.resolve();
+    });
+    const confirm = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Archive',
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    expect(archiveSessionsData).toHaveBeenCalledWith('/other', [
+      'chat-a',
+      'chat-b',
+    ]);
+  });
+
+  it('deletes every chat after a destructive confirmation', async () => {
+    sessionPages['/other'] = {
+      sessions: [
+        session({ sessionId: 'chat-a', displayName: 'Chat A' }),
+        session({ sessionId: 'chat-b', displayName: 'Chat B' }),
+      ],
+    };
+    await render();
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const panel = container.querySelector(
+      '[data-testid="workspace-chats-other"]',
+    )!;
+    const deleteAll = Array.from(panel.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Delete all',
+    )!;
+    await act(async () => {
+      deleteAll.click();
+      await Promise.resolve();
+    });
+    expect(document.body.textContent).toContain('Delete 2 chats?');
+    const confirm = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Delete',
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    expect(deleteSessionsData).toHaveBeenCalledWith('/other', [
+      'chat-a',
+      'chat-b',
+    ]);
+  });
+
+  it('keeps mutation actions disabled for a running chat', async () => {
+    sessionPages['/other'] = {
+      sessions: [
+        session({
+          sessionId: 'chat-running',
+          displayName: 'Busy chat',
+          hasActivePrompt: true,
+        }),
+      ],
+    };
+    await render();
+    await act(async () => {
+      rowByLabel('API').click();
+    });
+    const panel = container.querySelector(
+      '[data-testid="workspace-chats-other"]',
+    )!;
+    expect(
+      (
+        panel.querySelector(
+          '[aria-label="Archive Busy chat"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        panel.querySelector(
+          '[aria-label="Delete Busy chat"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   it('shows session counts, MCP health, branch and last activity', async () => {

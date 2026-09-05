@@ -498,6 +498,63 @@ describe('mapWorkspaceSkills', () => {
 });
 
 describe('updateConnectionFromDaemonEvent', () => {
+  it('refreshes model labels and effort from an authoritative config update', () => {
+    const result = applyEvent(
+      {
+        status: 'connected',
+        currentModel: 'local-coder(openai)',
+        models: [
+          {
+            id: 'local-coder(openai)',
+            label: 'Old name',
+            contextWindow: 131072,
+          },
+        ],
+        reasoning: {
+          enabled: true,
+          effort: 'medium',
+          efforts: ['low', 'medium', 'high'],
+        },
+      },
+      {
+        v: 1,
+        type: 'session_update',
+        data: {
+          update: {
+            sessionUpdate: 'config_option_update',
+            configOptions: [
+              {
+                id: 'model',
+                currentValue: 'local-coder(openai)',
+                options: [
+                  { value: 'local-coder(openai)', name: 'Updated name' },
+                ],
+              },
+              {
+                id: 'reasoning_effort',
+                currentValue: 'high',
+                options: [
+                  { value: 'none' },
+                  { value: 'medium' },
+                  { value: 'high' },
+                ],
+              },
+            ],
+          },
+        },
+      } as DaemonEvent,
+    );
+
+    expect(result.models).toEqual([
+      {
+        id: 'local-coder(openai)',
+        label: 'Updated name',
+        contextWindow: 131072,
+      },
+    ]);
+    expect(result.reasoning).toMatchObject({ enabled: true, effort: 'high' });
+  });
+
   it('updates and clears the authoritative Goal snapshot', () => {
     const goal = {
       goalId: 'goal-1',

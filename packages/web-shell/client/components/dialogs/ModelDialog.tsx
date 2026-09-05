@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConnection } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
+import { isHiddenQwenOAuthModelAlias } from '../../utils/composerModels';
 import { useListboxKeyboard } from '../../hooks/useListboxKeyboard';
 import { dp } from './dialogStyles';
 import styles from './ModelDialog.module.css';
@@ -104,7 +105,15 @@ export function ModelDialog({
   const availableModels = useMemo(() => {
     const candidates =
       models ?? ((connection.models ?? []) as ModelDialogModel[]);
-    return filterModel ? candidates.filter(filterModel) : candidates;
+    const visible = candidates.filter(
+      (model) =>
+        !isHiddenQwenOAuthModelAlias({
+          id: model.id,
+          authType: getAuthType(model),
+          baseModelId: model.baseModelId,
+        }),
+    );
+    return filterModel ? visible.filter(filterModel) : visible;
   }, [models, connection.models, filterModel]);
   const { t } = useI18n();
   const listRef = useRef<HTMLDivElement>(null);

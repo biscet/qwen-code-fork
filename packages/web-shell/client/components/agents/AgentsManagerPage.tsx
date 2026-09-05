@@ -45,6 +45,7 @@ import {
   BreadcrumbSeparator,
 } from '../ui/breadcrumb';
 import { Button } from '../ui/button';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import {
   Card,
   CardContent,
@@ -72,7 +73,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import type { EmbeddedManagerPage } from '../plugins/manager-page';
-import styles from './AgentsManagerPage.module.css';
+import { resolveAgentColor, type AgentDisplayColor } from './agent-color';
 
 interface AgentsManagerPageProps {
   onClose: () => void;
@@ -86,6 +87,24 @@ function levelLabel(level: string, t: ReturnType<typeof useI18n>['t']): string {
   if (level === 'builtin') return t('agent.level.builtin');
   if (level === 'extension') return t('agent.level.extension');
   return level;
+}
+
+const BUILTIN_AGENT_DESCRIPTION_KEYS: Record<string, string> = {
+  'general-purpose': 'agent.builtin.generalPurpose.description',
+  Explore: 'agent.builtin.explore.description',
+  'statusline-setup': 'agent.builtin.statuslineSetup.description',
+  'review-agent': 'agent.builtin.review.description',
+};
+
+function localizedAgentDescription(
+  agent: { name: string; level: string; description?: string },
+  t: ReturnType<typeof useI18n>['t'],
+): string {
+  const key =
+    agent.level === 'builtin'
+      ? BUILTIN_AGENT_DESCRIPTION_KEYS[agent.name]
+      : undefined;
+  return key ? t(key) : agent.description || '—';
 }
 
 function approvalModeLabel(
@@ -111,6 +130,31 @@ function DetailField({ label, value }: { label: string; value: string }) {
   );
 }
 
+function AgentColorField({
+  color,
+  t,
+}: {
+  color: AgentDisplayColor;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  const name = color.name ? t(`agent.color.${color.name}`) : color.color;
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="text-sm font-medium">{t('agent.create.color')}</div>
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span
+          className="size-3 shrink-0 rounded-full border border-border"
+          style={{ backgroundColor: color.color }}
+        />
+        <span>
+          {color.automatic ? `${t('agent.color.automatic')} · ` : ''}
+          {name} · <code>{color.color}</code>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function jsonText(value: Record<string, unknown> | undefined): string {
   return value ? JSON.stringify(value, null, 2) : '—';
 }
@@ -131,6 +175,7 @@ export function AgentsManagerPage({
 }: AgentsManagerPageProps) {
   const { t } = useI18n();
   const {
+    status,
     agents,
     loading,
     error: agentsError,
@@ -154,21 +199,32 @@ export function AgentsManagerPage({
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [listErrorDismissed, setListErrorDismissed] = useState(false);
+  const showInitialLoading =
+    agents.length === 0 && status === undefined && !agentsError;
+
+  const displayedAgents = useMemo(
+    () =>
+      agents.map((agent) => ({
+        ...agent,
+        description: localizedAgentDescription(agent, t),
+      })),
+    [agents, t],
+  );
 
   const filteredAgents = useMemo(
-    () => filterAgents(agents, query, levelFilter),
-    [agents, query, levelFilter],
+    () => filterAgents(displayedAgents, query, levelFilter),
+    [displayedAgents, query, levelFilter],
   );
 
   const selectedAgent = useMemo(
-    () => preserveAgentSelection(selection, agents),
-    [agents, selection],
+    () => preserveAgentSelection(selection, displayedAgents),
+    [displayedAgents, selection],
   );
   const selectedName = selection?.name ?? null;
 
   useEffect(() => {
-    setSelection((current) => preserveAgentSelection(current, agents));
-  }, [agents]);
+    setSelection((current) => preserveAgentSelection(current, displayedAgents));
+  }, [displayedAgents]);
 
   useEffect(() => {
     embedded?.onDetailChange(Boolean(selectedName || createOpen || editOpen));
@@ -312,7 +368,7 @@ export function AgentsManagerPage({
   // ── Create view ──
   if (createOpen) {
     return (
-      <div className="flex w-full flex-col gap-6 pb-8">
+      <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
         {navigation}
         <AgentCreatePage
           initialScope={initialCreateScope ?? 'global'}
@@ -329,7 +385,7 @@ export function AgentsManagerPage({
 
   if (editOpen && detail) {
     return (
-      <div className="flex w-full flex-col gap-6 pb-8">
+      <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
         {navigation}
         <AgentCreatePage
           agent={detail}
@@ -349,6 +405,8 @@ export function AgentsManagerPage({
   // ── Detail view ──
   if (selectedName && detail) {
     const mutable = canModifyAgent(detail);
+    const displayColor = resolveAgentColor(detail.name, detail.color);
+    const detailDescription = localizedAgentDescription(detail, t);
     const toolsText =
       !detail.tools || detail.tools.length === 0 || detail.tools.includes('*')
         ? t('agent.create.tools.all')
@@ -356,13 +414,15 @@ export function AgentsManagerPage({
     const disallowedToolsText = detail.disallowedTools?.join(', ') || '—';
 
     return (
-      <div className="flex w-full flex-col gap-6 pb-8">
+      <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
         {navigation}
         <div className="flex w-full flex-col gap-6">
-          <div className="flex items-center gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-muted">
-              <BotIcon />
-            </div>
+          <div className="flex items-center gap-3">
+            <span
+              className="size-3 shrink-0 rounded-full border border-border"
+              style={{ backgroundColor: displayColor.color }}
+            />
+            <BotIcon className="size-5 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="break-words text-xl font-semibold text-balance">
@@ -425,7 +485,7 @@ export function AgentsManagerPage({
           ) : null}
 
           <Tabs defaultValue="overview">
-            <TabsList className="max-w-full overflow-x-auto">
+            <TabsList variant="line" className="max-w-full overflow-x-auto">
               <TabsTrigger value="overview">
                 {t('agent.detail.overview')}
               </TabsTrigger>
@@ -437,43 +497,38 @@ export function AgentsManagerPage({
               <TabsTrigger value="hooks">{t('agent.detail.hooks')}</TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="pt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">
-                    {t('agent.descriptionLabel')}
-                  </CardTitle>
-                  <CardDescription>{detail.description || '—'}</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-6 sm:grid-cols-2">
+              <div className="grid gap-6 border-y py-5 sm:grid-cols-2">
+                <div className="sm:col-span-2">
                   <DetailField
-                    label={t('agent.filePathLabel')}
-                    value={detail.filePath || '—'}
+                    label={t('agent.descriptionLabel')}
+                    value={detailDescription}
                   />
-                  <DetailField
-                    label={t('agent.modelLabel')}
-                    value={detail.model || '—'}
-                  />
-                  <DetailField
-                    label={t('agent.level.label')}
-                    value={levelLabel(detail.level, t)}
-                  />
-                  <DetailField
-                    label={t('agent.create.approvalMode')}
-                    value={approvalModeLabel(
-                      detail.approvalMode || detail.permissionMode,
-                      t,
-                    )}
-                  />
-                  <DetailField
-                    label={t('agent.create.maxTurns')}
-                    value={detail.maxTurns?.toString() || '—'}
-                  />
-                  <DetailField
-                    label={t('agent.create.color')}
-                    value={detail.color || '—'}
-                  />
-                </CardContent>
-              </Card>
+                </div>
+                <DetailField
+                  label={t('agent.filePathLabel')}
+                  value={detail.filePath || '—'}
+                />
+                <DetailField
+                  label={t('agent.modelLabel')}
+                  value={detail.model || '—'}
+                />
+                <DetailField
+                  label={t('agent.level.label')}
+                  value={levelLabel(detail.level, t)}
+                />
+                <DetailField
+                  label={t('agent.create.approvalMode')}
+                  value={approvalModeLabel(
+                    detail.approvalMode || detail.permissionMode,
+                    t,
+                  )}
+                />
+                <DetailField
+                  label={t('agent.create.maxTurns')}
+                  value={detail.maxTurns?.toString() || '—'}
+                />
+                <AgentColorField color={displayColor} t={t} />
+              </div>
             </TabsContent>
             <TabsContent value="prompt" className="pt-4">
               <Card>
@@ -574,11 +629,13 @@ export function AgentsManagerPage({
   // ── Detail loading ──
   if (selectedName && detailLoading) {
     return (
-      <div className="flex w-full flex-col gap-6 pb-8">
+      <div data-motion="detail" className="flex w-full flex-col gap-6 pb-8">
         {navigation}
-        <div className="flex items-center justify-center py-12">
-          <Spinner className="size-6" />
-        </div>
+        <ContentSkeleton
+          label={t('subagent.detailsLoading')}
+          variant="detail"
+          rows={6}
+        />
       </div>
     );
   }
@@ -601,7 +658,11 @@ export function AgentsManagerPage({
 
   // ── List view ──
   return (
-    <div className="flex w-full flex-col gap-6 pb-8">
+    <div
+      data-motion="detail"
+      className="flex w-full flex-col gap-6 pb-8"
+      aria-busy={showInitialLoading || undefined}
+    >
       {navigation}
       <div className="flex w-full flex-col gap-6">
         <div className="flex items-start justify-between gap-4">
@@ -685,73 +746,69 @@ export function AgentsManagerPage({
           ))}
         </ToggleGroup>
 
-        {filteredAgents.length ? (
-          <div
-            className={styles.agentGrid}
-            data-column-count={Math.min(filteredAgents.length, 4)}
-          >
-            {filteredAgents.map((agent) => (
-              <Card
-                key={`${agent.level}:${agent.name}`}
-                size="sm"
-                role="button"
-                tabIndex={0}
-                aria-label={agent.name}
-                className="cursor-pointer transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                onClick={() => {
-                  setListNotice(null);
-                  setMutationError(null);
-                  setSelection({ name: agent.name, level: agent.level });
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
+        {showInitialLoading ? (
+          <ContentSkeleton label={t('common.loading')} rows={5} />
+        ) : filteredAgents.length ? (
+          <div className="divide-y rounded-md border">
+            {filteredAgents.map((agent) => {
+              const displayColor = resolveAgentColor(agent.name, agent.color);
+              const description = localizedAgentDescription(agent, t);
+              return (
+                <button
+                  key={`${agent.level}:${agent.name}`}
+                  data-motion-item
+                  type="button"
+                  aria-label={agent.name}
+                  className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  onClick={() => {
                     setListNotice(null);
                     setMutationError(null);
                     setSelection({ name: agent.name, level: agent.level });
-                  }
-                }}
-              >
-                <CardHeader className="block">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <BotIcon className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <CardTitle className="min-w-0 flex-1 truncate">
-                          {agent.name}
-                        </CardTitle>
-                        <div className="flex shrink-0 gap-1">
-                          <Badge variant="outline" className="text-[10px]">
-                            {levelLabel(agent.level, t)}
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setListNotice(null);
+                      setMutationError(null);
+                      setSelection({ name: agent.name, level: agent.level });
+                    }
+                  }}
+                >
+                  <span
+                    className="mt-1 size-3 shrink-0 rounded-full border border-border"
+                    style={{ backgroundColor: displayColor.color }}
+                  />
+                  <BotIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-start justify-between gap-2">
+                      <span className="truncate text-sm font-medium">
+                        {agent.name}
+                      </span>
+                      <span className="flex shrink-0 gap-1">
+                        <Badge variant="outline" className="text-[10px]">
+                          {levelLabel(agent.level, t)}
+                        </Badge>
+                        {isOverridden(agent, agents) ? (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {t('agent.overriddenBadge')}
                           </Badge>
-                          {isOverridden(agent, agents) ? (
-                            <Badge variant="secondary" className="text-[10px]">
-                              {t('agent.overriddenBadge')}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </div>
-                      <CardDescription className="mt-1 min-w-0 text-xs">
-                        <TooltipProvider delayDuration={300}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block truncate">
-                                {agent.description || '—'}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {agent.description || '—'}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-              </Card>
-            ))}
+                        ) : null}
+                      </span>
+                    </span>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
+                            {description}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{description}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <Empty className="border">

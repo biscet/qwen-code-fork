@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { ContentSkeleton } from '../ui/content-skeleton';
 import { useExternalLinkOpener } from '../../hooks/useExternalLinkOpener';
 import { isSafeHref, Markdown } from '../messages/Markdown';
 import {
@@ -461,7 +462,14 @@ export function CodeReviewArtifactDetail({
     );
   }
   if (!parsed?.document) {
-    return <div className={styles.empty}>{t('codeReview.loading')}</div>;
+    return (
+      <ContentSkeleton
+        className={styles.empty}
+        label={t('codeReview.loading')}
+        variant="detail"
+        rows={6}
+      />
+    );
   }
 
   const reviewDocument = parsed.document;

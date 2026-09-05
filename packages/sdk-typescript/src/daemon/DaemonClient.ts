@@ -20,6 +20,13 @@ export type { DaemonSseConnectReason } from './DaemonTransport.js';
 import { RestSseTransport } from './RestSseTransport.js';
 import { DaemonCapabilityMissingError } from './types.js';
 import type {
+  DaemonModelSettingsScope,
+  DaemonModelSettingsSnapshot,
+  DaemonModelSettingsSaveRequest,
+  DaemonModelSettingsDeleteRequest,
+  DaemonModelSettingsSaveResult,
+  DaemonModelLimitsCheckRequest,
+  DaemonModelLimitsCheckResult,
   DaemonAgentMutationResult,
   DaemonAuthProviderId,
   DaemonAuthProviderCatalog,
@@ -118,6 +125,8 @@ import type {
   DaemonWorkspaceAcpStatusResult,
   DaemonWorkspaceAcpPreheatResult,
   DaemonWorkspaceRuntimeStatus,
+  DaemonWorkspaceSkillDetail,
+  DaemonWorkspaceSkillIdentity,
   DaemonWorkspaceSkillsStatus,
   DaemonWorkspaceToolsStatus,
   DaemonWriteMemoryRequest,
@@ -1495,6 +1504,26 @@ export class DaemonClient {
           throw await this.failOnError(res, 'GET /workspace/skills');
         }
         return (await res.json()) as DaemonWorkspaceSkillsStatus;
+      },
+    );
+  }
+
+  async workspaceSkillDetail(
+    skill: DaemonWorkspaceSkillIdentity,
+  ): Promise<DaemonWorkspaceSkillDetail> {
+    const query = new URLSearchParams({ level: skill.level });
+    if (skill.extensionName) query.set('extensionName', skill.extensionName);
+    return await this.fetchWithTimeout(
+      `${this.baseUrl}/workspace/skills/${urlEncode(skill.name)}/detail?${query.toString()}`,
+      { headers: this.headers() },
+      async (res) => {
+        if (!res.ok) {
+          throw await this.failOnError(
+            res,
+            'GET /workspace/skills/:name/detail',
+          );
+        }
+        return (await res.json()) as DaemonWorkspaceSkillDetail;
       },
     );
   }
@@ -4289,6 +4318,62 @@ export class DaemonClient {
     );
   }
 
+  modelSettings(
+    scope?: DaemonModelSettingsScope,
+  ): Promise<DaemonModelSettingsSnapshot> {
+    const query = scope ? `?scope=${urlEncode(scope)}` : '';
+    return this.jsonRequest(
+      `/workspace/model-settings${query}`,
+      'GET /workspace/model-settings',
+      { mode: 'rest' },
+    );
+  }
+
+  saveModelSettings(
+    body: DaemonModelSettingsSaveRequest,
+  ): Promise<DaemonModelSettingsSaveResult> {
+    return this.jsonRequest(
+      '/workspace/model-settings',
+      'PUT /workspace/model-settings',
+      {
+        method: 'PUT',
+        body,
+        mode: 'rest',
+        timeoutMs: DEFAULT_PROVIDER_MUTATION_TIMEOUT_MS,
+      },
+    );
+  }
+
+  deleteModelSettings(
+    body: DaemonModelSettingsDeleteRequest,
+  ): Promise<DaemonModelSettingsSaveResult> {
+    return this.jsonRequest(
+      '/workspace/model-settings',
+      'DELETE /workspace/model-settings',
+      {
+        method: 'DELETE',
+        body,
+        mode: 'rest',
+        timeoutMs: DEFAULT_PROVIDER_MUTATION_TIMEOUT_MS,
+      },
+    );
+  }
+
+  checkModelLimits(
+    body: DaemonModelLimitsCheckRequest,
+  ): Promise<DaemonModelLimitsCheckResult> {
+    return this.jsonRequest(
+      '/workspace/model-settings/check',
+      'POST /workspace/model-settings/check',
+      {
+        method: 'POST',
+        body,
+        mode: 'rest',
+        timeoutMs: DEFAULT_PROVIDER_MUTATION_TIMEOUT_MS,
+      },
+    );
+  }
+
   async deleteModel(
     target: DaemonModelDeleteRequest,
     opts?: { clientId?: string },
@@ -6657,6 +6742,79 @@ export class WorkspaceDaemonClient {
 
   workspaceSkills(): Promise<DaemonWorkspaceSkillsStatus> {
     return this.get('/skills', 'GET /workspaces/:workspace/skills');
+  }
+
+  workspaceSkillDetail(
+    skill: DaemonWorkspaceSkillIdentity,
+  ): Promise<DaemonWorkspaceSkillDetail> {
+    const query = new URLSearchParams({ level: skill.level });
+    if (skill.extensionName) query.set('extensionName', skill.extensionName);
+    return this.client.workspaceJsonRequest<DaemonWorkspaceSkillDetail>(
+      this.workspaceSelector,
+      `/skills/${urlEncode(skill.name)}/detail?${query.toString()}`,
+      'GET /workspaces/:workspace/skills/:name/detail',
+      { mode: 'rest' },
+    );
+  }
+
+  modelSettings(
+    scope?: DaemonModelSettingsScope,
+  ): Promise<DaemonModelSettingsSnapshot> {
+    const query = scope ? `?scope=${urlEncode(scope)}` : '';
+    return this.client.workspaceJsonRequest(
+      this.workspaceSelector,
+      `/model-settings${query}`,
+      'GET /workspaces/:workspace/model-settings',
+      { mode: 'rest' },
+    );
+  }
+
+  saveModelSettings(
+    body: DaemonModelSettingsSaveRequest,
+  ): Promise<DaemonModelSettingsSaveResult> {
+    return this.client.workspaceJsonRequest(
+      this.workspaceSelector,
+      '/model-settings',
+      'PUT /workspaces/:workspace/model-settings',
+      {
+        method: 'PUT',
+        body,
+        mode: 'rest',
+        timeoutMs: DEFAULT_PROVIDER_MUTATION_TIMEOUT_MS,
+      },
+    );
+  }
+
+  deleteModelSettings(
+    body: DaemonModelSettingsDeleteRequest,
+  ): Promise<DaemonModelSettingsSaveResult> {
+    return this.client.workspaceJsonRequest(
+      this.workspaceSelector,
+      '/model-settings',
+      'DELETE /workspaces/:workspace/model-settings',
+      {
+        method: 'DELETE',
+        body,
+        mode: 'rest',
+        timeoutMs: DEFAULT_PROVIDER_MUTATION_TIMEOUT_MS,
+      },
+    );
+  }
+
+  checkModelLimits(
+    body: DaemonModelLimitsCheckRequest,
+  ): Promise<DaemonModelLimitsCheckResult> {
+    return this.client.workspaceJsonRequest(
+      this.workspaceSelector,
+      '/model-settings/check',
+      'POST /workspaces/:workspace/model-settings/check',
+      {
+        method: 'POST',
+        body,
+        mode: 'rest',
+        timeoutMs: DEFAULT_PROVIDER_MUTATION_TIMEOUT_MS,
+      },
+    );
   }
 
   workspaceProviders(): Promise<DaemonWorkspaceProvidersStatus> {

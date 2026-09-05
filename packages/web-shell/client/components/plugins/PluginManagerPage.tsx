@@ -123,7 +123,11 @@ export function PluginManagerPage({
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       {!detailOpen ? (
         <div className="sticky -top-4 z-10 -mx-5 -mt-4 flex items-center justify-between gap-3 border-b bg-background px-5 py-3">
-          <TabsList className="h-8" aria-label={t('plugins.sections')}>
+          <TabsList
+            variant="line"
+            className="h-8"
+            aria-label={t('plugins.sections')}
+          >
             <TabsTrigger ref={initialFocusRef} value="extensions">
               {t('plugins.extensions')}
             </TabsTrigger>

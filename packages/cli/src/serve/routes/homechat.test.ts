@@ -6,7 +6,11 @@
 
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { HomeChatStateStore } from './homechat-state.js';
 import { registerHomeChatRoutes } from './homechat.js';
 
 const CHAT_ID = 'homechat-018f0ec4-31c4-4f2f-9c1f-5f47e6be37f1';
@@ -19,7 +23,18 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function mount(fetchImpl: typeof fetch) {
+const directories: string[] = [];
+function createStore() {
+  const directory = mkdtempSync(join(tmpdir(), 'homechat-test-'));
+  directories.push(directory);
+  return new HomeChatStateStore(directory);
+}
+afterEach(() => {
+  for (const directory of directories.splice(0))
+    rmSync(directory, { recursive: true, force: true });
+});
+
+function mount(fetchImpl: typeof fetch, stateStore = createStore()) {
   const app = express();
   app.use(express.json());
   const mutate = (): RequestHandler => (_req, _res, next) => next();
@@ -27,6 +42,7 @@ function mount(fetchImpl: typeof fetch) {
     mutate,
     fetchImpl,
     backendUrl: 'http://vane.test',
+    stateStore,
   });
   return app;
 }
@@ -74,12 +90,12 @@ describe('HomeChat routes', () => {
               id: 'home-ai-openai-local',
               chatModels: [
                 {
-                  key: 'windows-lmstudio/windows-qwen35-9b',
-                  name: 'Qwen Windows',
-                },
-                {
                   key: 'local-mlx/local-qwen35-4b',
                   name: 'Qwen Local',
+                },
+                {
+                  key: 'windows-lmstudio/windows-qwen35-9b',
+                  name: 'Qwen3.8-27B',
                 },
               ],
               embeddingModels: [],
@@ -117,7 +133,7 @@ describe('HomeChat routes', () => {
       files: [],
       chatModel: {
         providerId: 'home-ai-openai-local',
-        key: 'local-mlx/local-qwen35-4b',
+        key: 'windows-lmstudio/windows-qwen35-9b',
       },
       embeddingModel: {
         providerId: 'home-ai-transformers-local',
@@ -145,5 +161,297 @@ describe('HomeChat routes', () => {
 
     expect(response.status).toBe(400);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+const OPTIONS = {
+  chatModel: { providerId: 'openai', key: 'model-b' },
+  thinking: true,
+  effort: 'high',
+  optimizationMode: 'balanced',
+};
+const PROVIDERS = {
+  providers: [
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      chatModels: [
+        { key: 'model-a' },
+        { key: 'model-b', name: 'Second model', homechatReasoning: true },
+      ],
+      embeddingModels: [{ key: 'embedding' }],
+    },
+  ],
+};
+
+describe('HomeChat models and organization', () => {
+  it.each([false, true])(
+    'defaults to the local 27B with free models listed first (removed saved model: %s)',
+    async (savedRemovedModel) => {
+      const store = createStore();
+      if (savedRemovedModel) {
+        store.update((state) => {
+          state.options = {
+            chatModel: {
+              providerId: 'home-ai-openai-local',
+              key: 'local-mlx/local-qwen35-4b',
+            },
+            thinking: false,
+            effort: 'medium',
+            optimizationMode: 'speed',
+          };
+        });
+      }
+      const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () =>
+        jsonResponse({
+          providers: [
+            {
+              id: 'home-ai-openai-llm7',
+              name: 'LLM7',
+              chatModels: [
+                {
+                  key: 'codestral-latest',
+                  name: 'Codestral · LLM7 · бесплатно',
+                },
+                { key: 'gpt-oss', name: 'GPT-OSS · LLM7 · бесплатно' },
+              ],
+            },
+            {
+              id: 'home-ai-openai-local',
+              chatModels: [
+                {
+                  key: 'windows-lmstudio/windows-qwen35-9b',
+                  name: 'Qwen3.8-27B',
+                  homechatReasoning: true,
+                },
+              ],
+              embeddingModels: [{ key: 'embedding' }],
+            },
+          ],
+        }),
+      );
+      const response = await request(mount(fetchImpl, store)).get(
+        '/homechat/models',
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.options.chatModel).toEqual({
+        providerId: 'home-ai-openai-local',
+        key: 'windows-lmstudio/windows-qwen35-9b',
+      });
+      expect(
+        response.body.models.map((model: { name: string }) => model.name),
+      ).toEqual([
+        'Codestral · LLM7 · бесплатно',
+        'GPT-OSS · LLM7 · бесплатно',
+        'Qwen3.8-27B',
+      ]);
+    },
+  );
+
+  it('returns public model identities and restores saved Chat-only options', async () => {
+    const store = createStore();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => jsonResponse(PROVIDERS));
+    const app = mount(fetchImpl, store);
+    expect(
+      (await request(app).put('/homechat/options').send(OPTIONS)).status,
+    ).toBe(200);
+    const result = await request(mount(fetchImpl, store)).get(
+      '/homechat/models',
+    );
+    expect(result.body.options).toEqual(OPTIONS);
+    expect(result.body.models[1]).toEqual({
+      providerId: 'openai',
+      key: 'model-b',
+      name: 'Second model',
+      providerName: 'OpenAI',
+      reasoning: true,
+    });
+    expect(store.read().chats).toEqual({});
+  });
+
+  it('forwards chosen model, Thinking, effort and research depth to the internet-only backend', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url) =>
+        String(url).endsWith('/api/providers')
+          ? jsonResponse(PROVIDERS)
+          : new Response('{"type":"messageEnd"}\n'),
+      );
+    const response = await request(mount(fetchImpl))
+      .post('/homechat/chat')
+      .send({
+        messageId: MESSAGE_ID,
+        chatId: CHAT_ID,
+        content: 'Test',
+        history: [],
+        options: OPTIONS,
+      });
+    expect(response.status).toBe(200);
+    const body = JSON.parse(String(fetchImpl.mock.calls[1][1]?.body));
+    expect(body).toMatchObject({
+      chatModel: OPTIONS.chatModel,
+      homechatReasoning: { thinking: true, effort: 'high' },
+      optimizationMode: 'balanced',
+      sources: ['web'],
+      files: [],
+    });
+    expect(body).not.toHaveProperty('workspace');
+    expect(body).not.toHaveProperty('tools');
+  });
+
+  it.each([
+    { ...OPTIONS, chatModel: { providerId: 'openai', key: 'unknown' } },
+    { ...OPTIONS, chatModel: { providerId: 'openai', key: 'model-a' } },
+    { ...OPTIONS, effort: 'invalid' },
+    { ...OPTIONS, effort: ['high'] },
+    { ...OPTIONS, optimizationMode: ['speed'] },
+    { ...OPTIONS, thinking: 'true' },
+    { ...OPTIONS, optimizationMode: 'unbounded' },
+    {
+      ...OPTIONS,
+      chatModel: { ...OPTIONS.chatModel, baseUrl: 'http://evil.test' },
+    },
+    { ...OPTIONS, tools: ['read_file'] },
+  ])('rejects invalid or unconfigured options: %j', async (options) => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => jsonResponse(PROVIDERS));
+    const app = mount(fetchImpl);
+    expect(
+      (await request(app).put('/homechat/options').send(options)).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(app).post('/homechat/chat').send({
+          messageId: MESSAGE_ID,
+          chatId: CHAT_ID,
+          content: 'Test',
+          history: [],
+          options,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      fetchImpl.mock.calls.every(([url]) =>
+        String(url).endsWith('/api/providers'),
+      ),
+    ).toBe(true);
+  });
+
+  it('persists flags through remount, restores and deletes only the intended metadata', async () => {
+    const store = createStore();
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+      String(url).endsWith('/api/chats')
+        ? jsonResponse({
+            chats: [
+              { id: CHAT_ID, title: 'Test' },
+              { id: 'ordinary-vane-chat' },
+            ],
+          })
+        : jsonResponse({ messages: [] }),
+    );
+    const app = mount(fetchImpl, store);
+    expect(
+      (
+        await request(app)
+          .patch(`/homechat/chats/${CHAT_ID}`)
+          .send({ pinned: true, archived: true })
+      ).status,
+    ).toBe(200);
+    const second = mount(fetchImpl, store);
+    expect((await request(second).get('/homechat/chats')).body.chats).toEqual([
+      { id: CHAT_ID, title: 'Test', pinned: true, archived: true },
+    ]);
+    await request(second)
+      .patch(`/homechat/chats/${CHAT_ID}`)
+      .send({ archived: false });
+    expect(store.read().chats[CHAT_ID]).toEqual({
+      pinned: true,
+      archived: false,
+    });
+    await request(second).delete(`/homechat/chats/${CHAT_ID}`);
+    expect(store.read().chats).toEqual({});
+  });
+
+  it('rejects metadata outside Chat and unsupported metadata fields without upstream calls', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const app = mount(fetchImpl);
+    for (const [id, flags] of [
+      ['harness-chat', { archived: true }],
+      [CHAT_ID, { workspace: '/tmp' }],
+      [CHAT_ID, { pinned: 'true' }],
+      [CHAT_ID, {}],
+    ] as const) {
+      expect(
+        (await request(app).patch(`/homechat/chats/${id}`).send(flags)).status,
+      ).toBe(400);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('does not mutate metadata when upstream chat is missing or deletion fails', async () => {
+    const store = createStore();
+    store.update((state) => {
+      state.chats[CHAT_ID] = { pinned: true };
+    });
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => jsonResponse({ error: 'Missing' }, 404));
+    const app = mount(fetchImpl, store);
+    expect(
+      (
+        await request(app)
+          .patch(`/homechat/chats/${CHAT_ID}`)
+          .send({ archived: true })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await request(app).delete(`/homechat/chats/${CHAT_ID}`)).status,
+    ).toBe(404);
+    expect(store.read().chats[CHAT_ID]).toEqual({ pinned: true });
+  });
+  it('reports successful deletion even if metadata cleanup fails', async () => {
+    const store = createStore();
+    vi.spyOn(store, 'update').mockImplementation(() => {
+      throw new Error('Read-only metadata');
+    });
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ success: true }));
+    expect(
+      (
+        await request(mount(fetchImpl, store)).delete(
+          `/homechat/chats/${CHAT_ID}`,
+        )
+      ).status,
+    ).toBe(200);
+  });
+  it('does not send reasoning parameters to other models of the same provider', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url) =>
+        String(url).endsWith('/api/providers')
+          ? jsonResponse(PROVIDERS)
+          : new Response('{"type":"messageEnd"}\n'),
+      );
+    const response = await request(mount(fetchImpl))
+      .post('/homechat/chat')
+      .send({
+        messageId: MESSAGE_ID,
+        chatId: CHAT_ID,
+        content: 'Test',
+        history: [],
+        options: {
+          ...OPTIONS,
+          thinking: false,
+          chatModel: { providerId: 'openai', key: 'model-a' },
+        },
+      });
+    expect(response.status).toBe(200);
+    expect(
+      JSON.parse(String(fetchImpl.mock.calls[1][1]?.body)),
+    ).not.toHaveProperty('homechatReasoning');
   });
 });

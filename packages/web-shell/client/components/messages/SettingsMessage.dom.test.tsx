@@ -223,6 +223,7 @@ function renderPanel(
     modelManagement: ModelManagementProps;
     modelSettings: ModelSettingsPanelProps & { workspaceKey: string };
     initialCategory: string;
+    workspaceScopeAvailable: boolean;
   }> = {},
 ): HTMLElement {
   return render(
@@ -231,6 +232,7 @@ function renderPanel(
         settingsState={state}
         embedded
         initialCategory={overrides.initialCategory}
+        workspaceScopeAvailable={overrides.workspaceScopeAvailable}
         onLanguageChange={noop}
         onThemeChange={noop}
         onSubDialog={overrides.onSubDialog ?? noop}
@@ -266,6 +268,20 @@ function switchButton(container: HTMLElement): HTMLButtonElement {
   if (!el) throw new Error('boolean switch not found');
   return el;
 }
+
+describe('SettingsMessage without a workspace', () => {
+  it('offers only user scope and persists edits there', async () => {
+    const setValue = vi.fn().mockResolvedValue({});
+    const container = renderPanel(makeState([boolSetting()], setValue), {
+      workspaceScopeAvailable: false,
+    });
+    const tabs = [...container.querySelectorAll('[role="tab"]')];
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['User']);
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    await act(async () => switchButton(container).click());
+    expect(setValue).toHaveBeenCalledWith('user', 'general.testFlag', true);
+  });
+});
 
 describe('SettingsMessage initialCategory', () => {
   function daemonSetting(): DaemonSettingDescriptor {
@@ -815,6 +831,40 @@ describe('SettingsMessage user-scope editing', () => {
 
     expect(container.textContent).toContain('Test Flag');
     expect(container.textContent).not.toContain('Reasoning Effort');
+  });
+
+  it('separates Harness, Chat and Models and makes Vane user-wide', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ models: [] }))),
+    );
+    const container = renderPanel(
+      makeState([boolSetting(), subDialogSetting()], vi.fn()),
+      {
+        modelManagement: makeModelManagement(),
+      },
+    );
+    const nav = container.querySelector('nav')!;
+    const groups = [...nav.querySelectorAll('[role="group"]')];
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Harness',
+      'Chat',
+      'Models',
+    ]);
+    expect(groups[0]?.textContent).toContain('General');
+    expect(groups[0]?.textContent).not.toContain('Models');
+    expect(groups[1]?.textContent).toContain('Vane');
+    expect(groups[1]?.querySelector('button')?.textContent).toBe('Vane4');
+    expect(groups[2]?.textContent).toContain('Models');
+    await act(async () => groups[1]!.querySelector('button')!.click());
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.textContent).toContain('User · Chat');
+    await act(async () => groups[0]!.querySelector('button')!.click());
+    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(container.querySelector('section')?.textContent).toContain(
+      'Test Flag',
+    );
+    vi.unstubAllGlobals();
   });
 
   it('keeps Models available when the schema has no Model settings', () => {

@@ -1,8 +1,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent, KeyboardEvent } from 'react';
-import { ArrowUp, Globe2, PanelLeft, Plus, Search, Trash2 } from 'lucide-react';
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
+import {
+  ArrowUp,
+  Activity,
+  Archive,
+  ListChecks,
+  Pin,
+  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  SquarePen,
+  Settings,
+  Trash2,
+} from 'lucide-react';
 import { ThemeProvider, type WebShellTheme } from '../../themeContext';
 import { WebShellPortalRootContext } from '../../portalRoot';
+import { I18nProvider } from '../../i18n';
 import { Markdown } from '../messages/Markdown';
 import { HomeChatWordmark, HomeCodeSpinner } from '../branding/HomeCodeBrand';
 import {
@@ -14,6 +27,12 @@ import {
   deleteHomeChat,
   loadHomeChat,
   loadHomeChatList,
+  loadHomeChatModels,
+  HOMECHAT_OPTIONS_CHANGED,
+  saveHomeChatOptions,
+  updateHomeChat,
+  type HomeChatModel,
+  type HomeChatOptions,
   messageText,
   streamHomeChat,
   type HomeChatBlock,
@@ -21,14 +40,29 @@ import {
   type HomeChatMessage,
   type HomeChatSummary,
 } from './homechat-api';
+import { HomeChatModelPicker } from './HomeChatModelPicker';
+import {
+  HomeChatManager,
+  type HomeChatAction,
+  type HomeChatView,
+} from './HomeChatManager';
 import styles from './HomeChatApp.module.css';
+import sidebarStyles from '../sidebar/WebShellSidebar.module.css';
+import welcomeStyles from '../WelcomeHeader.module.css';
+import editorStyles from '../ChatEditor.module.css';
+import userStyles from '../messages/UserMessage.module.css';
 
 interface HomeChatAppProps {
   baseUrl: string;
   token?: string;
   theme: WebShellTheme;
   versionLabel: string;
+  macOSDesktop?: boolean;
   onProductChange: (product: HomeProduct) => void;
+  renderAdministrationPanel: (
+    panel: 'settings' | 'status',
+    onClose: () => void,
+  ) => ReactNode;
 }
 
 function safeSource(
@@ -111,12 +145,14 @@ function AssistantMessage({
       )}
       {text && (
         <div className={styles.answer} data-user-selectable>
-          <Markdown
-            content={text}
-            source="assistant"
-            isStreaming={streaming}
-            tableMode="advanced"
-          />
+          <I18nProvider language="ru">
+            <Markdown
+              content={text}
+              source="assistant"
+              isStreaming={streaming}
+              tableMode="advanced"
+            />
+          </I18nProvider>
         </div>
       )}
       {!streaming && !text && error?.type === 'error' && (
@@ -152,10 +188,23 @@ export function HomeChatApp({
   token,
   theme,
   versionLabel,
+  macOSDesktop = false,
   onProductChange,
+  renderAdministrationPanel,
 }: HomeChatAppProps) {
+  const [administrationPanel, setAdministrationPanel] = useState<
+    'settings' | 'status' | null
+  >(null);
+  const [managerView, setManagerView] = useState<HomeChatView | null>(null);
+  const [models, setModels] = useState<HomeChatModel[]>([]);
+  const [options, setOptions] = useState<HomeChatOptions>();
+  const [savingOptions, setSavingOptions] = useState(false);
+  const [optionsRevision, setOptionsRevision] = useState(0);
+  const [managingChats, setManagingChats] = useState(false);
+  const chatRequest = useRef(0);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chats, setChats] = useState<HomeChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>();
   const [messages, setMessages] = useState<HomeChatMessage[]>([]);
@@ -164,6 +213,8 @@ export function HomeChatApp({
   const [streamingMessageId, setStreamingMessageId] = useState<string>();
   const [error, setError] = useState<string>();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const turnsRef = useRef<HTMLDivElement>(null);
+  const followAnswer = useRef(true);
 
   useLayoutEffect(() => {
     const root = document.createElement('div');
@@ -205,11 +256,82 @@ export function HomeChatApp({
   }, [baseUrl, token]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: streamingMessageId ? 'auto' : 'smooth',
-    });
-  }, [messages, streamingMessageId]);
+    const refresh = () => setOptionsRevision((value) => value + 1);
+    window.addEventListener(HOMECHAT_OPTIONS_CHANGED, refresh);
+    return () => window.removeEventListener(HOMECHAT_OPTIONS_CHANGED, refresh);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (administrationPanel) return;
+    setOptions(undefined);
+    void loadHomeChatModels(baseUrl, token).then(
+      (catalog) => {
+        if (active) {
+          setModels(catalog.models ?? []);
+          setOptions(catalog.options);
+        }
+      },
+      (reason: unknown) => {
+        if (active)
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : 'Не удалось загрузить модели.',
+          );
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [baseUrl, token, administrationPanel, optionsRevision]);
+
+  useEffect(
+    () => () => {
+      chatRequest.current += 1;
+    },
+    [baseUrl, token],
+  );
+
+  const changeOptions = async (next: HomeChatOptions) => {
+    setSavingOptions(true);
+    try {
+      await saveHomeChatOptions(baseUrl, token, next);
+      setOptions(next);
+      setError(undefined);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось сохранить параметры.',
+      );
+    } finally {
+      setSavingOptions(false);
+    }
+  };
+
+  const openManager = (view: HomeChatView) => {
+    setManagerView(view);
+    setAdministrationPanel(null);
+    setSidebarOpen(false);
+    setError(undefined);
+  };
+
+  useLayoutEffect(() => {
+    const transcript = scrollRef.current;
+    const turns = turnsRef.current;
+    if (!transcript || !turns) return;
+    const scrollToAnswer = () => {
+      if (followAnswer.current) {
+        transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'auto' });
+      }
+    };
+    scrollToAnswer();
+    const observer = new ResizeObserver(scrollToAnswer);
+    observer.observe(turns);
+    observer.observe(transcript);
+    return () => observer.disconnect();
+  }, [activeChatId, messages.length, administrationPanel, managerView]);
 
   const history = useMemo(() => {
     const entries: Array<['human' | 'assistant', string]> = [];
@@ -222,25 +344,36 @@ export function HomeChatApp({
   }, [messages]);
 
   const selectChat = async (chatId: string) => {
-    if (streamingMessageId) return;
+    if (streamingMessageId || managingChats) return;
+    followAnswer.current = true;
+    setAdministrationPanel(null);
+    setManagerView(null);
+    const requestId = ++chatRequest.current;
     setActiveChatId(chatId);
     setMessages([]);
     setError(undefined);
     setLoading(true);
     setSidebarOpen(false);
     try {
-      setMessages(await loadHomeChat(baseUrl, token, chatId));
+      const loaded = await loadHomeChat(baseUrl, token, chatId);
+      if (requestId === chatRequest.current) setMessages(loaded);
     } catch (reason) {
+      if (requestId !== chatRequest.current) return;
       setError(
         reason instanceof Error ? reason.message : 'Не удалось загрузить чат.',
       );
     } finally {
-      setLoading(false);
+      if (requestId === chatRequest.current) setLoading(false);
     }
   };
 
   const startNewChat = () => {
-    if (streamingMessageId) return;
+    if (streamingMessageId || managingChats) return;
+    followAnswer.current = true;
+    setAdministrationPanel(null);
+    setManagerView(null);
+    chatRequest.current += 1;
+    setLoading(false);
     setActiveChatId(undefined);
     setMessages([]);
     setDraft('');
@@ -248,25 +381,76 @@ export function HomeChatApp({
     setSidebarOpen(false);
   };
 
-  const removeChat = async (chat: HomeChatSummary) => {
-    if (streamingMessageId) return;
-    if (!window.confirm(`Удалить чат «${chat.title}»?`)) return;
+  const manageChats = async (
+    ids: string[],
+    action: HomeChatAction,
+  ): Promise<string[]> => {
+    if (streamingMessageId || managingChats) return ids;
+    setManagingChats(true);
+    setError(undefined);
+    const flags =
+      action === 'archive'
+        ? { archived: true }
+        : action === 'restore'
+          ? { archived: false }
+          : { pinned: action === 'pin' };
+    const failed: string[] = [];
     try {
-      await deleteHomeChat(baseUrl, token, chat.id);
-      setChats((current) => current.filter((item) => item.id !== chat.id));
-      if (activeChatId === chat.id) startNewChat();
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : 'Не удалось удалить чат.',
-      );
+      for (const id of ids) {
+        try {
+          if (action === 'delete') await deleteHomeChat(baseUrl, token, id);
+          else await updateHomeChat(baseUrl, token, id, flags);
+          setChats((current) =>
+            action === 'delete'
+              ? current.filter((chat) => chat.id !== id)
+              : current.map((chat) =>
+                  chat.id === id ? { ...chat, ...flags } : chat,
+                ),
+          );
+          if (
+            activeChatId === id &&
+            (action === 'delete' || action === 'archive')
+          ) {
+            chatRequest.current += 1;
+            setActiveChatId(undefined);
+            setMessages([]);
+            setDraft('');
+            setLoading(false);
+          }
+        } catch {
+          failed.push(id);
+        }
+      }
+      if (failed.length)
+        setError(
+          `Не удалось изменить чаты: ${failed.length}. Попробуйте ещё раз.`,
+        );
+      return failed;
+    } finally {
+      setManagingChats(false);
     }
+  };
+
+  const removeChat = async (chat: HomeChatSummary) => {
+    if (streamingMessageId || managingChats) return;
+    if (window.confirm(`Удалить чат «${chat.title}»?`))
+      await manageChats([chat.id], 'delete');
   };
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const content = draft.trim();
-    if (!content || streamingMessageId) return;
+    if (
+      !content ||
+      streamingMessageId ||
+      loading ||
+      savingOptions ||
+      managingChats ||
+      !options
+    )
+      return;
     const chatId = activeChatId ?? `homechat-${crypto.randomUUID()}`;
+    followAnswer.current = true;
     const messageId = crypto.randomUUID();
     const nextMessage: HomeChatMessage = {
       messageId,
@@ -299,6 +483,7 @@ export function HomeChatApp({
         chatId,
         content,
         history,
+        options,
       })) {
         if (streamEvent.type === 'error') {
           throw new Error('Не удалось завершить интернет-исследование.');
@@ -383,12 +568,14 @@ export function HomeChatApp({
     <ThemeProvider value={theme}>
       <WebShellPortalRootContext.Provider value={portalRoot}>
         <div
-          className={`${styles.root} ${theme === 'dark' ? 'dark' : ''}`}
+          className={`${styles.root} ${theme === 'dark' ? `${styles.dark} dark` : styles.light}`}
           data-web-shell-root
           data-web-shell-shadcn
           data-homechat-root
         >
-          <div className={styles.dragRegion} data-tauri-drag-region />
+          {macOSDesktop && (
+            <div className={styles.dragRegion} data-tauri-drag-region />
+          )}
           {sidebarOpen && (
             <button
               className={styles.scrim}
@@ -397,64 +584,194 @@ export function HomeChatApp({
               onClick={() => setSidebarOpen(false)}
             />
           )}
+          {macOSDesktop && (
+            <button
+              className={`${sidebarStyles.collapseButton} ${styles.sidebarToggle}`}
+              type="button"
+              title={
+                sidebarCollapsed
+                  ? 'Развернуть боковую панель'
+                  : 'Свернуть боковую панель'
+              }
+              aria-label={
+                sidebarCollapsed
+                  ? 'Развернуть боковую панель'
+                  : 'Свернуть боковую панель'
+              }
+              aria-expanded={!sidebarCollapsed}
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen size={16} />
+              ) : (
+                <PanelLeftClose size={16} />
+              )}
+            </button>
+          )}
           <aside
-            className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}
+            className={`${styles.sidebar} ${macOSDesktop ? sidebarStyles.macOSDesktop : ''} ${sidebarCollapsed && !sidebarOpen ? `${sidebarStyles.collapsed} ${styles.sidebarCollapsed}` : ''} ${sidebarOpen ? `${sidebarStyles.mobileOpen} ${styles.sidebarOpen}` : ''}`}
           >
-            <div className={styles.productRow} data-tauri-drag-region>
+            {macOSDesktop && (
+              <div className={sidebarStyles.topRow} data-tauri-drag-region />
+            )}
+            <div className={sidebarStyles.brandingRow}>
               <HomeProductSwitcher
                 product="homechat"
                 onProductChange={onProductChange}
               />
             </div>
-            <button
-              className={styles.newChat}
-              type="button"
-              onClick={startNewChat}
-              disabled={Boolean(streamingMessageId)}
-            >
-              <Plus aria-hidden="true" />
-              Новый чат
-            </button>
+            <div className={sidebarStyles.newTaskNav}>
+              <button
+                className={sidebarStyles.newChatButton}
+                type="button"
+                aria-label="Новый чат"
+                title="Новый чат"
+                onClick={startNewChat}
+                disabled={Boolean(streamingMessageId)}
+              >
+                <span className={sidebarStyles.navIcon}>
+                  <SquarePen size={16} aria-hidden="true" />
+                </span>
+                {(!sidebarCollapsed || sidebarOpen) && <span>Новый чат</span>}
+              </button>
+            </div>
+            <nav className={styles.managerNav} aria-label="Управление чатами">
+              {(
+                [
+                  { view: 'active', label: 'Менеджер чатов', icon: ListChecks },
+                  { view: 'archived', label: 'Архивированные', icon: Archive },
+                  { view: 'pinned', label: 'Закреплённые', icon: Pin },
+                ] as const
+              ).map(({ view, label, icon: Icon }) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={`${sidebarStyles.newChatButton} ${managerView === view && !administrationPanel ? styles.navActive : ''}`}
+                  aria-label={label}
+                  title={label}
+                  onClick={() => openManager(view)}
+                >
+                  <span className={sidebarStyles.navIcon}>
+                    <Icon size={16} aria-hidden="true" />
+                  </span>
+                  {(!sidebarCollapsed || sidebarOpen) && <span>{label}</span>}
+                </button>
+              ))}
+            </nav>
             <div className={styles.chatSection}>
-              <div className={styles.sectionLabel}>Чаты</div>
               <div className={styles.chatList}>
-                {chats.map((chat) => (
-                  <div
-                    key={chat.id}
-                    className={`${styles.chatRow} ${activeChatId === chat.id ? styles.chatRowActive : ''}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => void selectChat(chat.id)}
-                    >
-                      {chat.title}
-                    </button>
-                    <button
-                      className={styles.deleteChat}
-                      type="button"
-                      aria-label={`Удалить чат ${chat.title}`}
-                      onClick={() => void removeChat(chat)}
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
-                {!loading && chats.length === 0 && (
+                {[
+                  {
+                    label: 'Закреплённые',
+                    items: chats.filter(
+                      (chat) => chat.pinned && !chat.archived,
+                    ),
+                  },
+                  {
+                    label: 'Чаты',
+                    items: chats.filter(
+                      (chat) => !chat.pinned && !chat.archived,
+                    ),
+                  },
+                ].map(
+                  ({ label, items }) =>
+                    (items.length > 0 || label === 'Чаты') && (
+                      <div key={label}>
+                        <div className={styles.sectionLabel}>{label}</div>
+                        {items.map((chat) => (
+                          <div
+                            key={chat.id}
+                            className={`${styles.chatRow} ${activeChatId === chat.id && !managerView ? styles.chatRowActive : ''}`}
+                          >
+                            <button
+                              type="button"
+                              disabled={
+                                Boolean(streamingMessageId) || managingChats
+                              }
+                              onClick={() => void selectChat(chat.id)}
+                            >
+                              {chat.title}
+                            </button>
+                            <button
+                              className={styles.pinChat}
+                              type="button"
+                              disabled={
+                                Boolean(streamingMessageId) || managingChats
+                              }
+                              aria-label={`${chat.pinned ? 'Открепить' : 'Закрепить'} чат ${chat.title}`}
+                              onClick={() =>
+                                void manageChats(
+                                  [chat.id],
+                                  chat.pinned ? 'unpin' : 'pin',
+                                )
+                              }
+                            >
+                              <Pin aria-hidden="true" />
+                            </button>
+                            <button
+                              className={styles.deleteChat}
+                              type="button"
+                              disabled={
+                                Boolean(streamingMessageId) || managingChats
+                              }
+                              aria-label={`Удалить чат ${chat.title}`}
+                              onClick={() => void removeChat(chat)}
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ),
+                )}
+                {!loading && !chats.some((chat) => !chat.archived) && (
                   <p className={styles.emptyHistory}>
                     Здесь появятся исследования
                   </p>
                 )}
               </div>
             </div>
-            <div className={styles.sidebarFooter}>
-              <div>
-                <Globe2 aria-hidden="true" />
-                <span>Только открытый интернет</span>
-              </div>
-              <small>{versionLabel}</small>
+            <div
+              className={`${sidebarStyles.footer} ${sidebarStyles.stackedFooter}`}
+            >
+              <button
+                className={sidebarStyles.footerButton}
+                type="button"
+                title="Настройки"
+                aria-label="Настройки"
+                onClick={() => {
+                  setAdministrationPanel('settings');
+                  setSidebarOpen(false);
+                }}
+              >
+                <span className={sidebarStyles.navIcon}>
+                  <Settings size={16} strokeWidth={1.2} aria-hidden="true" />
+                </span>
+                {(!sidebarCollapsed || sidebarOpen) && <span>Настройки</span>}
+              </button>
+              <button
+                className={`${sidebarStyles.collapseButton} ${sidebarStyles.footerButton}`}
+                type="button"
+                title="Статус демона"
+                aria-label="Статус демона"
+                onClick={() => {
+                  setAdministrationPanel('status');
+                  setSidebarOpen(false);
+                }}
+              >
+                <span className={sidebarStyles.navIcon}>
+                  <Activity size={16} strokeWidth={1.2} aria-hidden="true" />
+                </span>
+                {(!sidebarCollapsed || sidebarOpen) && (
+                  <span>Статус демона</span>
+                )}
+              </button>
+              <small className={sidebarStyles.version}>{versionLabel}</small>
             </div>
           </aside>
-          <main className={styles.main}>
+          <main
+            className={`${styles.main} ${!administrationPanel && !managerView && messages.length === 0 ? styles.mainEmpty : ''}`}
+          >
             <button
               className={styles.mobileMenu}
               type="button"
@@ -463,72 +780,129 @@ export function HomeChatApp({
             >
               <PanelLeft aria-hidden="true" />
             </button>
-            <div className={styles.transcript} ref={scrollRef}>
-              {loading && messages.length === 0 ? (
-                <div className={styles.centerStatus} role="status">
-                  <HomeCodeSpinner aria-hidden="true" />
-                  Загружает чаты
-                </div>
-              ) : messages.length === 0 ? (
-                <div className={styles.welcome}>
-                  <HomeChatWordmark role="img" aria-label="HomeChat" />
-                  <div className={styles.boundaryLine}>
-                    <Search aria-hidden="true" />
-                    <span>Исследует интернет. Не видит файлы и компьютер.</span>
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.turns}>
-                  {messages.map((message) => (
-                    <article key={message.messageId} className={styles.turn}>
-                      <div className={styles.userMessage} data-user-selectable>
-                        {message.query}
-                      </div>
-                      <AssistantMessage
-                        message={message}
-                        streaming={streamingMessageId === message.messageId}
-                      />
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className={styles.composerDock}>
-              {error && (
-                <p className={styles.globalError} role="alert">
-                  {error}
-                </p>
-              )}
-              <form className={styles.composer} onSubmit={submit}>
-                <textarea
-                  value={draft}
-                  rows={2}
-                  maxLength={32_000}
-                  placeholder="Что исследовать в интернете?"
-                  aria-label="Сообщение HomeChat"
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={onComposerKeyDown}
-                  disabled={Boolean(streamingMessageId)}
-                />
-                <div className={styles.composerFooter}>
-                  <span>
-                    <Globe2 aria-hidden="true" />
-                    Интернет
-                  </span>
-                  <button
-                    type="submit"
-                    aria-label="Отправить"
-                    disabled={!draft.trim() || Boolean(streamingMessageId)}
-                  >
-                    {streamingMessageId ? (
+            {administrationPanel ? (
+              renderAdministrationPanel(administrationPanel, () =>
+                setAdministrationPanel(null),
+              )
+            ) : managerView ? (
+              <HomeChatManager
+                key={managerView}
+                chats={chats}
+                view={managerView}
+                disabled={Boolean(streamingMessageId) || managingChats}
+                error={error}
+                onViewChange={setManagerView}
+                onSelect={(id) => void selectChat(id)}
+                onAction={manageChats}
+                onClose={() => setManagerView(null)}
+              />
+            ) : (
+              <>
+                <div
+                  className={styles.transcript}
+                  ref={scrollRef}
+                  onScroll={(event) => {
+                    const { scrollHeight, scrollTop, clientHeight } =
+                      event.currentTarget;
+                    followAnswer.current =
+                      scrollHeight - scrollTop - clientHeight <= 8;
+                  }}
+                >
+                  {loading && messages.length === 0 ? (
+                    <div className={styles.centerStatus} role="status">
                       <HomeCodeSpinner aria-hidden="true" />
-                    ) : (
-                      <ArrowUp aria-hidden="true" />
-                    )}
-                  </button>
+                      Загружает чаты
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className={welcomeStyles.header}>
+                      <h1 className={welcomeStyles.title} aria-label="HomeChat">
+                        <HomeChatWordmark
+                          className={`${welcomeStyles.wordmark} ${styles.wordmark}`}
+                          aria-hidden="true"
+                        />
+                      </h1>
+                    </div>
+                  ) : (
+                    <div className={styles.turns} ref={turnsRef}>
+                      {messages.map((message) => (
+                        <article
+                          key={message.messageId}
+                          className={styles.turn}
+                        >
+                          <div className={userStyles.chatMessageRow}>
+                            <div className={userStyles.chatMessageColumn}>
+                              <div
+                                className={`${userStyles.chatBubble} ${userStyles.chatContent}`}
+                                data-user-selectable
+                              >
+                                {message.query}
+                              </div>
+                            </div>
+                          </div>
+                          <AssistantMessage
+                            message={message}
+                            streaming={streamingMessageId === message.messageId}
+                          />
+                        </article>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </form>
-            </div>
+                <div className={styles.composerDock}>
+                  {error && (
+                    <p className={styles.globalError} role="alert">
+                      {error}
+                    </p>
+                  )}
+                  <form
+                    className={`${editorStyles.container} ${styles.composer}`}
+                    onSubmit={submit}
+                  >
+                    <div className={editorStyles.content}>
+                      <textarea
+                        value={draft}
+                        rows={2}
+                        maxLength={32_000}
+                        placeholder="Что исследовать в интернете?"
+                        aria-label="Сообщение HomeChat"
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={onComposerKeyDown}
+                        disabled={Boolean(streamingMessageId)}
+                      />
+                      <div className={styles.composerFooter}>
+                        <HomeChatModelPicker
+                          models={models}
+                          options={options}
+                          disabled={
+                            Boolean(streamingMessageId) || savingOptions
+                          }
+                          onChange={changeOptions}
+                        />
+                        <button
+                          className={editorStyles.sendBtn}
+                          type="submit"
+                          aria-label="Отправить"
+                          disabled={
+                            !draft.trim() ||
+                            Boolean(streamingMessageId) ||
+                            loading ||
+                            savingOptions ||
+                            managingChats ||
+                            !options
+                          }
+                        >
+                          {streamingMessageId ? (
+                            <HomeCodeSpinner aria-hidden="true" />
+                          ) : (
+                            <ArrowUp aria-hidden="true" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </>
+            )}
           </main>
         </div>
       </WebShellPortalRootContext.Provider>

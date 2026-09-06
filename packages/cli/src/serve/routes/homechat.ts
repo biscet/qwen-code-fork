@@ -5,6 +5,11 @@
  */
 
 import type { Application, RequestHandler, Response } from 'express';
+import {
+  HomeChatStateStore,
+  parseHomeChatOptions,
+  type HomeChatOptions,
+} from './homechat-state.js';
 import { writeStderrLine } from '../../utils/stdioHelpers.js';
 
 const HOMECHAT_BACKEND_URL = 'http://127.0.0.1:3000';
@@ -22,10 +27,12 @@ type FetchLike = typeof fetch;
 interface ProviderModel {
   key: string;
   name?: string;
+  homechatReasoning?: boolean;
 }
 
 interface Provider {
   id: string;
+  name?: string;
   chatModels?: ProviderModel[];
   embeddingModels?: ProviderModel[];
 }
@@ -39,12 +46,14 @@ interface HomeChatRequest {
   chatId: string;
   content: string;
   history: Array<[string, string]>;
+  options?: HomeChatOptions;
 }
 
 export interface RegisterHomeChatRoutesDeps {
   mutate: (options?: { strict?: boolean }) => RequestHandler;
   fetchImpl?: FetchLike;
   backendUrl?: string;
+  stateStore?: HomeChatStateStore;
 }
 
 function sendError(
@@ -68,9 +77,9 @@ function parseRequest(body: unknown): HomeChatRequest | undefined {
   if (!isObject(body)) return undefined;
   const keys = Object.keys(body);
   if (
-    keys.length !== 4 ||
+    (keys.length !== 4 && keys.length !== 5) ||
     !keys.every((key) =>
-      ['messageId', 'chatId', 'content', 'history'].includes(key),
+      ['messageId', 'chatId', 'content', 'history', 'options'].includes(key),
     )
   ) {
     return undefined;
@@ -87,6 +96,11 @@ function parseRequest(body: unknown): HomeChatRequest | undefined {
   ) {
     return undefined;
   }
+  const options =
+    body['options'] === undefined
+      ? undefined
+      : parseHomeChatOptions(body['options']);
+  if (body['options'] !== undefined && !options) return undefined;
   const history = body['history'];
   if (
     !history.every(
@@ -105,6 +119,7 @@ function parseRequest(body: unknown): HomeChatRequest | undefined {
     chatId: body['chatId'],
     content: body['content'].trim(),
     history: history as Array<[string, string]>,
+    options,
   };
 }
 
@@ -116,7 +131,7 @@ function selectModels(providers: Provider[]): {
     (provider) => provider.id === 'home-ai-openai-local',
   );
   const preferredChatModel = preferredChatProvider?.chatModels?.find(
-    (model) => model.key === 'local-mlx/local-qwen35-4b',
+    (model) => model.key === 'windows-lmstudio/windows-qwen35-9b',
   );
   const chatProvider = preferredChatModel
     ? preferredChatProvider
@@ -149,6 +164,135 @@ export function registerHomeChatRoutes(
 ): void {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const backendUrl = deps.backendUrl ?? HOMECHAT_BACKEND_URL;
+  const stateStore = deps.stateStore ?? new HomeChatStateStore();
+  const getProviders = async (): Promise<Provider[]> => {
+    const response = await fetchImpl(`${backendUrl}/api/providers`);
+    if (!response.ok)
+      throw new Error(`Vane providers returned ${response.status}`);
+    const value = (await readJson(response)) as ProviderResponse;
+    return value.providers ?? [];
+  };
+  const canUseOptions = (providers: Provider[], options: HomeChatOptions) =>
+    providers.some(
+      (provider) =>
+        provider.id === options.chatModel.providerId &&
+        provider.chatModels?.some(
+          (model) =>
+            model.key === options.chatModel.key &&
+            (!options.thinking || model.homechatReasoning === true),
+        ),
+    );
+
+  app.get('/homechat/models', async (_req, res) => {
+    try {
+      const providers = await getProviders();
+      const models = providers.flatMap((provider) =>
+        (provider.chatModels ?? []).map((model) => ({
+          providerId: provider.id,
+          key: model.key,
+          name: model.name ?? model.key,
+          providerName: provider.name ?? provider.id,
+          reasoning: model.homechatReasoning === true,
+        })),
+      );
+      const saved = stateStore.read().options;
+      const fallback = selectModels(providers)?.chatModel;
+      const options =
+        saved && canUseOptions(providers, saved)
+          ? saved
+          : fallback
+            ? {
+                chatModel: fallback,
+                thinking: false,
+                effort: 'medium',
+                optimizationMode: 'speed',
+              }
+            : undefined;
+      res.json({ models, options });
+    } catch {
+      sendError(
+        res,
+        502,
+        'homechat_unavailable',
+        'Не удалось загрузить модели Chat.',
+      );
+    }
+  });
+
+  app.put(
+    '/homechat/options',
+    deps.mutate({ strict: true }),
+    async (req, res) => {
+      const options = parseHomeChatOptions(req.body);
+      if (!options) {
+        sendError(
+          res,
+          400,
+          'invalid_options',
+          'Некорректные параметры модели.',
+        );
+        return;
+      }
+      try {
+        if (!canUseOptions(await getProviders(), options)) {
+          sendError(res, 400, 'invalid_model', 'Модель Chat недоступна.');
+          return;
+        }
+        stateStore.update((state) => {
+          state.options = options;
+        });
+        res.json({ options });
+      } catch {
+        sendError(
+          res,
+          502,
+          'homechat_unavailable',
+          'Не удалось сохранить параметры Chat.',
+        );
+      }
+    },
+  );
+
+  app.patch(
+    '/homechat/chats/:chatId',
+    deps.mutate({ strict: true }),
+    async (req, res) => {
+      const chatId = req.params['chatId'];
+      const body: unknown = req.body;
+      if (
+        !isHomeChatId(chatId) ||
+        !isObject(body) ||
+        !Object.keys(body).length ||
+        !Object.entries(body).every(
+          ([key, value]) =>
+            ['archived', 'pinned'].includes(key) && typeof value === 'boolean',
+        )
+      ) {
+        sendError(res, 400, 'invalid_request', 'Некорректные параметры чата.');
+        return;
+      }
+      try {
+        const upstream = await fetchImpl(
+          `${backendUrl}/api/chats/${encodeURIComponent(chatId)}`,
+        );
+        if (!upstream.ok) {
+          sendError(
+            res,
+            upstream.status,
+            'chat_unavailable',
+            'Чат недоступен.',
+          );
+          return;
+        }
+        stateStore.update((state) => {
+          state.chats[chatId] = { ...state.chats[chatId], ...body };
+        });
+        res.json({ success: true });
+      } catch {
+        sendError(res, 502, 'homechat_unavailable', 'Не удалось обновить чат.');
+      }
+    },
+  );
 
   app.get('/homechat/chats', async (_req, res) => {
     try {
@@ -161,7 +305,13 @@ export function registerHomeChatRoutes(
               (chat) => isObject(chat) && isHomeChatId(chat['id']),
             )
           : [];
-      res.status(200).json({ chats });
+      const flags = stateStore.read().chats;
+      res.status(200).json({
+        chats: chats.map((chat: Record<string, unknown>) => ({
+          ...chat,
+          ...flags[String(chat['id'])],
+        })),
+      });
     } catch (error) {
       writeStderrLine(
         `qwen serve: GET /homechat/chats failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -220,6 +370,17 @@ export function registerHomeChatRoutes(
           { method: 'DELETE' },
         );
         const value = await readJson(upstream);
+        if (upstream.ok) {
+          try {
+            stateStore.update((state) => {
+              delete state.chats[chatId];
+            });
+          } catch {
+            writeStderrLine(
+              'qwen serve: deleted HomeChat metadata could not be removed',
+            );
+          }
+        }
         res.status(upstream.status).json(value);
       } catch (error) {
         writeStderrLine(
@@ -240,15 +401,20 @@ export function registerHomeChatRoutes(
         return;
       }
       try {
-        const providerResponse = await fetchImpl(`${backendUrl}/api/providers`);
-        if (!providerResponse.ok) {
-          throw new Error(`Vane providers returned ${providerResponse.status}`);
-        }
-        const providerValue = (await readJson(
-          providerResponse,
-        )) as ProviderResponse;
-        const models = selectModels(providerValue.providers ?? []);
+        const providers = await getProviders();
+        const models = selectModels(providers);
         if (!models) throw new Error('Vane has no usable research models');
+        const options = request.options;
+        if (options && !canUseOptions(providers, options)) {
+          sendError(res, 400, 'invalid_model', 'Модель Chat недоступна.');
+          return;
+        }
+        if (options) models.chatModel = options.chatModel;
+        const supportsReasoning =
+          providers
+            .find((provider) => provider.id === models.chatModel.providerId)
+            ?.chatModels?.find((model) => model.key === models.chatModel.key)
+            ?.homechatReasoning === true;
 
         const controller = new AbortController();
         const upstream = await fetchImpl(`${backendUrl}/api/chat`, {
@@ -261,11 +427,19 @@ export function registerHomeChatRoutes(
               chatId: request.chatId,
               content: request.content,
             },
-            optimizationMode: 'speed',
+            optimizationMode: options?.optimizationMode ?? 'speed',
             sources: ['web'],
             history: request.history,
             files: [],
             ...models,
+            ...(options && supportsReasoning
+              ? {
+                  homechatReasoning: {
+                    thinking: options.thinking,
+                    effort: options.effort,
+                  },
+                }
+              : {}),
             systemInstructions: HOMECHAT_INSTRUCTIONS,
           }),
         });

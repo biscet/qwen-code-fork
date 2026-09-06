@@ -16,6 +16,7 @@ interface CapturedWorkspaceSessionProps {
 
 const testState = vi.hoisted(() => ({
   props: undefined as CapturedWorkspaceSessionProps | undefined,
+  homeChatTheme: undefined as string | undefined,
 }));
 
 vi.mock('react-dom/client', async (importOriginal) => ({
@@ -32,7 +33,10 @@ vi.mock('./components/WorkspaceSessionProvider', () => ({
   },
 }));
 vi.mock('./components/homechat/HomeChatApp', () => ({
-  HomeChatApp: () => null,
+  HomeChatApp: ({ theme }: { theme: string }) => {
+    testState.homeChatTheme = theme;
+    return null;
+  },
 }));
 vi.mock('./config/daemon', () => ({
   getDaemonBaseUrl: () => '',
@@ -49,7 +53,9 @@ describe('StandaloneApp', () => {
 
   beforeEach(() => {
     testState.props = undefined;
+    testState.homeChatTheme = undefined;
     window.localStorage.removeItem('homecode-product');
+    window.localStorage.removeItem('qwen-code-web-shell-theme');
     window.history.replaceState(null, '', '/');
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -91,6 +97,7 @@ describe('StandaloneApp', () => {
       showSessionSourceSwitch: false,
       showWorkspaceGit: false,
       branding: {
+        hideWhenCompact: false,
         render: expect.any(Function),
       },
       primaryNav: {
@@ -129,6 +136,18 @@ describe('StandaloneApp', () => {
     expect(window.location.pathname).toBe('/session/session-a');
     expect(new URLSearchParams(window.location.search).get('workspace')).toBe(
       'workspace-a',
+    );
+  });
+
+  it('keeps Chat dark when the Harness theme is light', () => {
+    window.localStorage.setItem('homecode-product', 'homechat');
+    window.localStorage.setItem('qwen-code-web-shell-theme', 'light');
+
+    act(() => root.render(<StandaloneApp daemonToken="token" />));
+
+    expect(testState.homeChatTheme).toBe('dark');
+    expect(document.documentElement.classList.contains('theme-dark')).toBe(
+      true,
     );
   });
 

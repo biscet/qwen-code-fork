@@ -1657,7 +1657,9 @@ describe('WebShellSidebar workspace removal', () => {
 
     expect(container.querySelector('button[aria-label="Plugins"]')).toBeNull();
     expect(container.querySelector('button[aria-label="Channels"]')).toBeNull();
-    expect(container.querySelector('button[aria-label="Settings"]')).toBeNull();
+    expect(
+      container.querySelector('button[aria-label="Settings"]'),
+    ).not.toBeNull();
     // These open a project panel or dialog that only renders inside a
     // workspace context, so offering them here would be a dead click.
     expect(

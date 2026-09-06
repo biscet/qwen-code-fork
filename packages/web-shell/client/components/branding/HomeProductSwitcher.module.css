@@ -1,10 +1,17 @@
+.row {
+  width: 100%;
+  min-width: 0;
+  container-type: inline-size;
+}
+
 .trigger {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
   gap: 7px;
   min-width: 0;
-  height: 30px;
-  padding: 3px 7px 3px 4px;
+  height: 32px;
+  padding: 0 8px 0 4px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -29,12 +36,26 @@
 .trigger > svg:first-child {
   width: 22px;
   height: 22px;
+  transform: scale(1.25);
 }
 
 .trigger > svg:last-child {
+  margin-left: auto;
   width: 13px;
   height: 13px;
   color: var(--muted-foreground);
+}
+
+@container (max-width: 90px) {
+  .trigger {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .trigger > span,
+  .trigger > svg:last-child {
+    display: none;
+  }
 }
 
 .menu {

@@ -39,6 +39,14 @@
               t = null;
             }
           }
+          var product;
+          try {
+            product = localStorage.getItem('homecode-product');
+          } catch (_) {
+            product = null;
+          }
+          if (location.pathname === '/homechat' || product === 'homechat')
+            t = 'dark';
           if (t !== 'dark' && t !== 'light') t = 'dark';
           document.documentElement.classList.add('theme-' + t);
           var m = document.querySelector('meta[name=theme-color]');

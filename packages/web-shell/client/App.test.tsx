@@ -1033,6 +1033,7 @@ vi.mock('./components/messages/SettingsMessage', async () => {
         settings: DaemonSettingDescriptor[];
       };
       initialCategory?: string;
+      workspaceScopeAvailable?: boolean;
       onSubDialog?: (key: string, scope: 'user' | 'workspace') => void;
       onLanguageChange?: (
         language: string,
@@ -1053,7 +1054,10 @@ vi.mock('./components/messages/SettingsMessage', async () => {
       testState.latestModelManagement = props.modelManagement ?? null;
       return React.createElement(
         'div',
-        { 'data-testid': 'settings-message' },
+        {
+          'data-testid': 'settings-message',
+          'data-workspace-scope': String(props.workspaceScopeAvailable),
+        },
         React.createElement(
           'button',
           {
@@ -1092,6 +1096,15 @@ vi.mock('./components/messages/SettingsMessage', async () => {
             onClick: () => props.onSubDialog?.('voiceModel', 'user'),
           },
           'voice model (user)',
+        ),
+        React.createElement(
+          'button',
+          {
+            'data-testid': 'change-language-user',
+            type: 'button',
+            onClick: () => props.onLanguageChange?.('ru', 'user'),
+          },
+          'language (user)',
         ),
         React.createElement(
           'button',
@@ -11654,6 +11667,47 @@ describe('App session callbacks', () => {
     ).toBeNull();
   });
 
+  it.each([undefined, 'standalone-session'])(
+    'opens user settings without a workspace (session %s)',
+    async (sessionId) => {
+      mockConnection.sessionId = sessionId;
+      mockConnection.sessionContext = { kind: 'standalone' };
+      mockConnection.workspaceCwd = '';
+      testState.settings = [
+        {
+          key: 'general.testFlag',
+          type: 'boolean',
+          label: 'Test Flag',
+          category: 'General',
+          requiresRestart: false,
+          default: false,
+          values: { effective: true, workspace: true },
+        },
+      ];
+      const { container } = renderApp();
+      await flush();
+      testState.prompt = '/settings';
+      await clickSubmit(container);
+      await flush();
+
+      expect(
+        container
+          .querySelector('[data-testid="settings-message"]')
+          ?.getAttribute('data-workspace-scope'),
+      ).toBe('false');
+      expect(testState.latestSettingsHookOptions).toEqual({
+        autoLoad: true,
+        enabled: true,
+      });
+      expect(testState.latestSettingsState?.settings[0]?.values).toEqual({
+        effective: false,
+        user: undefined,
+      });
+      expect(mockSessionActions.sendPrompt).not.toHaveBeenCalled();
+      expect(mockSessionActions.createSession).not.toHaveBeenCalled();
+    },
+  );
+
   it('closes workspace model settings when navigation enters a standalone chat', async () => {
     const { container, rerender } = renderApp();
     await flush();
@@ -20738,6 +20792,27 @@ describe('App session callbacks', () => {
     expect(container.querySelector('[data-testid="retry"]')).toBeNull();
   });
 
+  it.each(['settings', 'status'] as const)(
+    'opens an embedded %s panel and returns to its host on Escape',
+    async (initialPanel) => {
+      const onPanelClose = vi.fn();
+      const { container } = renderApp({ initialPanel, onPanelClose });
+      await flush();
+      expect(
+        container.querySelector('[data-testid="inline-panel"]'),
+      ).not.toBeNull();
+      await act(async () => {
+        container.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+        );
+      });
+      expect(onPanelClose).toHaveBeenCalledOnce();
+      expect(
+        container.querySelector('[data-testid="inline-panel"]'),
+      ).toBeNull();
+    },
+  );
+
   it('auto-closes an open Settings/Status panel when a tool approval becomes pending', async () => {
     // Regression: the approval overlay lives in the chat footer, which is
     // hidden (display:none) while a panel is shown. If a gated tool call
@@ -25594,6 +25669,44 @@ describe('App session callbacks', () => {
     consoleError.mockRestore();
   });
 
+  it.each([
+    ['language', ['change-language-user'], 'general.language', 'ru'],
+    [
+      'fast model',
+      ['open-fast-model-user', 'model-select'],
+      'fastModel',
+      'fast-model-x',
+    ],
+  ])(
+    'saves the user %s from standalone settings without starting a task',
+    async (_label, buttons, key, value) => {
+      mockConnection.sessionId = undefined;
+      mockConnection.sessionContext = { kind: 'standalone' };
+      mockConnection.workspaceCwd = '';
+      const { container } = renderApp();
+      await flush();
+      testState.prompt = '/settings';
+      await clickSubmit(container);
+      await flush();
+
+      for (const button of buttons) {
+        const control = container.querySelector<HTMLButtonElement>(
+          `[data-testid="${button}"]`,
+        );
+        expect(control).not.toBeNull();
+        await act(async () => control!.click());
+        await flush();
+      }
+
+      expect(settingsSetValue).toHaveBeenCalledWith('user', key, value);
+      expect(mockSessionActions.sendPrompt).not.toHaveBeenCalled();
+      expect(mockSessionActions.createSession).not.toHaveBeenCalled();
+      expect(
+        container.querySelector('[data-testid="settings-message"]'),
+      ).not.toBeNull();
+    },
+  );
+
   it('sends /model --fast with --global when the fast-model picker is opened from the User tab', async () => {
     const { container } = renderApp();
     await flush();
@@ -25968,7 +26081,7 @@ describe('App session callbacks', () => {
       composerScopeKey: 'standalone',
       workspaceFeaturesEnabled: false,
     });
-    expect(testState.latestStatusBarHideSettings).toBe(true);
+    expect(testState.latestStatusBarHideSettings).toBe(false);
     expect(testState.latestChatEditorProps?.commands).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'auth' })]),
     );

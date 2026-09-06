@@ -203,6 +203,12 @@
   display: none;
 }
 
+.brandingRow {
+  width: 100%;
+  flex: 0 0 auto;
+  padding-top: 8px;
+}
+
 .macOSDesktop .topRow {
   width: calc(100% + 24px);
   min-height: 40px;

@@ -3960,6 +3960,28 @@ export const RU = {
   'localControl.disabledHint':
     'Локальное управление выключено. Включите его в Настройках для сопряжения телефона на той же сети.',
   'localControl.openSettings': 'Открыть настройки',
+  'settings.vane.description':
+    'Параметры поиска и ответов в режиме Chat. Сохраняются автоматически для всех чатов.',
+  'settings.vane.unavailable':
+    'Модели Vane недоступны. Проверьте подключение и повторите загрузку.',
+  'settings.vane.model': 'Модель Chat',
+  'settings.vane.modelHint': 'Модель для ответов и интернет-исследований Vane.',
+  'settings.vane.depth': 'Глубина исследования',
+  'settings.vane.depthHint':
+    'Баланс между скоростью ответа и подробностью поиска.',
+  'settings.vane.speed': 'Быстро',
+  'settings.vane.balanced': 'Сбалансированно',
+  'settings.vane.quality': 'Глубоко',
+  'settings.vane.thinking': 'Размышления',
+  'settings.vane.thinkingHint': 'Позволяет модели рассуждать перед ответом.',
+  'settings.vane.noReasoning':
+    'Выбранная модель не поддерживает управление размышлениями.',
+  'settings.vane.effort': 'Усилие · effort',
+  'settings.vane.effortHint':
+    'Уровень усилий модели при включённых размышлениях.',
+  'settings.vane.low': 'Низкий',
+  'settings.vane.medium': 'Средний',
+  'settings.vane.high': 'Высокий',
   'settings.models.chatDefaults': 'Параметры чата',
   'settings.models.subtitle': 'Подключения и параметры моделей.',
   'settings.models.back': 'К моделям',

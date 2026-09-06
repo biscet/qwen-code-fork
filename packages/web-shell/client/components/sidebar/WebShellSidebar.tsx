@@ -5260,13 +5260,11 @@ export function WebShellSidebar({
             </div>
           </DialogShell>
         )}
-        {(shouldRenderBrand || macOSDesktop) && (
-          <div
-            className={styles.topRow}
-            data-tauri-drag-region={macOSDesktop ? true : undefined}
-          >
-            {shouldRenderBrand && branding && branding.render?.()}
-          </div>
+        {macOSDesktop && (
+          <div className={styles.topRow} data-tauri-drag-region />
+        )}
+        {shouldRenderBrand && branding && (
+          <div className={styles.brandingRow}>{branding.render?.()}</div>
         )}
         {primaryNavItems.has('newTask') && (
           <div
@@ -5985,7 +5983,7 @@ export function WebShellSidebar({
           >
             <div className={styles.footerPrimary}>
               {footer && typeof footer === 'object' && footer.render?.()}
-              {projectFeaturesEnabled && footerItems.has('settings') && (
+              {footerItems.has('settings') && (
                 <button
                   className={styles.footerButton}
                   type="button"

@@ -1008,6 +1008,8 @@ export type WebShellSlashCommandHandler = (
 ) => boolean | void;
 
 export interface WebShellProps {
+  initialPanel?: 'settings' | 'status';
+  onPanelClose?: () => void;
   /** Host-specific label for the Ask User Question free-text choice. */
   askUserFreeTextLabel?: string;
   /** Called whenever the attached daemon session or workspace changes. */
@@ -1361,7 +1363,6 @@ const NON_WORKSPACE_BLOCKED_COMMANDS = new Set([
   'release',
   'resume',
   'schedule',
-  'settings',
   'skills',
   'tools',
 ]);
@@ -2138,6 +2139,8 @@ function readScopedModelSetting(
 }
 
 export function App({
+  initialPanel,
+  onPanelClose,
   askUserFreeTextLabel,
   onSessionIdChange,
   onSessionInfoChange,
@@ -5783,7 +5786,7 @@ export function App({
     | 'channels'
     | 'workspaces'
     | null
-  >(null);
+  >(initialPanel ?? null);
   const activePanelRef = useRef(activePanel);
   // Deep-link target for the Settings panel (e.g. 'Daemon' from the Local
   // Control QR popover). Cleared on any panel close/switch, not just
@@ -5800,13 +5803,13 @@ export function App({
   const closePanel = useCallback(() => {
     splitClassificationGenerationRef.current += 1;
     setActivePanel(null);
-  }, []);
+    onPanelClose?.();
+  }, [onPanelClose]);
   useEffect(() => {
     if (workspaceContextActive) return;
     splitClassificationGenerationRef.current += 1;
     setSplitSessionIds([]);
     if (
-      activePanel === 'settings' ||
       activePanel === 'sessions' ||
       activePanel === 'extensions' ||
       activePanel === 'mcp' ||
@@ -5823,10 +5826,14 @@ export function App({
     setShowMemoryDialog(false);
     setShowAddWorkspaceDialog(false);
     setGitDialog(undefined);
-    if (modelDialogMode && modelDialogMode !== 'main') {
+    if (
+      modelSettingScope !== 'user' &&
+      modelDialogMode &&
+      modelDialogMode !== 'main'
+    ) {
       setModelDialogMode(null);
     }
-    setShowFallbacksDialog(false);
+    if (modelSettingScope !== 'user') setShowFallbacksDialog(false);
     if (
       mainView === 'scheduledTasks' ||
       mainView === 'goals' ||
@@ -5835,7 +5842,13 @@ export function App({
     ) {
       setMainView('chat');
     }
-  }, [activePanel, mainView, modelDialogMode, workspaceContextActive]);
+  }, [
+    activePanel,
+    mainView,
+    modelDialogMode,
+    modelSettingScope,
+    workspaceContextActive,
+  ]);
   const handleUseSkill = useCallback(
     (name: string) => {
       closePanel();
@@ -8114,13 +8127,14 @@ export function App({
     setShowHelpDialog(true);
   }, []);
 
+  const settingsEnabled = workspaceContextActive || activePanel === 'settings';
   const workspaceSettingsState = useSettings({
-    autoLoad: workspaceContextActive,
-    enabled: workspaceContextActive,
+    autoLoad: settingsEnabled,
+    enabled: settingsEnabled,
   });
   const providersState = useProviders({
-    autoLoad: workspaceContextActive,
-    enabled: workspaceContextActive,
+    autoLoad: settingsEnabled,
+    enabled: settingsEnabled,
   });
   // useProviders returns a fresh object each render, but its `reload` identity is
   // stable — pull it out so callbacks can depend on the function alone without
@@ -8129,8 +8143,11 @@ export function App({
   const modelSettingsActions = useMemo<
     ModelSettingsPanelProps['actions'] | undefined
   >(() => {
-    if (!workspace.client || !activeWorkspaceCwd) return undefined;
-    const target = workspace.client.workspaceByCwd(activeWorkspaceCwd);
+    if (!workspace.client) return undefined;
+    if (workspaceContextActive && !activeWorkspaceCwd) return undefined;
+    const target = workspaceContextActive
+      ? workspace.client.workspaceByCwd(activeWorkspaceCwd!)
+      : workspace.client;
     return {
       loadModelSettings: (scope) => target.modelSettings(scope),
       saveModelSettings: (request) => target.saveModelSettings(request),
@@ -8138,7 +8155,7 @@ export function App({
       checkModelLimits: (request) => target.checkModelLimits(request),
       loadProviders: () => target.workspaceProviders(),
     };
-  }, [workspace.client, activeWorkspaceCwd]);
+  }, [workspace.client, activeWorkspaceCwd, workspaceContextActive]);
   const [modelActionBusy, setModelActionBusy] = useState(false);
   const modelActionTokenRef = useRef(0);
   useLayoutEffect(() => {
@@ -8287,6 +8304,17 @@ export function App({
     reloadWorkspaceSettings,
   ]);
   const targetedWorkspaceSettings = useMemo(() => {
+    if (!workspaceContextActive) {
+      return loadedWorkspaceSettings
+        .filter((setting) => setting.key !== 'voiceModel')
+        .map((setting) => ({
+          ...setting,
+          values: {
+            user: setting.values.user,
+            effective: setting.values.user ?? setting.default,
+          },
+        }));
+    }
     const withoutVoice = workspaceSettings.filter(
       (setting) => setting.key !== 'voiceModel',
     );
@@ -8310,6 +8338,8 @@ export function App({
     qualifiedVoiceSetting,
     voiceModelSettingsSupported,
     workspaceSettings,
+    workspaceContextActive,
+    loadedWorkspaceSettings,
   ]);
   const targetedWorkspaceSettingsState = {
     ...workspaceSettingsState,
@@ -8336,7 +8366,7 @@ export function App({
   })();
   const currentVisionModel = (() => {
     const value = readScopedModelSetting(
-      workspaceSettings,
+      targetedWorkspaceSettings,
       modelSettingScope,
       'visionModel',
     );
@@ -8345,7 +8375,7 @@ export function App({
   })();
   const currentFastModel = (() => {
     const value = readScopedModelSetting(
-      workspaceSettings,
+      targetedWorkspaceSettings,
       modelSettingScope,
       'fastModel',
     );
@@ -8353,7 +8383,7 @@ export function App({
   })();
   const currentModelFallbacks = useMemo(() => {
     const value = readScopedModelSetting(
-      workspaceSettings,
+      targetedWorkspaceSettings,
       modelSettingScope,
       'modelFallbacks',
     );
@@ -8363,7 +8393,7 @@ export function App({
           .map((entry) => entry.trim())
           .filter(Boolean)
       : [];
-  }, [workspaceSettings, modelSettingScope]);
+  }, [targetedWorkspaceSettings, modelSettingScope]);
   const bumpVoiceRevision = useCallback(
     (target: typeof mainVoiceTarget, scope: 'workspace' | 'user') => {
       if (!target) return;
@@ -8611,6 +8641,17 @@ export function App({
       if (sessionWriteBlocked) return;
       const owner = { current: sessionOwnerGuard.capture() };
       const previousLanguage = selectedLanguage;
+      if (!workspaceContextActive) {
+        handleLanguageChange(nextLanguage);
+        void setWorkspaceSetting('user', LANGUAGE_SETTING_KEY, nextLanguage)
+          .then(() => reloadWorkspaceSettings())
+          .catch((error: unknown) => {
+            if (!owner.current.isCurrent()) return;
+            handleLanguageChange(previousLanguage);
+            reportError(error, 'Failed to save language');
+          });
+        return;
+      }
       // Forward the settings tab's scope to the command so a Workspace-tab edit
       // persists to workspace settings instead of always writing user scope
       // (the /language command otherwise defaults to user). The command still
@@ -8651,6 +8692,8 @@ export function App({
       sessionWriteBlocked,
       sendPrompt,
       selectedLanguage,
+      setWorkspaceSetting,
+      workspaceContextActive,
       sessionActions,
       sessionOwnerGuard,
       isGoalGateBlocked,
@@ -13152,7 +13195,7 @@ export function App({
   const handleFallbacksConfirm = useCallback(
     (baseIds: string[]) => {
       setShowFallbacksDialog(false);
-      if (!workspaceContextActive) return;
+      if (!workspaceContextActive && modelSettingScope !== 'user') return;
       setWorkspaceSetting(
         modelSettingScope,
         'modelFallbacks',
@@ -13192,7 +13235,15 @@ export function App({
 
   const handleFastModelSelect = useCallback(
     (modelId: string) => {
-      if (!workspaceContextActive) return;
+      if (!workspaceContextActive) {
+        if (modelSettingScope !== 'user') return;
+        void setWorkspaceSetting('user', 'fastModel', modelId)
+          .then(() => reloadWorkspaceSettings())
+          .catch((error: unknown) =>
+            reportError(error, 'Failed to save fast model'),
+          );
+        return;
+      }
       if (
         streamingState !== 'idle' ||
         sessionHasActivePromptRef.current ||
@@ -13252,6 +13303,7 @@ export function App({
       reportError,
       reloadWorkspaceSettings,
       modelSettingScope,
+      setWorkspaceSetting,
       sessionOwnerGuard,
       isGoalGateBlocked,
       workspaceContextActive,
@@ -13284,7 +13336,7 @@ export function App({
 
   const handleVisionModelSelect = useCallback(
     (modelId: string) => {
-      if (!workspaceContextActive) return;
+      if (!workspaceContextActive && modelSettingScope !== 'user') return;
       // Model IDs from the picker arrive in ACP format: `modelId(authType)`.
       // Core's resolveVisionModelSelection() expects `authType:modelId`.
       const encoded = encodeVisionModelForSetting(modelId);
@@ -13830,7 +13882,9 @@ export function App({
             </DialogShell>
           )}
           {modelDialogMode &&
-            (workspaceContextActive || modelDialogMode === 'main') && (
+            (workspaceContextActive ||
+              modelDialogMode === 'main' ||
+              modelSettingScope === 'user') && (
             <DialogShell
               title={t(MODE_TITLE_KEY[modelDialogMode])}
               size="lg"
@@ -13974,7 +14028,8 @@ export function App({
               }}
             />
           )}
-          {workspaceContextActive && showFallbacksDialog && (
+          {(workspaceContextActive || modelSettingScope === 'user') &&
+            showFallbacksDialog && (
             <DialogShell
               title={t('settings.models.fallbacks.title')}
               size="md"
@@ -14522,7 +14577,9 @@ export function App({
                   </button>
                 )}
               {activePanel &&
-                (workspaceContextActive || activePanel === 'status') && (
+                (workspaceContextActive ||
+                  activePanel === 'status' ||
+                  activePanel === 'settings') && (
                 <section
                   className={styles.panelHost}
                   role="region"
@@ -14663,6 +14720,7 @@ export function App({
                       {activePanel === 'settings' ? (
                       <SettingsMessage
                         settingsState={targetedWorkspaceSettingsState}
+                        workspaceScopeAvailable={workspaceContextActive}
                         embedded
                         initialCategory={settingsInitialCategory}
                         onLanguageChange={handleSettingsLanguageChange}
@@ -15998,9 +16056,7 @@ export function App({
                               ? backgroundTasks
                               : []
                           }
-                          hideSettings={
-                            hideSettings || !workspaceContextActive
-                          }
+                          hideSettings={hideSettings}
                           onToggleShortcuts={handleToggleShortcuts}
                           compact={true}
                         />

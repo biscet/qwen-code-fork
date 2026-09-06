@@ -1,7 +1,31 @@
+export const HOMECHAT_OPTIONS_CHANGED = 'homechat-options-changed';
+
+export interface HomeChatModel {
+  providerId: string;
+  key: string;
+  name: string;
+  providerName: string;
+  reasoning: boolean;
+}
+
+export interface HomeChatOptions {
+  chatModel: { providerId: string; key: string };
+  thinking: boolean;
+  effort: 'low' | 'medium' | 'high';
+  optimizationMode: 'speed' | 'balanced' | 'quality';
+}
+
+export interface HomeChatModelCatalog {
+  models: HomeChatModel[];
+  options?: HomeChatOptions;
+}
+
 export interface HomeChatSummary {
   id: string;
   title: string;
   createdAt: string;
+  archived?: boolean;
+  pinned?: boolean;
 }
 
 export interface HomeChatChunk {
@@ -75,6 +99,48 @@ async function responseError(response: Response): Promise<Error> {
   return new Error(`HomeChat request failed (${response.status})`);
 }
 
+export async function loadHomeChatModels(
+  baseUrl: string,
+  token?: string,
+): Promise<HomeChatModelCatalog> {
+  const response = await fetch(endpoint(baseUrl, '/homechat/models'), {
+    headers: headers(token),
+  });
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<HomeChatModelCatalog>;
+}
+
+export async function saveHomeChatOptions(
+  baseUrl: string,
+  token: string | undefined,
+  options: HomeChatOptions,
+): Promise<void> {
+  const response = await fetch(endpoint(baseUrl, '/homechat/options'), {
+    method: 'PUT',
+    headers: headers(token, true),
+    body: JSON.stringify(options),
+  });
+  if (!response.ok) throw await responseError(response);
+  globalThis.dispatchEvent?.(new Event(HOMECHAT_OPTIONS_CHANGED));
+}
+
+export async function updateHomeChat(
+  baseUrl: string,
+  token: string | undefined,
+  chatId: string,
+  flags: { archived?: boolean; pinned?: boolean },
+): Promise<void> {
+  const response = await fetch(
+    endpoint(baseUrl, `/homechat/chats/${encodeURIComponent(chatId)}`),
+    {
+      method: 'PATCH',
+      headers: headers(token, true),
+      body: JSON.stringify(flags),
+    },
+  );
+  if (!response.ok) throw await responseError(response);
+}
+
 export async function loadHomeChatList(
   baseUrl: string,
   token?: string,
@@ -121,6 +187,7 @@ export async function* streamHomeChat(
     chatId: string;
     content: string;
     history: Array<['human' | 'assistant', string]>;
+    options?: HomeChatOptions;
   },
 ): AsyncGenerator<HomeChatStreamEvent> {
   const response = await fetch(endpoint(baseUrl, '/homechat/chat'), {

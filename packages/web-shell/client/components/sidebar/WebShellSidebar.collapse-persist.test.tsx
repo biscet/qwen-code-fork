@@ -225,7 +225,10 @@ function renderSidebar(
     onCollapsedChange?: (collapsed: boolean) => void;
     mobileOpen?: boolean;
     onMobileClose?: () => void;
+    onOpenSettings?: () => void;
+    projectFeaturesEnabled?: boolean;
     footer?: false;
+    branding?: React.ComponentProps<typeof WebShellSidebar>['branding'];
     sessionActions?: WebShellSidebarSessionActionsOptions;
     strict?: boolean;
   } = {},
@@ -234,7 +237,8 @@ function renderSidebar(
     <WebShellSidebar
       collapsed={collapsed}
       onCollapsedChange={props.onCollapsedChange ?? (() => {})}
-      onOpenSettings={() => {}}
+      onOpenSettings={props.onOpenSettings ?? (() => {})}
+      projectFeaturesEnabled={props.projectFeaturesEnabled}
       onOpenDaemonStatus={() => {}}
       onOpenScheduledTasks={() => {}}
       onOpenGoals={() => {}}
@@ -246,6 +250,7 @@ function renderSidebar(
       mobileOpen={props.mobileOpen}
       onMobileClose={props.onMobileClose}
       footer={props.footer}
+      branding={props.branding}
       onError={() => {}}
       sessionActions={props.sessionActions}
     />
@@ -327,6 +332,25 @@ afterEach(() => {
 });
 
 describe('WebShellSidebar collapsed session group persistence', () => {
+  it.each([false, true])(
+    'keeps settings reachable without workspace features when collapsed=%s',
+    async (collapsed) => {
+      const onOpenSettings = vi.fn();
+      renderSidebar(collapsed, {
+        projectFeaturesEnabled: false,
+        onOpenSettings,
+      });
+      await flushSidebar();
+
+      const settings = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Settings"]',
+      );
+      expect(settings).not.toBeNull();
+      act(() => click(settings!));
+      expect(onOpenSettings).toHaveBeenCalledOnce();
+    },
+  );
+
   it('integrates the macOS titlebar and expand control into the collapsed sidebar', async () => {
     (
       window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
@@ -369,6 +393,24 @@ describe('WebShellSidebar collapsed session group persistence', () => {
     expect(toggle?.getAttribute('aria-expanded')).toBe('true');
     click(toggle!);
     expect(onCollapsedChange).toHaveBeenCalledWith(true);
+  });
+
+  it('places mode branding between the titlebar and new-task action', async () => {
+    (
+      window as Window & { __HOMECODE_MACOS_DESKTOP__?: boolean }
+    ).__HOMECODE_MACOS_DESKTOP__ = true;
+    renderSidebar(false, {
+      branding: { render: () => <button>Harness</button> },
+    });
+    await flushSidebar();
+
+    const titlebar = container.querySelector(`.${sidebarStyles.topRow}`)!;
+    const branding = container.querySelector(`.${sidebarStyles.brandingRow}`)!;
+    const newTask = container.querySelector(`.${sidebarStyles.newTaskNav}`)!;
+    expect(titlebar.contains(branding)).toBe(false);
+    expect(titlebar.nextElementSibling).toBe(branding);
+    expect(branding.nextElementSibling).toBe(newTask);
+    expect(branding.textContent).toBe('Harness');
   });
 
   it('uses drawer constraints and closes mobile without persisting desktop collapse', async () => {

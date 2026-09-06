@@ -3,12 +3,15 @@ import ReactDOM from 'react-dom/client';
 import { useCallback, useEffect, useState } from 'react';
 import {
   DaemonWorkspaceProvider,
+  useWorkspace,
   type DaemonProductSessionContext,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RootErrorFallback } from './components/RootErrorFallback';
 import { WorkspaceSessionProvider } from './components/WorkspaceSessionProvider';
 import { HomeChatApp } from './components/homechat/HomeChatApp';
+import { HomeCodeSpinner } from './components/branding/HomeCodeBrand';
+import type { WebShellProps } from './App';
 import {
   HomeProductSwitcher,
   type HomeProduct,
@@ -169,6 +172,24 @@ function replaceHomeChatUrl(): void {
   window.history.replaceState(null, '', url);
 }
 
+function AdministrationPanel({
+  workspaceId,
+  ...webShellProps
+}: WebShellProps & { workspaceId?: string }) {
+  const { capabilities, error } = useWorkspace();
+  if (error) return <p role="alert">{error.message}</p>;
+  if (!capabilities) {
+    return <HomeCodeSpinner aria-label="Загрузка" />;
+  }
+  return (
+    <WorkspaceSessionProvider
+      workspaceId={workspaceId}
+      workspaceCwd={workspaceId ? undefined : capabilities.workspaceCwd}
+      webShellProps={webShellProps}
+    />
+  );
+}
+
 export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
   const macOSDesktop = Boolean(
     (
@@ -194,19 +215,23 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
     DaemonProductSessionContext | undefined
   >(() => getSessionContextFromUrl());
   const baseUrl = DAEMON_BASE_URL || window.location.origin;
+  const renderedTheme = product === 'homechat' ? WebShellThemeId.Dark : theme;
   // Keep the <html> theme class and <meta name="theme-color"> in sync with
   // the React theme so mobile status bars / overscroll backgrounds stay
   // consistent when the user toggles or when ?theme= lands via URL.
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove('theme-dark', 'theme-light', 'dark');
-    root.classList.add(`theme-${theme}`);
-    root.classList.toggle('dark', theme === WebShellThemeId.Dark);
+    root.classList.add(`theme-${renderedTheme}`);
+    root.classList.toggle('dark', renderedTheme === WebShellThemeId.Dark);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808');
+      meta.setAttribute(
+        'content',
+        renderedTheme === 'light' ? '#ffffff' : '#080808',
+      );
     }
-  }, [theme]);
+  }, [renderedTheme]);
   useEffect(() => {
     if (product === 'homechat') replaceHomeChatUrl();
   }, [product]);
@@ -268,11 +293,30 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
     >
       {product === 'homechat' ? (
         <HomeChatApp
+          macOSDesktop={macOSDesktop}
           baseUrl={baseUrl}
           token={daemonToken}
-          theme={theme}
+          theme={renderedTheme}
           versionLabel={DESKTOP_VERSION}
           onProductChange={handleProductChange}
+          renderAdministrationPanel={(panel, onClose) => (
+            <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
+              <AdministrationPanel
+                key={panel}
+                workspaceId={workspaceId}
+                initialPanel={panel}
+                onPanelClose={onClose}
+                theme={renderedTheme}
+                onThemeChange={handleThemeChange}
+                language={language}
+                onLanguageChange={handleLanguageChange}
+                sidebar={false}
+                header={{ items: [] }}
+                rightPanel={{ items: [] }}
+                environmentPanel={{ items: [] }}
+              />
+            </DaemonWorkspaceProvider>
+          )}
         />
       ) : (
         <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
@@ -297,6 +341,7 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
                 showSessionSourceSwitch: false,
                 showWorkspaceGit: false,
                 branding: {
+                  hideWhenCompact: false,
                   render: () => (
                     <HomeProductSwitcher
                       product="homecode"

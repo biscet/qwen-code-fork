@@ -9,6 +9,7 @@ import {
   BotIcon,
   DatabaseIcon,
   FlaskConicalIcon,
+  GlobeIcon,
   MessageSquareIcon,
   PaletteIcon,
   ServerIcon,
@@ -54,6 +55,7 @@ import {
   type ModelSettingsPanelProps,
 } from './ModelSettingsPanel';
 import { LocalControlSettingsCard } from './LocalControlSettingsCard';
+import { VaneSettingsPanel } from './VaneSettingsPanel';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -101,6 +103,7 @@ interface SettingsMessageProps {
   modelManagement?: ModelManagementProps;
   modelSettings?: ModelSettingsPanelProps & { workspaceKey: string };
   embedded?: boolean;
+  workspaceScopeAvailable?: boolean;
   /** Category to select on open (deep link, e.g. 'Daemon'). */
   initialCategory?: string;
 }
@@ -295,25 +298,28 @@ function groupByCategory(settings: DaemonSettingDescriptor[]): CategoryGroup[] {
 
 function CategoryIcon({ category }: { category: string }) {
   const normalized = category.toLowerCase();
-  const Icon = normalized.includes('ui')
-    ? PaletteIcon
-    : normalized.includes('tool')
-      ? WrenchIcon
-      : normalized.includes('context')
-        ? DatabaseIcon
-        : normalized.includes('privacy')
-          ? ShieldIcon
-          : normalized.includes('model')
-            ? BotIcon
-            : normalized === 'chat'
-              ? MessageSquareIcon
-              : normalized.includes('daemon')
-                ? ServerIcon
-                : normalized.includes('advanced')
-                  ? SlidersHorizontalIcon
-                  : normalized.includes('experimental')
-                    ? FlaskConicalIcon
-                    : Settings2Icon;
+  const Icon =
+    normalized === 'vane'
+      ? GlobeIcon
+      : normalized.includes('ui')
+        ? PaletteIcon
+        : normalized.includes('tool')
+          ? WrenchIcon
+          : normalized.includes('context')
+            ? DatabaseIcon
+            : normalized.includes('privacy')
+              ? ShieldIcon
+              : normalized.includes('model')
+                ? BotIcon
+                : normalized === 'chat'
+                  ? MessageSquareIcon
+                  : normalized.includes('daemon')
+                    ? ServerIcon
+                    : normalized.includes('advanced')
+                      ? SlidersHorizontalIcon
+                      : normalized.includes('experimental')
+                        ? FlaskConicalIcon
+                        : Settings2Icon;
   return (
     <Icon
       className={
@@ -453,13 +459,15 @@ export function SettingsMessage({
   modelManagement,
   modelSettings,
   embedded = false,
+  workspaceScopeAvailable = true,
   initialCategory,
 }: SettingsMessageProps) {
   const { language: selectedLanguage, t } = useI18n();
   const selectedTheme = useTheme();
   const { status, settings, loading, error, reload, setValue, liveSetup } =
     settingsState;
-  const [scope, setScope] = useState<Scope>('workspace');
+  const [selectedScope, setScope] = useState<Scope>('workspace');
+  const scope = workspaceScopeAvailable ? selectedScope : 'user';
   const [activeCategory, setActiveCategory] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -549,6 +557,7 @@ export function SettingsMessage({
         items: [{ type: 'local-control' }],
       });
     }
+    groups.push({ id: 'Vane', label: 'Vane', items: [] });
     return groups;
   }, [liveSetup, settings, t, modelSettings, modelManagement]);
 
@@ -611,6 +620,23 @@ export function SettingsMessage({
     categories[0];
 
   const isModelCategory = activeGroup?.id === 'Model';
+  const isVaneCategory = activeGroup?.id === 'Vane';
+  const navigationGroups = [
+    {
+      label: 'Harness',
+      categories: categories.filter(
+        (category) => !['Model', 'Vane'].includes(category.id),
+      ),
+    },
+    {
+      label: 'Chat',
+      categories: categories.filter((category) => category.id === 'Vane'),
+    },
+    {
+      label: t('settings.models.title'),
+      categories: categories.filter((category) => category.id === 'Model'),
+    },
+  ];
 
   const modelSelectOptions = useMemo(() => {
     const options = new Map<
@@ -866,7 +892,7 @@ export function SettingsMessage({
               {t('settings.title')}
             </h2>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              {t('settings.scope.workspace')}
+              {t(`settings.scope.${scope}`)}
             </div>
           </div>
         </div>
@@ -886,12 +912,20 @@ export function SettingsMessage({
         }}
       >
         <div className="flex items-center justify-between gap-4 border-b border-border px-3 py-2">
-          <TabsList className="p-0">
-            <TabsTrigger value="workspace">
-              {t('settings.scope.workspace')}
-            </TabsTrigger>
-            <TabsTrigger value="user">{t('settings.scope.user')}</TabsTrigger>
-          </TabsList>
+          {isVaneCategory ? (
+            <span className="px-3 py-1 text-sm text-muted-foreground">
+              {t('settings.scope.user')} · Chat
+            </span>
+          ) : (
+            <TabsList className="p-0">
+              {workspaceScopeAvailable && (
+                <TabsTrigger value="workspace">
+                  {t('settings.scope.workspace')}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="user">{t('settings.scope.user')}</TabsTrigger>
+            </TabsList>
+          )}
           {restartPending && (
             <Badge variant="secondary">{t('settings.requiresRestart')}</Badge>
           )}
@@ -914,37 +948,57 @@ export function SettingsMessage({
                 rows={7}
               />
             ) : (
-              categories.map((category) => (
-                <Button
-                  key={category.id}
-                  type="button"
-                  variant={
-                    category.id === activeCategory ? 'secondary' : 'ghost'
-                  }
-                  size="sm"
-                  aria-current={
-                    category.id === activeCategory ? 'page' : undefined
-                  }
-                  className="w-full justify-start gap-2 px-2.5 max-md:w-auto max-md:shrink-0"
-                  onClick={() => setActiveCategory(category.id)}
-                >
-                  <CategoryIcon category={category.id} />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {category.label}
-                  </span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {category.id === 'Model' ? (
-                      modelCountLoading ? (
-                        <Skeleton className="h-3 w-4" />
-                      ) : (
-                        visibleModelCount
-                      )
-                    ) : (
-                      category.items.length
-                    )}
-                  </span>
-                </Button>
-              ))
+              navigationGroups
+                .filter((group) => group.categories.length > 0)
+                .map((group) => (
+                  <div
+                    key={group.label}
+                    role="group"
+                    aria-label={group.label}
+                    className="flex shrink-0 flex-col gap-1 border-t border-border pt-3 mt-2 first:mt-0 first:border-0 first:pt-0 max-md:mt-0 max-md:border-t-0 max-md:border-l max-md:pl-3 max-md:pt-0 max-md:first:pl-0"
+                  >
+                    <div className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">
+                      {group.label}
+                    </div>
+                    <div className="flex flex-col gap-1 max-md:flex-row">
+                      {group.categories.map((category) => (
+                        <Button
+                          key={category.id}
+                          type="button"
+                          variant={
+                            category.id === activeCategory
+                              ? 'secondary'
+                              : 'ghost'
+                          }
+                          size="sm"
+                          aria-current={
+                            category.id === activeCategory ? 'page' : undefined
+                          }
+                          className="w-full justify-start gap-2 px-2.5 max-md:w-auto max-md:shrink-0"
+                          onClick={() => setActiveCategory(category.id)}
+                        >
+                          <CategoryIcon category={category.id} />
+                          <span className="min-w-0 flex-1 truncate text-left">
+                            {category.label}
+                          </span>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {category.id === 'Model' ? (
+                              modelCountLoading ? (
+                                <Skeleton className="h-3 w-4" />
+                              ) : (
+                                visibleModelCount
+                              )
+                            ) : category.id === 'Vane' ? (
+                              4
+                            ) : (
+                              category.items.length
+                            )}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ))
             )}
           </nav>
 
@@ -978,6 +1032,7 @@ export function SettingsMessage({
                 data-motion="detail"
                 className="mx-auto w-full max-w-5xl"
               >
+                {isVaneCategory && <VaneSettingsPanel />}
                 {isModelCategory && modelSettings && (
                   <ModelSettingsPanel
                     key={`${modelSettings.workspaceKey}:${scope}`}

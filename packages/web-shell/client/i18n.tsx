@@ -3443,6 +3443,28 @@ const EN: Messages = {
   'localControl.disabledHint':
     'Local Control is off. Turn it on in Settings to pair a phone on the same network.',
   'localControl.openSettings': 'Open Settings',
+  'settings.vane.description':
+    'Search and response preferences for Chat. Saved automatically for all chats.',
+  'settings.vane.unavailable':
+    'Vane models are unavailable. Check the connection and reload.',
+  'settings.vane.model': 'Chat model',
+  'settings.vane.modelHint':
+    'The model used for Vane responses and internet research.',
+  'settings.vane.depth': 'Research depth',
+  'settings.vane.depthHint': 'Balance response speed and search detail.',
+  'settings.vane.speed': 'Fast',
+  'settings.vane.balanced': 'Balanced',
+  'settings.vane.quality': 'Deep',
+  'settings.vane.thinking': 'Thinking',
+  'settings.vane.thinkingHint': 'Let the model reason before answering.',
+  'settings.vane.noReasoning':
+    'The selected model does not support thinking controls.',
+  'settings.vane.effort': 'Reasoning effort',
+  'settings.vane.effortHint':
+    'The model effort level while thinking is enabled.',
+  'settings.vane.low': 'Low',
+  'settings.vane.medium': 'Medium',
+  'settings.vane.high': 'High',
   'settings.models.chatDefaults': 'Chat defaults',
   'settings.models.subtitle': 'Connections and defaults for your models.',
   'settings.models.back': 'Back to models',

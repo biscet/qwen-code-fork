@@ -31,6 +31,7 @@ import {
   FolderKanbanIcon,
   ActivityIcon,
   BlocksIcon,
+  BotIcon,
   CalendarClockIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -218,6 +219,7 @@ export type WebShellSidebarFooterItem =
   | 'workspacesOverview'
   | 'splitView'
   | 'daemonStatus'
+  | 'models'
   | 'collapse';
 
 export interface WebShellSidebarBranding {
@@ -267,6 +269,7 @@ const DEFAULT_FOOTER_ITEMS: readonly WebShellSidebarFooterItem[] = [
   'sessionsOverview',
   'splitView',
   'daemonStatus',
+  'models',
   'collapse',
 ];
 
@@ -380,6 +383,7 @@ interface WebShellSidebarProps {
   onOpenPlugins: () => void;
   onOpenChannels: () => void;
   onOpenDaemonStatus: () => void;
+  onOpenModels?: () => void;
   onOpenScheduledTasks: () => void;
   onOpenGoals: () => void;
   onOpenSessions: () => void;
@@ -863,6 +867,7 @@ export function WebShellSidebar({
   onOpenPlugins,
   onOpenChannels,
   onOpenDaemonStatus,
+  onOpenModels,
   onOpenScheduledTasks,
   onOpenGoals,
   onOpenSessions,
@@ -6108,6 +6113,33 @@ export function WebShellSidebar({
                     </>
                   ) : (
                     <ActivityIcon size={16} strokeWidth={1.2} />
+                  )}
+                </button>
+              )}
+              {footerItems.has('models') && onOpenModels && (
+                <button
+                  className={cx(
+                    styles.collapseButton,
+                    stackedFooter && styles.footerButton,
+                  )}
+                  type="button"
+                  title={t('settings.models.title')}
+                  aria-label={t('settings.models.title')}
+                  onClick={onOpenModels}
+                >
+                  {stackedFooter ? (
+                    <>
+                      <span className={styles.navIcon}>
+                        <BotIcon size={16} strokeWidth={1.2} />
+                      </span>
+                      {!collapsed && (
+                        <span className={styles.footerButtonLabel}>
+                          {t('settings.models.title')}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <BotIcon size={16} strokeWidth={1.2} />
                   )}
                 </button>
               )}

@@ -1838,6 +1838,35 @@ describe('ChatEditor toolbar popovers', () => {
     expect(controls?.textContent).not.toContain('reasoning.effort.');
   });
 
+  it('reenables thinking with a supported effort when the model default is none', async () => {
+    const onSelectReasoningEffort = vi.fn();
+    const container = renderChatEditor({
+      visibleToolbarActions: ['model'],
+      currentModel: 'codex:reasoning-model',
+      availableModels: [
+        { id: 'codex:reasoning-model', label: 'Reasoning Model' },
+      ],
+      reasoning: {
+        enabled: false,
+        effort: 'default',
+        efforts: ['low', 'high'],
+      },
+      onSelectReasoningEffort,
+    });
+
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('[data-web-shell-model-button]')
+        ?.click();
+    });
+    const toggle = document.querySelector<HTMLButtonElement>(
+      '[data-web-shell-thinking-toggle]',
+    );
+    expect(toggle?.getAttribute('aria-checked')).toBe('false');
+    await act(async () => toggle?.click());
+    expect(onSelectReasoningEffort).toHaveBeenCalledExactlyOnceWith('low');
+  });
+
   it('renders an unknown provider default as Thinking without a Default effort', () => {
     const container = renderChatEditor({
       visibleToolbarActions: ['model'],

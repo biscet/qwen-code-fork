@@ -25,6 +25,8 @@ import type {
 } from './types.js';
 
 const REASONING_SELECTIONS: readonly ReasoningSelection[] = [
+  'minimal',
+  'ultra',
   'none',
   'default',
   'low',
@@ -317,6 +319,27 @@ export function updateConnectionFromDaemonEvent(
 ): void {
   if (event.type === 'session_update') {
     const update = getRecord(getRecord(event.data)?.['update']);
+    if (
+      getString(update, 'sessionUpdate') === 'usage_update' &&
+      getRecord(update?.['_meta'])?.['parentToolCallId'] === undefined
+    ) {
+      const used = getNumber(update, 'used');
+      const size = getNumber(update, 'size');
+      if (
+        used !== undefined &&
+        Number.isSafeInteger(used) &&
+        used >= 0 &&
+        size !== undefined &&
+        Number.isSafeInteger(size) &&
+        size > 0
+      ) {
+        setConnection((current) => ({
+          ...current,
+          tokenCount: used,
+          contextWindow: size,
+        }));
+      }
+    }
     const tokenUsage = getUsageTokenUsage(update);
     if (tokenUsage) {
       setConnection((current) => ({
@@ -360,26 +383,46 @@ export function updateConnectionFromDaemonEvent(
               : [raw];
           })
         : undefined;
-      setConnection((current) => ({
-        ...current,
-        currentModel:
-          getString(modelOption, 'currentValue') ?? current.currentModel,
-        models: choices
+      setConnection((current) => {
+        const currentModel =
+          getString(modelOption, 'currentValue') ?? current.currentModel;
+        let currentContextWindow: number | undefined;
+        const models = choices
           ? choices.flatMap((raw): DaemonModelInfo[] => {
               const option = getRecord(raw);
               const id = getString(option, 'value');
               if (!id) return [];
+              const contextWindow = getNumber(
+                getRecord(option?.['_meta']),
+                'contextLimit',
+              );
+              if (
+                id === currentModel &&
+                contextWindow !== undefined &&
+                contextWindow > 0
+              ) {
+                currentContextWindow = contextWindow;
+              }
               return [
                 {
                   ...current.models?.find((model) => model.id === id),
                   id,
                   label: getString(option, 'name') ?? id,
+                  ...(contextWindow !== undefined && contextWindow > 0
+                    ? { contextWindow }
+                    : {}),
                 },
               ];
             })
-          : current.models,
-        reasoning: mapReasoningControls(configOptions),
-      }));
+          : current.models;
+        return {
+          ...current,
+          currentModel,
+          models,
+          contextWindow: currentContextWindow ?? current.contextWindow,
+          reasoning: mapReasoningControls(configOptions),
+        };
+      });
     }
     return;
   }

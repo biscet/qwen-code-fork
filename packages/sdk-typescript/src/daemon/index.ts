@@ -4,6 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export type {
+  CodexAccountState,
+  CodexResetLimitsResult,
+  CodexModel,
+  CodexRateLimits,
+  CodexRateLimitSnapshot,
+  CodexRateLimitWindow,
+} from './codex.js';
+
 export {
   DaemonClient,
   DaemonHttpError,

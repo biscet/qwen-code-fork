@@ -17,7 +17,7 @@ export interface HomeChatModelSelection {
 export interface HomeChatOptions {
   chatModel: HomeChatModelSelection;
   thinking: boolean;
-  effort: 'low' | 'medium' | 'high';
+  effort: string;
   optimizationMode: 'speed' | 'balanced' | 'quality';
 }
 
@@ -26,14 +26,46 @@ export interface HomeChatFlags {
   pinned?: boolean;
 }
 
+export interface HomeChatResponseBlock {
+  id: string;
+  type: 'text' | 'source' | 'error';
+  data:
+    | string
+    | Array<{ content: string; metadata: { title: string; url: string } }>
+    | { message: string };
+}
+
+export interface HomeChatCodexMessage {
+  messageId: string;
+  chatId: string;
+  query: string;
+  createdAt: string;
+  responseBlocks: HomeChatResponseBlock[];
+  status: 'answering' | 'completed' | 'stopped' | 'error';
+  turnId?: string;
+}
+
+export interface HomeChatCodexChat {
+  id: string;
+  title: string;
+  createdAt: string;
+  threadId?: string;
+  options: HomeChatOptions;
+  messages: HomeChatCodexMessage[];
+}
+
 interface HomeChatState {
   chats: Record<string, HomeChatFlags>;
   options?: HomeChatOptions;
+  codexChats?: Record<string, HomeChatCodexChat>;
 }
 
 export class HomeChatStateStore {
   constructor(
-    private readonly directory = join(homedir(), '.qwen', 'homechat'),
+    private readonly directory = join(
+      process.env['QWEN_HOME'] || join(homedir(), '.qwen'),
+      'homechat',
+    ),
   ) {}
 
   read(): HomeChatState {
@@ -69,7 +101,8 @@ export function parseHomeChatOptions(
     Object.keys(options).length !== 4 ||
     typeof options['thinking'] !== 'boolean' ||
     typeof options['effort'] !== 'string' ||
-    !['low', 'medium', 'high'].includes(options['effort']) ||
+    !options['effort'].length ||
+    options['effort'].length > 64 ||
     typeof options['optimizationMode'] !== 'string' ||
     !['speed', 'balanced', 'quality'].includes(options['optimizationMode'])
   )

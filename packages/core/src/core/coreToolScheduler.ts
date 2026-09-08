@@ -1205,6 +1205,8 @@ function withPostToolBatchStop(
 
 interface CoreToolSchedulerOptions {
   config: Config;
+  /** External engines process their own media without a Qwen model call. */
+  nativeMedia?: boolean;
   outputUpdateHandler?: OutputUpdateHandler;
   onAllToolCallsComplete?: AllToolCallsCompleteHandler;
   onToolCallsUpdate?: ToolCallsUpdateHandler;
@@ -1404,6 +1406,7 @@ function producerContentEqual(
 }
 
 export class CoreToolScheduler {
+  private readonly nativeMedia: boolean;
   private toolRegistry: ToolRegistry;
   private toolCalls: ToolCall[] = [];
   private outputUpdateHandler?: OutputUpdateHandler;
@@ -1476,6 +1479,7 @@ export class CoreToolScheduler {
   }> = [];
 
   constructor(options: CoreToolSchedulerOptions) {
+    this.nativeMedia = options.nativeMedia === true;
     this.config = options.config;
     this.toolRegistry = options.config.getToolRegistry();
     this.outputUpdateHandler = options.outputUpdateHandler;
@@ -1510,6 +1514,7 @@ export class CoreToolScheduler {
     modelOverride?: string;
     visionBridgeNotice?: string;
   }> {
+    if (this.nativeMedia) return { responseParts };
     let modelOverride: string | undefined;
     const notices: string[] = [];
     const processedParts = await bridgeToolResultImages({

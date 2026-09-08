@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,6 +20,35 @@ const entryPath = path.join(runtimeRoot, 'lib', 'cli-entry.js');
 const token = crypto.randomBytes(32).toString('hex');
 
 verifyRuntimeIntegrity();
+const codexVersion = execFileSync(
+  nodePath,
+  [
+    path.join(
+      runtimeRoot,
+      'lib',
+      'node_modules',
+      '@openai',
+      'codex',
+      'bin',
+      'codex.js',
+    ),
+    '--version',
+  ],
+  { encoding: 'utf8', timeout: 10_000 },
+).trim();
+const manifest = JSON.parse(
+  fs.readFileSync(path.join(runtimeRoot, 'manifest.json'), 'utf8'),
+);
+if (codexVersion !== `codex-cli ${manifest.codexVersion}`) {
+  throw new Error(`Bundled Codex version mismatch: ${codexVersion}`);
+}
+
+const isolatedRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'homecode-runtime-smoke-'),
+);
+const workspace = path.join(isolatedRoot, 'workspace');
+fs.mkdirSync(workspace);
+fs.mkdirSync(path.join(isolatedRoot, 'os-home'));
 
 const child = spawn(
   nodePath,
@@ -31,12 +61,20 @@ const child = spawn(
     '127.0.0.1',
     '--require-auth',
     '--workspace',
-    packageDir,
+    workspace,
     '--no-open',
   ],
   {
-    cwd: packageDir,
-    env: { ...process.env, QWEN_SERVER_TOKEN: token },
+    cwd: workspace,
+    env: {
+      ...process.env,
+      HOME: path.join(isolatedRoot, 'os-home'),
+      QWEN_SERVER_TOKEN: token,
+      QWEN_CODE_DESKTOP: '1',
+      QWEN_HOME: path.join(isolatedRoot, 'home'),
+      QWEN_RUNTIME_DIR: path.join(isolatedRoot, 'state'),
+    },
+    detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   },
 );
@@ -62,6 +100,12 @@ child.stderr.on('data', (chunk) => {
   output += chunk;
 });
 child.on('exit', (code) => {
+  fs.rmSync(isolatedRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
   if (!done)
     finish(
       new Error(
@@ -84,6 +128,42 @@ async function verify(baseUrl) {
   // unauthenticated shell, which the delegating app 401s until the runtime
   // is mounted.
   await waitForDeepHealth(baseUrl);
+  for (const [route, field, names] of [
+    [
+      'skills',
+      'skills',
+      fs.readdirSync(path.join(runtimeRoot, 'defaults', 'skills')),
+    ],
+    ['agents', 'agents', ['test-engineer']],
+    [
+      'config/mcp/servers',
+      'effective',
+      ['node-repl', 'serena', 'home-ai-research'],
+    ],
+    ['model-settings', 'models', ['local-coder']],
+  ]) {
+    const inventory = await fetch(`${baseUrl}/workspace/${route}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await inventory.json();
+    const entries = Array.isArray(data[field])
+      ? data[field]
+      : Object.keys(data[field] ?? {}).map((name) => ({ name }));
+    if (
+      !inventory.ok ||
+      names.some(
+        (name) =>
+          !entries.some(
+            (item) =>
+              item.name === name || item.id === name || item.modelId === name,
+          ),
+      )
+    ) {
+      throw new Error(
+        `Missing clean-install defaults in ${route}: ${JSON.stringify(data)}`,
+      );
+    }
+  }
   const shell = await fetch(baseUrl, {
     headers: { Accept: 'text/html' },
   });
@@ -112,7 +192,17 @@ function finish(error) {
   if (done) return;
   done = true;
   clearTimeout(timeout);
-  child.kill('SIGTERM');
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+      });
+    } else {
+      process.kill(-child.pid, 'SIGTERM');
+    }
+  } catch {
+    // The process group may already have exited after a startup failure.
+  }
   if (error) {
     console.error(error.message);
     process.exitCode = 1;
@@ -127,6 +217,9 @@ function verifyRuntimeIntegrity() {
     'NOTICE',
     'node/LICENSE',
     'lib/cli-entry.js',
+    'lib/desktop-defaults.js',
+    'defaults/settings.json',
+    'defaults/home-ai-lan-ca.crt',
     'lib/web-shell/index.html',
   ];
   for (const relative of required) {

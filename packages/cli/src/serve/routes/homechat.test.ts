@@ -12,6 +12,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HomeChatStateStore } from './homechat-state.js';
 import { registerHomeChatRoutes } from './homechat.js';
+import { HOMECHAT_CODEX_PROVIDER } from './homechat-codex.js';
+
+vi.mock('../codex/codex-service.js', () => ({
+  getCodexService: () => ({ models: async () => [] }),
+}));
 
 const CHAT_ID = 'homechat-018f0ec4-31c4-4f2f-9c1f-5f47e6be37f1';
 const MESSAGE_ID = '018f0ec4-31c4-4f2f-9c1f-5f47e6be37f2';
@@ -30,6 +35,7 @@ function createStore() {
   return new HomeChatStateStore(directory);
 }
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
 });
@@ -48,6 +54,213 @@ function mount(fetchImpl: typeof fetch, stateStore = createStore()) {
 }
 
 describe('HomeChat routes', () => {
+  it('uses authenticated server Vane for desktop catalog, selection, streaming and history', async () => {
+    vi.stubEnv('QWEN_CODE_DESKTOP', '1');
+    vi.stubEnv('LOCAL_QWEN_API_KEY', 'desktop-server-test-key');
+    const providers = {
+      providers: [
+        {
+          id: 'home-ai-openai-llm7',
+          name: 'LLM7',
+          chatModels: [
+            { key: 'codestral-latest', name: 'Codestral · LLM7 · бесплатно' },
+            { key: 'gpt-oss', name: 'GPT-OSS · LLM7 · бесплатно' },
+          ],
+          embeddingModels: [{ key: 'embedding' }],
+        },
+      ],
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/providers')) return jsonResponse(providers);
+      if (url.endsWith('/api/chat')) {
+        return new Response('{"type":"messageEnd"}\n');
+      }
+      return jsonResponse({ chats: [{ id: CHAT_ID }], messages: [] });
+    });
+    const app = express();
+    app.use(express.json());
+    registerHomeChatRoutes(app, {
+      mutate: () => (_req, _res, next) => next(),
+      fetchImpl,
+      stateStore: createStore(),
+    });
+    const catalog = await request(app).get('/homechat/models');
+    expect(
+      catalog.body.models.map((model: { key: string }) => model.key),
+    ).toEqual(['codestral-latest', 'gpt-oss']);
+    for (const key of ['codestral-latest', 'gpt-oss']) {
+      const options = {
+        chatModel: { providerId: 'home-ai-openai-llm7', key },
+        thinking: false,
+        effort: 'medium',
+        optimizationMode: 'speed',
+      };
+      expect(
+        (await request(app).put('/homechat/options').send(options)).status,
+      ).toBe(200);
+      const response = await request(app).post('/homechat/chat').send({
+        messageId: MESSAGE_ID,
+        chatId: CHAT_ID,
+        content: 'Что нового?',
+        history: [],
+        options,
+      });
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('messageEnd');
+    }
+    expect((await request(app).get('/homechat/chats')).status).toBe(200);
+    expect((await request(app).get(`/homechat/chats/${CHAT_ID}`)).status).toBe(
+      200,
+    );
+    expect(
+      (
+        await request(app)
+          .patch(`/homechat/chats/${CHAT_ID}`)
+          .send({ pinned: true })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await request(app).delete(`/homechat/chats/${CHAT_ID}`)).status,
+    ).toBe(200);
+    for (const [input, init] of fetchImpl.mock.calls) {
+      expect(String(input)).toMatch(
+        /^https:\/\/biscet-server\.local:9454\/homechat\/api\//,
+      );
+      expect(new Headers(init?.headers).get('Authorization')).toBe(
+        'Bearer desktop-server-test-key',
+      );
+      expect(init?.redirect).toBe('error');
+      if (String(input).endsWith('/api/chat')) {
+        expect(init?.method).toBe('POST');
+        expect(new Headers(init?.headers).get('Content-Type')).toBe(
+          'application/json',
+        );
+        const body = JSON.parse(String(init?.body));
+        expect(body).toMatchObject({ sources: ['web'], files: [] });
+        expect(body).not.toHaveProperty('workspace');
+        expect(body).not.toHaveProperty('tools');
+      }
+    }
+  });
+
+  it('does not fall back to local Vane when desktop server credentials are missing', async () => {
+    vi.stubEnv('QWEN_CODE_DESKTOP', '1');
+    vi.stubEnv('LOCAL_QWEN_API_KEY', undefined);
+    const fetchImpl = vi.fn<typeof fetch>();
+    const app = express();
+    registerHomeChatRoutes(app, {
+      mutate: () => (_req, _res, next) => next(),
+      fetchImpl,
+      stateStore: createStore(),
+    });
+    const response = await request(app).get('/homechat/models');
+    expect(response.body.models).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('uses a newly saved server key without restarting the desktop daemon', async () => {
+    vi.stubEnv('QWEN_CODE_DESKTOP', '1');
+    vi.stubEnv('LOCAL_QWEN_API_KEY', 'stale-boot-test-key');
+    let savedKey = 'first-saved-test-key';
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => jsonResponse(PROVIDERS));
+    const app = express();
+    registerHomeChatRoutes(app, {
+      mutate: () => (_req, _res, next) => next(),
+      fetchImpl,
+      stateStore: createStore(),
+      getBackendApiKey: () => savedKey,
+    });
+    await request(app).get('/homechat/models');
+    savedKey = 'updated-saved-test-key';
+    await request(app).get('/homechat/models');
+    expect(
+      fetchImpl.mock.calls.map(([, init]) =>
+        new Headers(init?.headers).get('Authorization'),
+      ),
+    ).toEqual(['Bearer first-saved-test-key', 'Bearer updated-saved-test-key']);
+  });
+
+  it('keeps Codex history and organization available independently of Vane and account login', async () => {
+    const store = createStore();
+    store.update((state) => {
+      state.codexChats = {
+        [CHAT_ID]: {
+          id: CHAT_ID,
+          title: 'Codex history',
+          createdAt: '2026-09-07T00:00:00Z',
+          options: {
+            chatModel: { providerId: HOMECHAT_CODEX_PROVIDER, key: 'codex' },
+            effort: 'xhigh',
+            thinking: true,
+            optimizationMode: 'speed',
+          },
+          messages: [],
+        },
+      };
+    });
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new Error('Vane offline'));
+    const app = mount(fetchImpl, store);
+    const list = await request(app).get('/homechat/chats');
+    expect(list.status).toBe(200);
+    expect(list.body.chats).toMatchObject([{ id: CHAT_ID, engine: 'codex' }]);
+    fetchImpl.mockClear();
+    const detail = await request(app).get(`/homechat/chats/${CHAT_ID}`);
+    expect(detail.body).toMatchObject({
+      engine: 'codex',
+      messages: [],
+      options: { chatModel: { providerId: HOMECHAT_CODEX_PROVIDER } },
+    });
+    expect(
+      (
+        await request(app)
+          .patch(`/homechat/chats/${CHAT_ID}`)
+          .send({ pinned: true, archived: true })
+      ).status,
+    ).toBe(200);
+    expect(store.read().chats[CHAT_ID]).toEqual({
+      pinned: true,
+      archived: true,
+    });
+    const mismatch = await request(app).post('/homechat/chat').send({
+      chatId: CHAT_ID,
+      messageId: MESSAGE_ID,
+      content: 'Hello',
+      history: [],
+    });
+    expect(mismatch.status).toBe(409);
+    expect(
+      (await request(app).delete(`/homechat/chats/${CHAT_ID}`)).status,
+    ).toBe(200);
+    expect(store.read().codexChats?.[CHAT_ID]).toBeUndefined();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a saved Codex selection when its account is logged out', async () => {
+    const store = createStore();
+    const options = {
+      chatModel: { providerId: HOMECHAT_CODEX_PROVIDER, key: 'codex' },
+      effort: 'xhigh',
+      thinking: true,
+      optimizationMode: 'speed' as const,
+    };
+    store.update((state) => {
+      state.options = options;
+    });
+    const app = mount(
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(PROVIDERS)),
+      store,
+    );
+    const response = await request(app).get('/homechat/models');
+    expect(response.status).toBe(200);
+    expect(response.body.options).toEqual(options);
+    expect(response.body.models).toHaveLength(2);
+  });
+
   it('returns only the dedicated HomeChat history', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({

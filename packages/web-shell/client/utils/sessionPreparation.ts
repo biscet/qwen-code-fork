@@ -5,6 +5,7 @@ import {
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import type { ReasoningSelection } from '@qwen-code/sdk/daemon';
 import { WEB_SHELL_SESSION_SOURCE_TYPE } from '../constants/sessions';
+import { parseEngineModel } from './codexModels';
 
 const SESSION_CREATED_CALLBACK_TIMEOUT_MS = 30_000;
 
@@ -13,6 +14,8 @@ type PromptSessionActions = {
     workspaceCwd?: string;
     sessionContext?: DaemonProductSessionContext;
     modelServiceId?: string;
+    engine?: 'qwen' | 'codex';
+    reasoningEffort?: string;
     approvalMode?: DaemonApprovalMode;
     sourceType?: string;
     worktree?: { slug?: string };
@@ -83,6 +86,17 @@ export async function createAndAttachSessionForPrompt({
   // failed best-effort switch.
   const approvalMode =
     modeId && isDaemonApprovalMode(modeId) ? modeId : undefined;
+  const selection = parseEngineModel(modelId ?? '');
+  const codex = selection.engine === 'codex';
+  const codexOptions = codex
+    ? {
+        engine: 'codex' as const,
+        modelServiceId: selection.modelId,
+        ...(reasoningEffort && reasoningEffort !== 'default'
+          ? { reasoningEffort }
+          : {}),
+      }
+    : {};
   const {
     sessionId,
     worktree: worktreeInfo,
@@ -94,14 +108,16 @@ export async function createAndAttachSessionForPrompt({
           sessionContext,
           ...(modelId ? { modelServiceId: modelId } : {}),
           ...(approvalMode ? { approvalMode } : {}),
+          ...codexOptions,
         }
       : {
           workspaceCwd,
           sessionContext,
           sourceType: sessionSourceType,
           ...(approvalMode ? { approvalMode } : {}),
-          ...(worktree ? { worktree } : {}),
-          ...(branch ? { branch } : {}),
+          ...(worktree && !codex ? { worktree } : {}),
+          ...(branch && !codex ? { branch } : {}),
+          ...codexOptions,
         },
   );
   onSessionAllocated?.(sessionId);
@@ -171,7 +187,7 @@ export async function createAndAttachSessionForPrompt({
         `[WebShell] standalone session is running on the agent default model: failed to apply ${modelId} at spawn.`,
       );
     }
-    if (modelId && sessionContext?.kind !== 'standalone') {
+    if (modelId && !codex && sessionContext?.kind !== 'standalone') {
       preparationStep = 'set model for new session';
       try {
         await sessionActions.setModel(modelId);
@@ -180,7 +196,7 @@ export async function createAndAttachSessionForPrompt({
         warn('[WebShell] failed to set model for new session:', error);
       }
     }
-    if (reasoningEffort) {
+    if (reasoningEffort && !codex) {
       preparationStep = 'set reasoning effort';
       await sessionActions.setReasoningEffort(reasoningEffort, {
         persist: sessionContext?.kind !== 'standalone',

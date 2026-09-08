@@ -554,6 +554,7 @@ const EXPECTED_STAGE1_FEATURES = [
   'daemon_status',
   'capabilities',
   'session_create',
+  'codex_sessions',
   'session_id_override',
   'session_scope_override',
   'session_load',

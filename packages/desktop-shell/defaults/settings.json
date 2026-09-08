@@ -1,0 +1,123 @@
+{
+  "$version": 4,
+  "env": {
+    "HOMECODE_LLM7_API_KEY": "unused"
+  },
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "local-coder",
+        "name": "Qwen3.8-27B",
+        "description": "Qwen3.8-27B GGUF, fixed 131072 context; CUDA model and KV only, no automatic CPU offload.",
+        "envKey": "LOCAL_QWEN_API_KEY",
+        "baseUrl": "https://biscet-server.local:9454/v1",
+        "generationConfig": {
+          "contextWindowSize": 131072,
+          "timeout": 1200000,
+          "streamIdleTimeoutMs": 600000,
+          "maxRetries": 0,
+          "toolResultContentFormat": "string",
+          "modalities": {
+            "image": false
+          },
+          "reasoning": {
+            "effort": "medium"
+          },
+          "samplingParams": {
+            "temperature": 1,
+            "top_p": 0.95,
+            "top_k": 20,
+            "min_p": 0,
+            "presence_penalty": 0,
+            "repeat_penalty": 1,
+            "max_tokens": 8192,
+            "reasoning_effort": "medium",
+            "cache_prompt": true,
+            "chat_template_kwargs": {
+              "reasoning_effort": "medium",
+              "enable_thinking": true,
+              "preserve_thinking": true
+            }
+          }
+        }
+      },
+      {
+        "id": "codestral-latest",
+        "name": "Codestral · LLM7 · бесплатно",
+        "baseUrl": "https://api.llm7.io/v1",
+        "envKey": "HOMECODE_LLM7_API_KEY",
+        "generationConfig": {
+          "contextWindowSize": 32000,
+          "samplingParams": {
+            "max_tokens": 4096
+          }
+        }
+      },
+      {
+        "id": "gpt-oss",
+        "name": "GPT-OSS · LLM7 · бесплатно",
+        "baseUrl": "https://api.llm7.io/v1",
+        "envKey": "HOMECODE_LLM7_API_KEY",
+        "generationConfig": {
+          "contextWindowSize": 131072,
+          "samplingParams": {
+            "max_tokens": 4096
+          }
+        }
+      }
+    ]
+  },
+  "model": {
+    "name": "local-coder"
+  },
+  "security": {
+    "auth": {
+      "selectedType": "openai"
+    }
+  },
+  "tools": {
+    "exclude": ["report_findings"]
+  },
+  "mcpServers": {
+    "node-repl": {
+      "description": "Node.js REPL на домашнем Mac-сервере: JavaScript, вычисления и серверные API.",
+      "httpUrl": "https://biscet-server.local:9454/node-repl/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LOCAL_QWEN_API_KEY}"
+      },
+      "timeout": 120000
+    },
+    "serena": {
+      "timeout": 120000,
+      "description": "Serena на домашнем Mac-сервере: семантическая навигация и редактирование проектов на сервере; память отключена.",
+      "includeTools": [
+        "activate_project",
+        "initial_instructions",
+        "get_symbols_overview",
+        "find_symbol",
+        "find_referencing_symbols",
+        "find_implementations",
+        "find_declaration",
+        "get_diagnostics_for_file",
+        "insert_after_symbol",
+        "insert_before_symbol",
+        "rename_symbol",
+        "replace_symbol_body",
+        "safe_delete_symbol"
+      ],
+      "httpUrl": "https://biscet-server.local:9454/serena/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LOCAL_QWEN_API_KEY}"
+      }
+    },
+    "home-ai-research": {
+      "httpUrl": "https://biscet-server.local:9454/research/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LOCAL_QWEN_API_KEY}"
+      },
+      "timeout": 120000,
+      "description": "Веб-поиск через домашний Mac-сервер. Используется API-ключ Qwen 27B (LOCAL_QWEN_API_KEY).",
+      "includeTools": ["web_search"]
+    }
+  }
+}

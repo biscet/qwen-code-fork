@@ -715,6 +715,9 @@ export type BridgePendingInteraction =
 
 /** Wire-format mirror of the SDK's `DaemonSessionSummary`; keep fields synchronized. */
 export interface BridgeSessionSummary {
+  engine?: 'qwen' | 'codex';
+  modelId?: string;
+  reasoningEffort?: string;
   sessionId: string;
   workspaceCwd: string;
   createdAt: string;

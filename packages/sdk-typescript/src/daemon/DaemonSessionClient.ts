@@ -18,6 +18,7 @@ import {
   type SubscribeOptions,
 } from './DaemonClient.js';
 import type {
+  DaemonRestoredSession,
   DaemonForkSessionResult,
   DaemonEvent,
   DaemonRewindResult,
@@ -355,6 +356,7 @@ export class DaemonSessionClient {
     return new DaemonSessionClient({
       client,
       session,
+      state: (session as Partial<DaemonRestoredSession>).state,
       hasActivePrompt: session.hasActivePrompt,
       lastEventId,
       // Newer daemons may stamp the bus epoch on the create/attach
@@ -1183,7 +1185,9 @@ export class DaemonSessionClient {
       const epoch =
         subscribeOpts.epoch ?? (resume ? this.lastSeenEpoch : undefined);
       const callerOnEpoch = subscribeOpts.onEpoch;
-      const restSubscription = this.client.transport.type === 'rest';
+      const restSubscription =
+        this.session.engine === 'codex' ||
+        this.client.transport.type === 'rest';
       if (!restSubscription) {
         this.hasAcceptedRestStream = false;
         this.lastAcceptedRestStreamId = undefined;

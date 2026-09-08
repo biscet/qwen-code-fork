@@ -190,7 +190,13 @@ export interface CreateDaemonSessionActionsArgs {
     workspaceCwd?: string,
     overrides?: Pick<
       CreateSessionRequest,
-      'approvalMode' | 'sourceType' | 'worktree' | 'branch'
+      | 'approvalMode'
+      | 'sourceType'
+      | 'worktree'
+      | 'branch'
+      | 'engine'
+      | 'modelServiceId'
+      | 'reasoningEffort'
     >,
   ) => Promise<DaemonSessionClient>;
   createDetachedStandaloneSession: (
@@ -281,6 +287,8 @@ export function getConnectionAfterSessionClear(
   const next = { ...current };
   if (!clearedSessionId || current.sessionId === clearedSessionId) {
     delete next.sessionId;
+    delete next.engine;
+    if (current.engine === 'codex') delete next.currentModel;
     delete next.clientId;
     delete next.displayName;
     delete next.titleSource;
@@ -417,6 +425,7 @@ export function createDaemonSessionActions({
   }
 
   function discardsSlashCommandAttachments(text: string): boolean {
+    if (getConnection().engine === 'codex') return false;
     const trimmed = text.trim();
     if (!trimmed.startsWith('/')) return false;
     if (trimmed.startsWith('//') || trimmed.startsWith('/*')) return false;
@@ -1504,6 +1513,8 @@ export function createDaemonSessionActions({
     },
 
     async createSession(options?: {
+      engine?: 'qwen' | 'codex';
+      reasoningEffort?: string;
       workspaceCwd?: string;
       sessionContext?: DaemonProductSessionContext;
       modelServiceId?: string;
@@ -1554,6 +1565,12 @@ export function createDaemonSessionActions({
           throw new Error('Live session context does not support create');
         }
         if (
+          options?.engine === 'codex' &&
+          targetSessionContext?.kind === 'standalone'
+        ) {
+          throw new Error('Для Codex Harness выберите рабочую папку.');
+        }
+        if (
           targetSessionContext?.kind === 'standalone' &&
           (options?.sourceType !== undefined ||
             options?.worktree !== undefined ||
@@ -1565,6 +1582,7 @@ export function createDaemonSessionActions({
         }
         if (
           targetSessionContext?.kind !== 'standalone' &&
+          options?.engine !== 'codex' &&
           options?.modelServiceId !== undefined
         ) {
           throw new Error(
@@ -1578,6 +1596,13 @@ export function createDaemonSessionActions({
         // an application failure aborts creation (this call rejects) rather than
         // leaving the session in a different mode than the caller requested.
         const requestOverrides = {
+          ...(options?.engine !== undefined ? { engine: options.engine } : {}),
+          ...(options?.modelServiceId !== undefined
+            ? { modelServiceId: options.modelServiceId }
+            : {}),
+          ...(options?.reasoningEffort !== undefined
+            ? { reasoningEffort: options.reasoningEffort }
+            : {}),
           ...(options?.approvalMode !== undefined
             ? { approvalMode: options.approvalMode }
             : {}),
@@ -1694,6 +1719,7 @@ export function createDaemonSessionActions({
             ...base,
             status: 'connected',
             sessionId: nextSession.sessionId,
+            engine: nextSession.session?.engine ?? 'qwen',
             sessionContext: createdSessionContext,
             goalState: undefined,
             ...(nextSession.clientId ? { clientId: nextSession.clientId } : {}),

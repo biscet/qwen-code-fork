@@ -24,6 +24,7 @@ import {
   type GoalSnapshotV2,
 } from '@qwen-code/sdk/daemon';
 import type { WebShellApi } from './App';
+import type { ModelSettingsPanelProps } from './components/messages/ModelSettingsPanel';
 import type { Message } from './adapters/types';
 import type {
   VoiceStatusRevision,
@@ -41,6 +42,7 @@ import { loadSplitSessions, saveSplitSessions } from './utils/splitUrl';
 type StreamingState = 'idle' | 'responding';
 
 type MockConnection = {
+  engine?: 'qwen' | 'codex';
   status: 'connected' | 'connecting' | 'disconnected' | 'error';
   sessionId: string | undefined;
   sessionContext?: { kind: 'standalone' };
@@ -571,6 +573,7 @@ const {
         sessionWorkflowEnabled?: boolean;
       } | null,
       latestSettingsInitialCategory: undefined as string | undefined,
+      latestModelSettings: null as ModelSettingsPanelProps | null,
       latestModelManagement: null as {
         busy?: boolean;
         onSelectModel?: (modelId: string) => void;
@@ -1033,6 +1036,7 @@ vi.mock('./components/messages/SettingsMessage', async () => {
         settings: DaemonSettingDescriptor[];
       };
       initialCategory?: string;
+      modelSettings?: ModelSettingsPanelProps;
       workspaceScopeAvailable?: boolean;
       onSubDialog?: (key: string, scope: 'user' | 'workspace') => void;
       onLanguageChange?: (
@@ -1051,6 +1055,7 @@ vi.mock('./components/messages/SettingsMessage', async () => {
     }) => {
       testState.latestSettingsState = props.settingsState;
       testState.latestSettingsInitialCategory = props.initialCategory;
+      testState.latestModelSettings = props.modelSettings ?? null;
       testState.latestModelManagement = props.modelManagement ?? null;
       return React.createElement(
         'div',
@@ -1058,6 +1063,16 @@ vi.mock('./components/messages/SettingsMessage', async () => {
           'data-testid': 'settings-message',
           'data-workspace-scope': String(props.workspaceScopeAvailable),
         },
+        React.createElement(
+          'button',
+          {
+            'data-testid': 'settings-select-codex',
+            type: 'button',
+            onClick: () =>
+              props.modelSettings?.onSelectModel('codex:gpt-codex'),
+          },
+          'Установить текущей Codex',
+        ),
         React.createElement(
           'button',
           {
@@ -1198,6 +1213,7 @@ vi.mock('./components/sidebar/WebShellSidebar', async () => {
       onOpenPlugins?: () => void;
       onOpenChannels?: () => void;
       onOpenDaemonStatus?: () => void;
+      onOpenModels?: () => void;
       onOpenSessions?: () => void;
       onOpenSplitView?: () => void;
       onMobileClose?: () => void;
@@ -1364,6 +1380,15 @@ vi.mock('./components/sidebar/WebShellSidebar', async () => {
             onClick: props.onOpenDaemonStatus,
           },
           'daemon status',
+        ),
+        React.createElement(
+          'button',
+          {
+            'data-testid': 'open-model-settings',
+            type: 'button',
+            onClick: props.onOpenModels,
+          },
+          'models',
         ),
         React.createElement(
           'button',
@@ -5561,6 +5586,7 @@ beforeEach(() => {
   mockConnection.titleSource = undefined;
   mockConnection.currentMode = 'default';
   mockConnection.currentModel = 'qwen';
+  mockConnection.engine = undefined;
   mockConnection.models = [{ id: 'qwen', label: 'Qwen' }];
   mockConnection.error = undefined;
   mockConnection.errorStatus = undefined;
@@ -5700,6 +5726,7 @@ beforeEach(() => {
   testState.latestProvidersHookOptions = undefined;
   testState.latestSettingsState = null;
   testState.latestSettingsInitialCategory = undefined;
+  testState.latestModelSettings = null;
   testState.latestModelManagement = null;
   testState.latestScheduledTasksProps = null;
   testState.latestGoalsProps = null;
@@ -11707,6 +11734,41 @@ describe('App session callbacks', () => {
       expect(mockSessionActions.createSession).not.toHaveBeenCalled();
     },
   );
+
+  it.each([false, true])(
+    'opens Models directly from sidebar without changing session, standalone=%s',
+    async (standalone) => {
+      if (standalone) {
+        mockConnection.sessionContext = { kind: 'standalone' };
+        mockConnection.workspaceCwd = '';
+      }
+      const { container } = renderApp();
+      await flush();
+      await act(async () =>
+        container
+          .querySelector<HTMLButtonElement>(
+            '[data-testid="open-model-settings"]',
+          )
+          ?.click(),
+      );
+      await flush();
+      expect(testState.latestSettingsInitialCategory).toBe('Model');
+      expect(
+        container
+          .querySelector('[data-testid="settings-message"]')
+          ?.getAttribute('data-workspace-scope'),
+      ).toBe(String(!standalone));
+      expect(mockSessionActions.createSession).not.toHaveBeenCalled();
+      expect(mockSessionActions.setModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it('opens the Models category on the HomeChat administration deep link', async () => {
+    renderApp({ initialPanel: 'models' });
+    await flush();
+    expect(testState.latestSettingsInitialCategory).toBe('Model');
+    expect(mockSessionActions.createSession).not.toHaveBeenCalled();
+  });
 
   it('closes workspace model settings when navigation enters a standalone chat', async () => {
     const { container, rerender } = renderApp();
@@ -21234,7 +21296,7 @@ describe('App session callbacks', () => {
     );
     expect(container.textContent).not.toContain('Loading MCP tools...');
     expect(
-      container.querySelector('[role="button"][aria-label="filesystem"]'),
+      container.querySelector('button[aria-label="filesystem"]'),
     ).toHaveProperty('tabIndex', 0);
   });
 
@@ -25426,6 +25488,149 @@ describe('App session callbacks', () => {
       );
     },
   );
+
+  it('selects Codex from Models settings through the real engine-switch boundary', async () => {
+    const { container, rerender } = renderApp({ initialPanel: 'models' });
+    await flush();
+    mockSessionActions.createSession.mockImplementationOnce(async () => {
+      mockConnection.sessionId = 'codex-settings-session';
+      mockConnection.engine = 'codex';
+      mockConnection.currentModel = 'gpt-codex';
+      return { sessionId: 'codex-settings-session' };
+    });
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="settings-select-codex"]',
+        )
+        ?.click(),
+    );
+    await flush();
+    expect(mockSessionActions.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: 'codex', modelServiceId: 'gpt-codex' }),
+    );
+    expect(mockSessionActions.setModel).not.toHaveBeenCalled();
+    rerender();
+    await flush();
+    expect(testState.latestModelSettings?.currentModelId).toBe(
+      'codex:gpt-codex',
+    );
+  });
+
+  it('keeps embedded HomeChat Models selection inside the host adapter', async () => {
+    const onSelectModel = vi.fn();
+    const { container } = renderApp({
+      initialPanel: 'models',
+      settingsModelSelection: {
+        currentModelId: 'codex:homechat-model',
+        onSelectModel,
+      },
+    });
+    await flush();
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="settings-select-codex"]',
+        )
+        ?.click(),
+    );
+    expect(onSelectModel).toHaveBeenCalledWith('codex:gpt-codex');
+    expect(testState.latestModelSettings?.currentModelId).toBe(
+      'codex:homechat-model',
+    );
+    expect(mockSessionActions.createSession).not.toHaveBeenCalled();
+    expect(mockSessionActions.setModel).not.toHaveBeenCalled();
+  });
+
+  it('creates a new Codex session when the engine changes and switches Codex models within that session', async () => {
+    const { rerender } = renderApp();
+    await flush();
+    mockSessionActions.createSession.mockImplementationOnce(async () => {
+      mockConnection.sessionId = 'codex-session';
+      mockConnection.engine = 'codex';
+      mockConnection.currentModel = 'gpt-codex';
+      return { sessionId: 'codex-session' };
+    });
+    await act(async () => {
+      testState.latestChatEditorProps?.onSelectModel?.('codex:gpt-codex');
+    });
+    await flush();
+    expect(mockSessionActions.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engine: 'codex',
+        modelServiceId: 'gpt-codex',
+        workspaceCwd: '/tmp/project',
+      }),
+    );
+    expect(mockSessionActions.setModel).not.toHaveBeenCalled();
+    rerender();
+    await flush();
+    await act(async () => {
+      testState.latestChatEditorProps?.onSelectModel?.('codex:gpt-codex-next');
+    });
+    expect(mockSessionActions.createSession).toHaveBeenCalledOnce();
+    expect(mockSessionActions.setModel).toHaveBeenCalledWith('gpt-codex-next');
+  });
+
+  it('keeps Codex attachments and workspace prompting controls after switching engines', async () => {
+    const toolbarActions = [
+      'addMenu',
+      'model',
+      'gitBranch',
+      'workspace',
+      'voice',
+      'widthMode',
+    ] as const;
+    const configuredActions = [
+      ...toolbarActions,
+      'approvalMode',
+      'contextUsage',
+      'commands',
+    ] as const;
+    const { rerender } = renderApp({
+      composerToolbarActions: configuredActions,
+    });
+    await flush();
+    expect(testState.latestChatEditorProps?.visibleToolbarActions).toEqual(
+      configuredActions,
+    );
+
+    mockConnection.engine = 'codex';
+    rerender();
+    await flush();
+
+    expect(testState.latestChatEditorProps?.visibleToolbarActions).toEqual(
+      toolbarActions,
+    );
+    expect(testState.latestChatEditorProps?.atWorkspaceCwd).toBe(
+      '/tmp/project',
+    );
+    expect(testState.latestChatEditorProps?.workspaceFeaturesEnabled).toBe(
+      true,
+    );
+  });
+
+  it('sends Codex slash and shell text to its own engine without invoking Qwen controls', async () => {
+    mockConnection.engine = 'codex';
+    renderApp();
+    await flush();
+    await act(async () => {
+      testState.latestChatEditorProps?.onSubmit('/goal Read the docs');
+    });
+    await flush();
+    expect(mockSessionActions.sendPrompt).toHaveBeenCalledWith(
+      '/goal Read the docs',
+      expect.anything(),
+    );
+    expect(mockSessionActions.sendShellCommand).not.toHaveBeenCalled();
+    await act(async () => {
+      testState.latestChatEditorProps?.onSubmit('!echo test');
+    });
+    await flush();
+    expect(mockSessionActions.sendShellCommand).not.toHaveBeenCalled();
+    expect(testState.latestChatEditorProps?.commands).toEqual([]);
+    expect(testState.latestChatEditorProps?.sessionWorkflowEnabled).toBe(false);
+  });
 
   it('clears model selection busy state after a same-session reattach', async () => {
     const selection = deferred<void>();

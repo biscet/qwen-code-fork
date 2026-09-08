@@ -498,11 +498,127 @@ describe('mapWorkspaceSkills', () => {
 });
 
 describe('updateConnectionFromDaemonEvent', () => {
+  it('uses the live context size after the model setting changes from 131K to 98K', () => {
+    const result = applyEvent(
+      {
+        status: 'connected',
+        currentModel: 'local-coder(openai)',
+        contextWindow: 131_072,
+        tokenCount: 1000,
+        models: [
+          {
+            id: 'local-coder(openai)',
+            label: 'Qwen',
+            contextWindow: 131_072,
+          },
+        ],
+      },
+      {
+        v: 1,
+        type: 'session_update',
+        data: {
+          update: {
+            sessionUpdate: 'usage_update',
+            used: 2048,
+            size: 98_304,
+          },
+        },
+      } as DaemonEvent,
+    );
+
+    expect(result.contextWindow).toBe(98_304);
+    expect(result.tokenCount).toBe(2048);
+  });
+
+  it.each([
+    { used: 0, size: 98_304 },
+    { used: 110_000, size: 98_304 },
+  ])('keeps authoritative context occupancy $used / $size', (usage) => {
+    const result = applyEvent(
+      { status: 'connected', contextWindow: 131_072, tokenCount: 1000 },
+      {
+        v: 1,
+        type: 'session_update',
+        data: { update: { sessionUpdate: 'usage_update', ...usage } },
+      } as DaemonEvent,
+    );
+    expect(result.contextWindow).toBe(usage.size);
+    expect(result.tokenCount).toBe(usage.used);
+  });
+
+  it.each([
+    { used: 2048, size: 98_304, _meta: { parentToolCallId: 'child' } },
+    { used: -1, size: 98_304 },
+    { used: 2048, size: 0 },
+    { used: 2048, size: Number.NaN },
+  ])('ignores unrelated or invalid context usage %#', (usage) => {
+    const current: DaemonConnectionState = {
+      status: 'connected',
+      contextWindow: 131_072,
+      tokenCount: 1000,
+    };
+    const result = applyEvent(current, {
+      v: 1,
+      type: 'session_update',
+      data: { update: { sessionUpdate: 'usage_update', ...usage } },
+    } as DaemonEvent);
+    expect(result).toEqual(current);
+  });
+
+  it('applies the selected route context limit from updated model settings', () => {
+    const active = 'route:local';
+    const result = applyEvent(
+      {
+        status: 'connected',
+        currentModel: active,
+        contextWindow: 131_072,
+        models: [{ id: active, label: 'Qwen', contextWindow: 131_072 }],
+      },
+      {
+        v: 1,
+        type: 'session_update',
+        data: {
+          update: {
+            sessionUpdate: 'config_option_update',
+            configOptions: [
+              {
+                id: 'model',
+                currentValue: active,
+                options: [
+                  {
+                    group: 'OpenAI',
+                    options: [
+                      {
+                        value: 'route:other',
+                        name: 'Qwen',
+                        _meta: { contextLimit: 262_144 },
+                      },
+                      {
+                        value: active,
+                        name: 'Qwen',
+                        _meta: { contextLimit: 98_304 },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      } as DaemonEvent,
+    );
+    expect(result.contextWindow).toBe(98_304);
+    expect(
+      result.models?.find((model) => model.id === active)?.contextWindow,
+    ).toBe(98_304);
+  });
+
   it('refreshes model labels and effort from an authoritative config update', () => {
     const result = applyEvent(
       {
         status: 'connected',
         currentModel: 'local-coder(openai)',
+        contextWindow: 98_304,
         models: [
           {
             id: 'local-coder(openai)',
@@ -552,6 +668,7 @@ describe('updateConnectionFromDaemonEvent', () => {
         contextWindow: 131072,
       },
     ]);
+    expect(result.contextWindow).toBe(98_304);
     expect(result.reasoning).toMatchObject({ enabled: true, effort: 'high' });
   });
 

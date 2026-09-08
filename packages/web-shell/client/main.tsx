@@ -35,7 +35,7 @@ const STANDALONE_COMPOSER_TOOLBAR_ADDITIONS = ['addMenu'] as const;
 const LANGUAGE_STORAGE_KEY = 'qwen-code-web-shell-language';
 const THEME_STORAGE_KEY = 'qwen-code-web-shell-theme';
 const PRODUCT_STORAGE_KEY = 'homecode-product';
-const DESKTOP_VERSION = '1.3.0';
+const DESKTOP_VERSION = '2.1.3';
 
 function readStoredProduct(): HomeProduct {
   try {
@@ -299,12 +299,13 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
           theme={renderedTheme}
           versionLabel={DESKTOP_VERSION}
           onProductChange={handleProductChange}
-          renderAdministrationPanel={(panel, onClose) => (
+          renderAdministrationPanel={(panel, onClose, modelSelection) => (
             <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
               <AdministrationPanel
                 key={panel}
                 workspaceId={workspaceId}
                 initialPanel={panel}
+                settingsModelSelection={modelSelection}
                 onPanelClose={onClose}
                 theme={renderedTheme}
                 onThemeChange={handleThemeChange}
@@ -353,7 +354,7 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
                   items: ['newTask', 'plugins', 'scheduledTasks'],
                 },
                 footer: {
-                  items: ['settings', 'daemonStatus', 'version'],
+                  items: ['settings', 'daemonStatus', 'models', 'version'],
                   layout: 'stacked',
                   versionLabel: DESKTOP_VERSION,
                 },

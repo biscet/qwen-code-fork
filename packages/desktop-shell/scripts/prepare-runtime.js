@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -96,7 +97,9 @@ try {
   fs.writeFileSync(path.join(packageRoot, '.gitkeep'), '');
   fs.mkdirSync(binDir, { recursive: true });
   copyDirectory(distDir, libDir);
+  const codexVersion = installCodexRuntime();
   await installNodeRuntime(nodeDir, target);
+  await installDesktopDefaults();
   writeLaunchers(target);
   copyRequiredFile(
     path.join(sourceRoot, 'LICENSE'),
@@ -120,6 +123,7 @@ try {
         qwenCodeCommit: process.env.QWEN_CODE_COMMIT || gitCommit(sourceRoot),
         target,
         node: `v${process.versions.node}`,
+        codexVersion,
         builtAt: new Date().toISOString(),
       },
       null,
@@ -134,6 +138,72 @@ try {
 console.log(
   `Prepared desktop runtime at ${path.relative(repoRoot, finalPackageRoot)}`,
 );
+
+function installCodexRuntime() {
+  const require = createRequire(path.join(sourceRoot, 'package.json'));
+  const expected = JSON.parse(
+    fs.readFileSync(path.join(sourceRoot, 'packages/cli/package.json'), 'utf8'),
+  ).dependencies['@openai/codex'];
+  if (!/^\d+\.\d+\.\d+$/.test(expected)) {
+    throw new Error(
+      'The desktop Codex runtime must use an exact stable version',
+    );
+  }
+  for (const name of ['@openai/codex', `@openai/codex-${target}`]) {
+    const metadataPath = require.resolve(`${name}/package.json`);
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    const version =
+      name === '@openai/codex' ? expected : `${expected}-${target}`;
+    if (metadata.version !== version) {
+      throw new Error(
+        `Codex runtime version mismatch: ${name} ${metadata.version}`,
+      );
+    }
+    copyDirectory(
+      path.dirname(metadataPath),
+      path.join(libDir, 'node_modules', name),
+    );
+  }
+  return expected;
+}
+
+async function installDesktopDefaults() {
+  const require = createRequire(path.join(sourceRoot, 'package.json'));
+  const { build } = require('esbuild');
+  await build({
+    entryPoints: [path.join(packageDir, 'defaults', 'install-defaults.js')],
+    outfile: path.join(libDir, 'desktop-defaults.js'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    mainFields: ['module', 'main'],
+    target: 'node22',
+    nodePaths: [path.join(sourceRoot, 'node_modules')],
+  });
+  const defaultsRoot = path.join(packageRoot, 'defaults');
+  fs.mkdirSync(defaultsRoot, { recursive: true });
+  copyRequiredFile(
+    path.join(packageDir, 'defaults', 'settings.json'),
+    path.join(defaultsRoot, 'settings.json'),
+  );
+  copyRequiredFile(
+    path.join(packageDir, 'defaults', 'home-ai-lan-ca.crt'),
+    path.join(defaultsRoot, 'home-ai-lan-ca.crt'),
+  );
+  for (const kind of ['skills', 'agents']) {
+    fs.cpSync(
+      path.join(sourceRoot, '.qwen', kind),
+      path.join(defaultsRoot, kind),
+      {
+        recursive: true,
+        filter: (entry) =>
+          !['.DS_Store', '__pycache__', 'node_modules'].includes(
+            path.basename(entry),
+          ) && !entry.endsWith('.pyc'),
+      },
+    );
+  }
+}
 
 async function installNodeRuntime(destination, desktopTarget) {
   const nvmrc = fs.readFileSync(path.join(repoRoot, '.nvmrc'), 'utf8').trim();
@@ -281,12 +351,12 @@ function writeLaunchers(desktopTarget) {
   if (desktopTarget.startsWith('win32-')) {
     fs.writeFileSync(
       path.join(binDir, 'qwen.cmd'),
-      '@echo off\r\nsetlocal\r\nset "ROOT=%~dp0.."\r\n"%ROOT%\\node\\node.exe" "%ROOT%\\lib\\cli-entry.js" %*\r\nexit /b %ERRORLEVEL%\r\n',
+      '@echo off\r\nsetlocal\r\nset "ROOT=%~dp0.."\r\nset "QWEN_CODE_DESKTOP=1"\r\n"%ROOT%\\node\\node.exe" "%ROOT%\\lib\\cli-entry.js" %*\r\nexit /b %ERRORLEVEL%\r\n',
     );
     return;
   }
   const launcher =
-    '#!/usr/bin/env sh\nset -e\nROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"\nexec "$ROOT/node/bin/node" "$ROOT/lib/cli-entry.js" "$@"\n';
+    '#!/usr/bin/env sh\nset -e\nROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"\nexport QWEN_CODE_DESKTOP=1\nexec "$ROOT/node/bin/node" "$ROOT/lib/cli-entry.js" "$@"\n';
   const launcherPath = path.join(binDir, 'qwen');
   fs.writeFileSync(launcherPath, launcher);
   fs.chmodSync(launcherPath, 0o755);

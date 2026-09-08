@@ -1,4 +1,5 @@
 export const HOMECHAT_OPTIONS_CHANGED = 'homechat-options-changed';
+export const HOMECHAT_CODEX_PROVIDER = 'homecode-codex';
 
 export interface HomeChatModel {
   providerId: string;
@@ -6,12 +7,14 @@ export interface HomeChatModel {
   name: string;
   providerName: string;
   reasoning: boolean;
+  reasoningEfforts?: string[];
+  defaultReasoningEffort?: string;
 }
 
 export interface HomeChatOptions {
   chatModel: { providerId: string; key: string };
   thinking: boolean;
-  effort: 'low' | 'medium' | 'high';
+  effort: string;
   optimizationMode: 'speed' | 'balanced' | 'quality';
 }
 
@@ -26,6 +29,7 @@ export interface HomeChatSummary {
   createdAt: string;
   archived?: boolean;
   pinned?: boolean;
+  engine?: 'codex';
 }
 
 export interface HomeChatChunk {
@@ -75,7 +79,7 @@ export type HomeChatStreamEvent =
   | { type: 'block'; block: HomeChatBlock }
   | { type: 'updateBlock'; blockId: string; patch: HomeChatPatch[] }
   | { type: 'researchComplete' }
-  | { type: 'messageEnd' }
+  | { type: 'messageEnd'; stopped?: boolean }
   | { type: 'error'; data?: unknown };
 
 function headers(token?: string, json = false): HeadersInit {
@@ -158,13 +162,44 @@ export async function loadHomeChat(
   token: string | undefined,
   chatId: string,
 ): Promise<HomeChatMessage[]> {
+  return (await loadHomeChatDetails(baseUrl, token, chatId)).messages ?? [];
+}
+
+export async function loadHomeChatDetails(
+  baseUrl: string,
+  token: string | undefined,
+  chatId: string,
+): Promise<{
+  messages: HomeChatMessage[];
+  options?: HomeChatOptions;
+  engine?: 'codex';
+}> {
   const response = await fetch(
     endpoint(baseUrl, `/homechat/chats/${encodeURIComponent(chatId)}`),
     { headers: headers(token) },
   );
   if (!response.ok) throw await responseError(response);
-  const body = (await response.json()) as { messages?: HomeChatMessage[] };
-  return Array.isArray(body.messages) ? body.messages : [];
+  const body = (await response.json()) as {
+    messages?: HomeChatMessage[];
+    options?: HomeChatOptions;
+    engine?: 'codex';
+  };
+  return {
+    ...body,
+    messages: Array.isArray(body.messages) ? body.messages : [],
+  };
+}
+
+export async function stopHomeChat(
+  baseUrl: string,
+  token: string | undefined,
+  chatId: string,
+): Promise<void> {
+  const response = await fetch(
+    endpoint(baseUrl, `/homechat/chats/${encodeURIComponent(chatId)}/stop`),
+    { method: 'POST', headers: headers(token) },
+  );
+  if (!response.ok) throw await responseError(response);
 }
 
 export async function deleteHomeChat(
@@ -189,28 +224,77 @@ export async function* streamHomeChat(
     history: Array<['human' | 'assistant', string]>;
     options?: HomeChatOptions;
   },
+  signal?: AbortSignal,
+): AsyncGenerator<HomeChatStreamEvent> {
+  const attempts =
+    body.options?.chatModel.providerId === HOMECHAT_CODEX_PROVIDER ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let ended = false;
+    try {
+      for await (const event of streamHomeChatOnce(
+        baseUrl,
+        token,
+        body,
+        signal,
+      )) {
+        if (event.type === 'messageEnd' || event.type === 'error') ended = true;
+        yield event;
+      }
+      if (ended || attempts === 1) return;
+      if (attempt + 1 === attempts)
+        throw new Error(
+          'Соединение Codex прервано. Запрос сохранён и не отправлен повторно.',
+        );
+    } catch (error) {
+      if (
+        signal?.aborted ||
+        !(error instanceof TypeError || error instanceof SyntaxError) ||
+        attempt + 1 === attempts
+      )
+        throw error;
+    }
+  }
+}
+
+async function* streamHomeChatOnce(
+  baseUrl: string,
+  token: string | undefined,
+  body: {
+    messageId: string;
+    chatId: string;
+    content: string;
+    history: Array<['human' | 'assistant', string]>;
+    options?: HomeChatOptions;
+  },
+  signal?: AbortSignal,
 ): AsyncGenerator<HomeChatStreamEvent> {
   const response = await fetch(endpoint(baseUrl, '/homechat/chat'), {
     method: 'POST',
     headers: headers(token, true),
     body: JSON.stringify(body),
+    signal,
   });
   if (!response.ok || !response.body) throw await responseError(response);
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let pending = '';
-  while (true) {
-    const chunk = await reader.read();
-    pending += decoder.decode(chunk.value, { stream: !chunk.done });
-    const lines = pending.split('\n');
-    pending = lines.pop() ?? '';
-    for (const line of lines) {
-      if (line.trim()) yield JSON.parse(line) as HomeChatStreamEvent;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      pending += decoder.decode(chunk.value, { stream: !chunk.done });
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.trim()) yield JSON.parse(line) as HomeChatStreamEvent;
+      }
+      if (chunk.done) break;
     }
-    if (chunk.done) break;
+    if (pending.trim()) yield JSON.parse(pending) as HomeChatStreamEvent;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
-  if (pending.trim()) yield JSON.parse(pending) as HomeChatStreamEvent;
 }
 
 export function applyHomeChatEvent(

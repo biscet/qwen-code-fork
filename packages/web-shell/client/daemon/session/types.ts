@@ -85,6 +85,7 @@ export interface DaemonStandaloneConnectionState {
 
 export interface DaemonConnectionState {
   status: DaemonConnectionStatus;
+  engine?: 'qwen' | 'codex';
   sessionId?: string;
   /**
    * Daemon-confirmed client identity bound to this session (the value sent as
@@ -481,6 +482,8 @@ export interface DaemonSessionActions {
    * `options.sourceType` records immutable creator attribution.
    */
   createSession(options?: {
+    engine?: 'qwen' | 'codex';
+    reasoningEffort?: string;
     workspaceCwd?: string;
     sessionContext?: DaemonProductSessionContext;
     modelServiceId?: string;

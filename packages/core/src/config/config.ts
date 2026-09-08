@@ -1559,6 +1559,8 @@ function readMemoryPressureRatioEnv(envName: string, fallback: number): number {
  * Options for Config.initialize()
  */
 export interface ConfigInitializeOptions {
+  /** Initialize only the permission and tool runtime for a non-Qwen host. */
+  toolsOnly?: boolean;
   /** Cancels request-scoped initialization without becoming a session signal. */
   signal?: AbortSignal;
   /**
@@ -3047,6 +3049,26 @@ export class Config {
   private async initializeOnce(
     options?: ConfigInitializeOptions,
   ): Promise<void> {
+    if (options?.toolsOnly) {
+      await this.proxyDispatcherReady;
+      options.signal?.throwIfAborted();
+      this.fileCheckpointingEnabled = false;
+      this.fileHistoryService = undefined;
+      this.promptRegistry = new PromptRegistry();
+      this.resourceRegistry = new ResourceRegistry();
+      this.permissionManager = new PermissionManager(this);
+      this.permissionManager.initialize();
+      this.toolRegistry = await this.createToolRegistry(undefined, {
+        skipDiscovery: true,
+        toolNames: this.coreTools ?? [],
+      });
+      await this.toolRegistry.warmAll({ strict: true });
+      if (!options.skipMcpDiscovery) {
+        await this.toolRegistry.discoverMcpTools();
+      }
+      options.signal?.throwIfAborted();
+      return;
+    }
     try {
       const activation = this.activateChatRecording();
       this.sessionWriterActivationPromise = activation;
@@ -9321,7 +9343,11 @@ export class Config {
 
   async createToolRegistry(
     sendSdkMcpMessage?: SendSdkMcpMessage,
-    options?: { skipDiscovery?: boolean; forSubAgent?: boolean },
+    options?: {
+      skipDiscovery?: boolean;
+      forSubAgent?: boolean;
+      toolNames?: readonly string[];
+    },
   ): Promise<ToolRegistry> {
     const registry = new ToolRegistry(
       this,
@@ -9335,6 +9361,7 @@ export class Config {
       toolName: ToolName,
       factory: ToolFactory,
     ): Promise<void> => {
+      if (options?.toolNames && !options.toolNames.includes(toolName)) return;
       // PermissionManager handles the coreTools allowlist, deny rules, and
       // the `tools.eager` allowlist in a single check. A tool the active
       // eager allowlist omits comes back `deferred`, not `disabled`: it is
@@ -9601,7 +9628,8 @@ export class Config {
       return new WebFetchTool(this);
     });
     if (
-      resolveInteractionMode(this) === 'interactive' &&
+      (resolveInteractionMode(this) === 'interactive' ||
+        options?.toolNames?.includes(ToolNames.DISPLAY_IMAGE)) &&
       !this.sdkMode &&
       !this.getScreenReader() &&
       !options?.forSubAgent

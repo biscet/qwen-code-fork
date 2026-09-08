@@ -1649,6 +1649,48 @@ describe('DaemonSessionProvider', () => {
     );
   });
 
+  it('forwards the Codex engine and model through detached workspace creation', async () => {
+    sdkMocks.sessions.push(
+      createMockSession({
+        sessionId: 'codex-created',
+        session: {
+          sessionId: 'codex-created',
+          engine: 'codex',
+          workspaceCwd: '/mock-workspace',
+        },
+      }),
+    );
+    let actions: DaemonSessionActions | undefined;
+    function Harness() {
+      actions = useDaemonActions();
+      return null;
+    }
+    await renderWithProvider(<Harness />, {
+      autoConnect: false,
+      sessionId: undefined,
+      sessionContext: { kind: 'workspace', cwd: '/mock-workspace' },
+    });
+    await act(async () => {
+      await actions?.createSession({
+        engine: 'codex',
+        modelServiceId: 'gpt-codex',
+        reasoningEffort: 'high',
+      });
+    });
+    expect(
+      sdkMocks.MockDaemonSessionClient.createOrAttach,
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        engine: 'codex',
+        modelServiceId: 'gpt-codex',
+        reasoningEffort: 'high',
+        workspaceCwd: '/mock-workspace',
+      }),
+      expect.any(String),
+    );
+  });
+
   it('creates a fresh standalone session without the generic route', async () => {
     sdkMocks.capabilities.mockResolvedValue({
       workspaceCwd: '/primary',

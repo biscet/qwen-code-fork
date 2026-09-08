@@ -9911,6 +9911,7 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
             id: 'qwen3.6-27b',
             label: 'Qwen3.6-27B Local',
             authType: 'openai',
+            contextWindowSize: 98_304,
           },
         ]),
       });
@@ -9966,6 +9967,12 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
         expectedModels,
       );
       expect(context.state.models).toMatchObject(session.models);
+      expect(modelOption?.options).toContainEqual(
+        expect.objectContaining({
+          value: 'qwen3.6-27b(openai)',
+          _meta: { contextLimit: 98_304 },
+        }),
+      );
 
       mockConnectionState.resolve();
       await agentPromise;

@@ -2727,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "qwen-code-desktop"
-version = "1.4.0"
+version = "2.1.4"
 dependencies = [
  "command-group",
  "dunce",

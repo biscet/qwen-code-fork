@@ -226,8 +226,9 @@ function renderSidebar(
     mobileOpen?: boolean;
     onMobileClose?: () => void;
     onOpenSettings?: () => void;
+    onOpenModels?: () => void;
     projectFeaturesEnabled?: boolean;
-    footer?: false;
+    footer?: React.ComponentProps<typeof WebShellSidebar>['footer'];
     branding?: React.ComponentProps<typeof WebShellSidebar>['branding'];
     sessionActions?: WebShellSidebarSessionActionsOptions;
     strict?: boolean;
@@ -238,6 +239,7 @@ function renderSidebar(
       collapsed={collapsed}
       onCollapsedChange={props.onCollapsedChange ?? (() => {})}
       onOpenSettings={props.onOpenSettings ?? (() => {})}
+      onOpenModels={props.onOpenModels}
       projectFeaturesEnabled={props.projectFeaturesEnabled}
       onOpenDaemonStatus={() => {}}
       onOpenScheduledTasks={() => {}}
@@ -348,6 +350,32 @@ describe('WebShellSidebar collapsed session group persistence', () => {
       expect(settings).not.toBeNull();
       act(() => click(settings!));
       expect(onOpenSettings).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([false, true])(
+    'puts Models directly after daemon status without workspace scope, collapsed=%s',
+    async (collapsed) => {
+      const onOpenModels = vi.fn();
+      renderSidebar(collapsed, {
+        projectFeaturesEnabled: false,
+        onOpenModels,
+        footer: {
+          layout: 'stacked',
+          items: ['settings', 'daemonStatus', 'models'],
+        },
+      });
+      await flushSidebar();
+      const status = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Daemon Status"]',
+      );
+      const models = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Models"]',
+      );
+      expect(status?.nextElementSibling).toBe(models);
+      expect(models).not.toBeNull();
+      act(() => click(models!));
+      expect(onOpenModels).toHaveBeenCalledOnce();
     },
   );
 

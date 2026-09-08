@@ -696,7 +696,7 @@ function parseRequestedSessionSource(
 export function registerSessionRoutes(
   app: Application,
   deps: RegisterSessionRoutesDeps,
-): void {
+) {
   const {
     boundWorkspace,
     workspaceRegistry,
@@ -7647,4 +7647,53 @@ export function registerSessionRoutes(
       { cwdBound: 'sync-output-language' },
     ),
   );
+  return {
+    mutateBatch: async (
+      req: Request,
+      res: Response,
+      sessionIds: string[],
+      action: 'archive' | 'unarchive' | 'delete',
+      workspace?: string,
+    ): Promise<Record<string, unknown> | undefined> => {
+      const route = `POST ${workspace ? '/workspaces/:workspace' : ''}/sessions/${action}`;
+      if (workspace) req.params['workspace'] = workspace;
+      const scopedRequest = workspace ? req : undefined;
+      if (parseClientIdHeader(req, res) === null) return undefined;
+      if (
+        action !== 'unarchive' &&
+        rejectActiveLiveSessionMutation(res, sessionIds)
+      )
+        return undefined;
+      const conflicts = parseResolveConflicts(req, res);
+      if (conflicts === undefined) return undefined;
+      const operation =
+        action === 'delete'
+          ? await deleteSessions(scopedRequest, res, route, sessionIds)
+          : action === 'archive'
+            ? await archiveSessions(
+                scopedRequest,
+                res,
+                route,
+                sessionIds,
+                conflicts,
+              )
+            : await unarchiveSessions(
+                scopedRequest,
+                res,
+                route,
+                sessionIds,
+                conflicts,
+              );
+      if (!operation) return undefined;
+      if ('removed' in operation.result)
+        for (const id of operation.result.removed) clearBranchSessionEntry(id);
+      return {
+        ...operation.result,
+        errors: serializeSessionErrors(
+          operation.result.errors,
+          operation.internal,
+        ),
+      };
+    },
+  };
 }

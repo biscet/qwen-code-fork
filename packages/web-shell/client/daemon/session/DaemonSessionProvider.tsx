@@ -37,6 +37,7 @@ import {
   type CreateSessionRequest,
   type DaemonApprovalMode,
   type DaemonEvent,
+  type DaemonSessionContextStatus,
   type DaemonSseConnectReason,
   type DaemonStandaloneSessionOptions,
   type DaemonTranscriptBlock,
@@ -2506,6 +2507,7 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
             ...current,
             status: 'connected',
             sessionId: activeSession.sessionId,
+            engine: activeSession.session?.engine ?? 'qwen',
             sessionContext: activeProductSessionContext,
             ...(activeSession.clientId
               ? { clientId: activeSession.clientId }
@@ -2559,7 +2561,9 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
             pendingLoadToResolve.resolve();
           }
 
+          const isCodexSession = activeSession.session?.engine === 'codex';
           const canReuseSessionMetadata =
+            isCodexSession ||
             skipMetadataRefreshThisIteration ||
             (attachedExistingSession &&
               connectionRef.current.commands !== undefined &&
@@ -2720,6 +2724,7 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
               ...current,
               status: 'connected',
               sessionId: activeSession.sessionId,
+              engine: activeSession.session?.engine ?? 'qwen',
               // Surface the bound client id for consumers of legacy
               // originator-stamped frames.
               ...(activeSession.clientId
@@ -2740,16 +2745,28 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
               // would let a genuinely-empty snapshot leave a stale command list
               // in place (see getConnectionAfterSessionClear, which now
               // preserves commands across a clear).
-              commands:
-                supportedCommands !== undefined ? commands : current.commands,
-              skills: supportedCommands !== undefined ? skills : current.skills,
+              commands: isCodexSession
+                ? []
+                : supportedCommands !== undefined
+                  ? commands
+                  : current.commands,
+              skills: isCodexSession
+                ? []
+                : supportedCommands !== undefined
+                  ? skills
+                  : current.skills,
               models: sessionModels.length > 0 ? sessionModels : current.models,
-              currentModel: configSnapshotCurrent
-                ? (sessionCurrentModel ?? current.currentModel)
-                : current.currentModel,
+              currentModel: isCodexSession
+                ? activeSession.session?.modelId
+                : configSnapshotCurrent
+                  ? (sessionCurrentModel ?? current.currentModel)
+                  : current.currentModel,
               currentMode: currentMode ?? current.currentMode,
-              reasoning:
-                configSnapshotCurrent && context !== undefined
+              reasoning: isCodexSession
+                ? mapSessionContextReasoning({
+                    state: activeSession.state,
+                  } as DaemonSessionContextStatus)
+                : configSnapshotCurrent && context !== undefined
                   ? mapSessionContextReasoning(context)
                   : current.reasoning,
               displayName:
@@ -2764,9 +2781,16 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
                   : current.providers
                 : undefined,
               supportedCommands: supportedCommands ?? current.supportedCommands,
-              context: configSnapshotCurrent
-                ? (context ?? current.context)
-                : current.context,
+              context: isCodexSession
+                ? {
+                    v: 1,
+                    sessionId: activeSession.sessionId,
+                    workspaceCwd: activeSession.workspaceCwd,
+                    state: activeSession.state,
+                  }
+                : configSnapshotCurrent
+                  ? (context ?? current.context)
+                  : current.context,
               // Reconcile rather than reference-compare: the load response and
               // any frame that arrived during the load window share a revision
               // domain, and routing through `selectGoalState` is what registers
@@ -3960,7 +3984,13 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
           workspaceCwd?: string,
           overrides?: Pick<
             CreateSessionRequest,
-            'approvalMode' | 'sourceType' | 'worktree' | 'branch'
+            | 'approvalMode'
+            | 'sourceType'
+            | 'worktree'
+            | 'branch'
+            | 'engine'
+            | 'modelServiceId'
+            | 'reasoningEffort'
           >,
         ) => {
           const client =
@@ -3971,6 +4001,15 @@ export function DaemonSessionProvider(props: DaemonSessionProviderProps) {
             });
           const request = {
             ...createSessionRequestRef.current,
+            ...(overrides?.engine !== undefined
+              ? { engine: overrides.engine }
+              : {}),
+            ...(overrides?.modelServiceId !== undefined
+              ? { modelServiceId: overrides.modelServiceId }
+              : {}),
+            ...(overrides?.reasoningEffort !== undefined
+              ? { reasoningEffort: overrides.reasoningEffort }
+              : {}),
             sessionScope: 'thread' as const,
             workspaceCwd:
               workspaceCwd ??

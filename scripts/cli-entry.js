@@ -121,6 +121,35 @@ function preResolveQwenHome() {
 delete process.env['QWEN_CODE_MANAGED_NPM_UPDATE'];
 preResolveQwenHome();
 
+if (process.env['QWEN_CODE_DESKTOP'] === '1') {
+  const defaultsPath = join(__dirname, 'desktop-defaults.js');
+  if (existsSync(defaultsPath)) {
+    const loadedCertificates = process.env['NODE_EXTRA_CA_CERTS'];
+    const { installDesktopDefaults } = await import(
+      pathToFileURL(defaultsPath).href
+    );
+    installDesktopDefaults({
+      runtimeRoot: resolve(__dirname, '..'),
+      qwenHome: resolveQwenHome(),
+    });
+    // Node reads extra CAs only at process start, including for ACP children.
+    if (loadedCertificates !== process.env['NODE_EXTRA_CA_CERTS']) {
+      const { spawnSync } = await import('node:child_process');
+      const result = spawnSync(
+        process.execPath,
+        [...process.execArgv, currentEntryPath, ...cliArgs],
+        {
+          stdio: 'inherit',
+          env: process.env,
+        },
+      );
+      if (result.error) throw result.error;
+      if (result.signal) process.kill(process.pid, result.signal);
+      process.exit(result.status ?? 1);
+    }
+  }
+}
+
 function getManagedNpmPin() {
   try {
     const pin = JSON.parse(process.env['QWEN_CODE_MANAGED_NPM_PIN'] ?? '');

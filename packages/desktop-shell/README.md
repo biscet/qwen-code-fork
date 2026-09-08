@@ -63,6 +63,30 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## Releases
 
+### Included HomeCode defaults
+
+The desktop runtime ships the project skills and `test-engineer` agent, and installs missing entries into the resolved user `QWEN_HOME` on first launch. Existing model/MCP definitions and custom skill files take precedence. The installation marker preserves subsequent deletions; existing CLI settings migrations still run normally.
+
+Qwen3.8-27B is preset with a 131072-token context at `https://biscet-server.local:9454/v1`. Node REPL, Serena and Home AI Research connect to the same Mac server over HTTPS. Enter the Qwen API key in model settings; all three MCP connections use that key. Serena operates on server projects, and each Node REPL connection has its own server-side session. The fresh Qwen profile excludes `report_findings`, whose structured-output schema is rejected by this model server.
+
+The public Home AI LAN CA is included for the desktop Node runtime and its children; existing additional certificates from the process or trusted home `.env` files are retained. No private key, API key, server credential, personal configuration or model weights are included. The server must be reachable from the client Mac, normally on the same LAN. The gateway's source/deployment instructions live in `home-ai-platform/mcp/homecode-gateway`; it runs independently of the HomeCode application.
+
+### Local macOS DMG
+
+To build a local DMG without an Apple Developer ID, run from this directory:
+
+```bash
+npm run build:runtime --workspaces=false
+npm run tauri --workspaces=false -- build --no-bundle
+npm run bundle:mac:local --workspaces=false
+```
+
+If the release executable and runtime are already current, only the last command is needed. It signs the complete app bundle with an ad-hoc identity, packages the app and DMG, and verifies the app's resource seal. Do not add `--no-sign`: the executable's linker signature alone is not a valid app bundle signature and can cause macOS to report the installed app as damaged.
+
+The local configuration disables updater artifacts and does not change production signing. Ad-hoc signing is not Apple Developer ID signing or notarization; a downloaded app may still require **System Settings → Privacy & Security → Open Anyway**. See [Tauri's ad-hoc signing documentation](https://v2.tauri.app/distribute/sign/macos/#ad-hoc-signing).
+
+### Published releases
+
 The `Desktop Release` workflow builds signed updater artifacts when `dry_run` is disabled. Published releases require the Tauri updater private key. macOS releases also require Apple signing and notarization credentials.
 
 The first stable Tauri release may set `electron_bridge=true` to publish the macOS ZIPs and DMGs, Windows NSIS installer, Linux AppImage, and their Electron `0.0.5` manifests. Leave the input disabled for later releases; the fixed `desktop-latest` release retains the bridge assets while `desktop-latest.json` advances independently.

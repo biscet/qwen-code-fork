@@ -1408,6 +1408,26 @@ describe('ChatPane', () => {
     expect(latestChatEditorProps.workspaceColor).toBe('green');
   });
 
+  it('keeps Codex attachments and workspace prompting controls in a split pane', () => {
+    connectionState.engine = 'codex';
+    connectionState.workspaceCwd = '/work/api';
+    connectionState.capabilities = {
+      features: [],
+      workspaceCwd: '/work/web-shell',
+      workspaces: [
+        { id: 'w0', cwd: '/work/web-shell', primary: true, trusted: true },
+        { id: 'w1', cwd: '/work/api', primary: false, trusted: true },
+      ],
+    };
+    render({ workspaceCwd: '/work/api' });
+
+    expect(latestChatEditorProps.visibleToolbarActions).toEqual(
+      expect.arrayContaining(['addMenu', 'model', 'voice', 'workspace']),
+    );
+    expect(latestChatEditorProps.atWorkspaceCwd).toBe('/work/api');
+    expect(latestChatEditorProps.workspaceTitle).toBe('/work/api');
+  });
+
   it('binds split Voice to the connected secondary workspace and revision', () => {
     connectionState.workspaceCwd = '/work/api';
     connectionState.capabilities = {

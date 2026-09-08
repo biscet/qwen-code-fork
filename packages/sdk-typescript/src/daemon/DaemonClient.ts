@@ -589,6 +589,8 @@ export function isStaleBranchPointError(
 }
 
 export interface CreateSessionRequest {
+  engine?: 'qwen' | 'codex';
+  reasoningEffort?: string;
   /**
    * Workspace path the daemon must have registered. When
    * omitted, the SDK sends no `cwd` field and the daemon route falls
@@ -753,6 +755,96 @@ export interface SubscribeOptions {
 }
 
 export class DaemonClient {
+  codexAccount(): Promise<import('./codex.js').CodexAccountState> {
+    return this.jsonRequest('/codex/account', 'Read Codex account', {
+      mode: 'rest',
+    });
+  }
+
+  startCodexLogin(): Promise<import('./codex.js').CodexAccountState> {
+    return this.jsonRequest('/codex/login/start', 'Start ChatGPT login', {
+      method: 'POST',
+      mode: 'rest',
+    });
+  }
+
+  cancelCodexLogin(): Promise<import('./codex.js').CodexAccountState> {
+    return this.jsonRequest('/codex/login/cancel', 'Cancel ChatGPT login', {
+      method: 'POST',
+      mode: 'rest',
+    });
+  }
+
+  logoutCodex(): Promise<import('./codex.js').CodexAccountState> {
+    return this.jsonRequest('/codex/logout', 'Sign out of ChatGPT', {
+      method: 'POST',
+      mode: 'rest',
+    });
+  }
+
+  codexModels(): Promise<Array<import('./codex.js').CodexModel>> {
+    return this.jsonRequest('/codex/models', 'Read Codex models', {
+      mode: 'rest',
+    });
+  }
+
+  codexLimits(): Promise<import('./codex.js').CodexRateLimits | null> {
+    return this.jsonRequest('/codex/limits', 'Read Codex usage limits', {
+      mode: 'rest',
+    });
+  }
+
+  resetCodexLimits(
+    idempotencyKey: string,
+  ): Promise<import('./codex.js').CodexResetLimitsResult> {
+    return this.jsonRequest('/codex/limits/reset', 'Reset Codex usage limits', {
+      method: 'POST',
+      body: { idempotencyKey },
+      mode: 'rest',
+    });
+  }
+
+  subscribeCodexEvents(options: {
+    onEvent: (event: {
+      type: 'codex_account';
+      state: import('./codex.js').CodexAccountState;
+    }) => void;
+    onError?: (error: Error) => void;
+  }): () => void {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await this._fetch(`${this.baseUrl}/codex/events`, {
+          headers: this.headers({ Accept: 'text/event-stream' }),
+          signal: controller.signal,
+        });
+        if (!response.ok)
+          throw await this.failOnError(response, 'Subscribe to Codex account');
+        if (!response.body) throw new Error('Codex account stream is missing');
+        for await (const raw of parseSseStream(
+          response.body,
+          controller.signal,
+        )) {
+          const event = raw as unknown as {
+            type: string;
+            state?: import('./codex.js').CodexAccountState;
+          };
+          if (event.type === 'codex_account' && event.state)
+            options.onEvent({ type: 'codex_account', state: event.state });
+        }
+        if (!controller.signal.aborted)
+          throw new Error('Codex account stream disconnected');
+      } catch (error) {
+        if (!controller.signal.aborted)
+          options.onError?.(
+            error instanceof Error
+              ? error
+              : new Error('Codex account stream failed'),
+          );
+      }
+    })();
+    return () => controller.abort();
+  }
   private readonly baseUrl: string;
   private readonly token: string | undefined;
   private readonly _fetch: typeof globalThis.fetch;
@@ -767,6 +859,8 @@ export class DaemonClient {
    * REST+SSE behavior with zero breaking changes.
    */
   readonly transport: DaemonTransport;
+  private readonly codexTransport: RestSseTransport;
+  private readonly sessionEngines = new Map<string, 'qwen' | 'codex'>();
   // Lazy singleton so clients that never touch auth pay no allocation cost.
   // Exposed via the readonly `auth` accessor below.
   private _authFlow?: DaemonAuthFlow;
@@ -812,6 +906,11 @@ export class DaemonClient {
     this.transport =
       opts.transport ??
       new RestSseTransport(this.baseUrl, this.token, this._fetch);
+    this.codexTransport = new RestSseTransport(
+      this.baseUrl,
+      this.token,
+      this._fetch,
+    );
   }
 
   get maxPendingPromptsPerSession(): number {
@@ -854,6 +953,15 @@ export class DaemonClient {
     perCallTimeoutMs?: number,
     mode: 'transport' | 'rest' = 'transport',
   ): Promise<T> {
+    const sessionId = new URL(url, 'http://daemon').pathname.match(
+      /\/session\/([^/]+)(?:\/|$)/,
+    )?.[1];
+    if (
+      sessionId &&
+      this.sessionEngines.get(decodeURIComponent(sessionId).toLowerCase()) ===
+        'codex'
+    )
+      mode = 'rest';
     // When `consume` is provided, the timer must remain
     // armed through the entire callback (body read + parse). The
     // previous `Response`-returning shape cleared the timer the
@@ -1064,7 +1172,9 @@ export class DaemonClient {
     return await this.jsonRequest<T>(
       `/workspaces/${workspaceSelector}${path}`,
       label,
-      opts,
+      /^\/sessions\/(?:delete|archive|unarchive)$/.test(path)
+        ? { ...opts, mode: 'rest' }
+        : opts,
     );
   }
 
@@ -2521,7 +2631,11 @@ export class DaemonClient {
     parse: (value: unknown) => T | undefined,
     requireTerminal: boolean,
   ): AsyncGenerator<T> {
-    const res = await this.transport.fetch(`${this.baseUrl}${path}`, {
+    const sessionId = path.match(/^\/session\/([^/]+)\//)?.[1];
+    const transport = sessionId
+      ? this.transportForSession(decodeURIComponent(sessionId))
+      : this.transport;
+    const res = await transport.fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: this.headers(
         {
@@ -2984,14 +3098,76 @@ export class DaemonClient {
     }
   }
 
+  private transportForSession(sessionId: string): DaemonTransport {
+    return this.sessionEngines.get(sessionId.toLowerCase()) === 'codex'
+      ? this.codexTransport
+      : this.transport;
+  }
+
+  private async resolveSessionEngine(
+    sessionId: string,
+    clientId?: string,
+    timeoutMs?: number,
+  ) {
+    const key = sessionId.toLowerCase();
+    if (this.transport.type === 'rest' || this.sessionEngines.has(key)) return;
+    let status: { engine?: string };
+    try {
+      status = await this.jsonRequest<{ engine?: string }>(
+        `/session/${urlEncode(sessionId)}/status`,
+        'Resolve session engine',
+        { clientId, timeoutMs, mode: 'rest' },
+      );
+    } catch (error) {
+      // Codex status includes persisted threads; legacy Qwen status is live-only.
+      if (!(error instanceof DaemonHttpError) || error.status !== 404)
+        throw error;
+      status = {};
+    }
+    if (
+      status.engine !== undefined &&
+      status.engine !== 'qwen' &&
+      status.engine !== 'codex'
+    )
+      throw new Error('Unsupported session engine.');
+    this.sessionEngines.set(key, status.engine === 'codex' ? 'codex' : 'qwen');
+  }
+
   async createOrAttachSession(
     req: CreateSessionRequest,
     clientId?: string,
   ): Promise<DaemonSession> {
-    if (req.sessionId !== undefined && req.sessionId !== null) {
+    if (req.engine === 'codex') {
+      const caps = await this.jsonRequest<DaemonCapabilities>(
+        '/capabilities',
+        'Read Codex capabilities',
+        { mode: 'rest' },
+      );
+      for (const feature of [
+        'codex_sessions',
+        ...(req.sessionId ? ['session_id_override'] : []),
+        ...(req.sourceType !== undefined || req.sourceId !== undefined
+          ? ['session_source_metadata']
+          : []),
+      ]) {
+        if (!caps.features?.includes(feature))
+          throw new DaemonCapabilityMissingError(
+            feature,
+            `daemon does not advertise the ${feature} feature`,
+          );
+      }
+    }
+    if (
+      req.engine !== 'codex' &&
+      req.sessionId !== undefined &&
+      req.sessionId !== null
+    ) {
       await this.requireCapability('session_id_override');
     }
-    if (req.sourceType !== undefined || req.sourceId !== undefined) {
+    if (
+      req.engine !== 'codex' &&
+      (req.sourceType !== undefined || req.sourceId !== undefined)
+    ) {
       await this.requireCapability('session_source_metadata');
     }
     // Omitting `cwd` lets the daemon fall back to its
@@ -3013,6 +3189,8 @@ export class DaemonClient {
         headers: this.headers({ 'Content-Type': 'application/json' }, clientId),
         body: JSON.stringify({
           cwd: req.workspaceCwd,
+          engine: req.engine,
+          reasoningEffort: req.reasoningEffort,
           ...(req.sessionId !== undefined ? { sessionId: req.sessionId } : {}),
           ...(req.modelServiceId ? { modelServiceId: req.modelServiceId } : {}),
           // `!== undefined` (not truthy) so a buggy caller passing
@@ -3047,8 +3225,16 @@ export class DaemonClient {
             session.sessionId,
           );
         }
+        if (req.engine === 'codex' && session.engine !== 'codex')
+          throw new Error('Daemon did not create the requested Codex engine.');
+        this.sessionEngines.set(
+          session.sessionId.toLowerCase(),
+          session.engine ?? 'qwen',
+        );
         return session;
       },
+      undefined,
+      req.engine === 'codex' ? 'rest' : 'transport',
     );
   }
 
@@ -3115,6 +3301,7 @@ export class DaemonClient {
     return await this.jsonRequest<DaemonSessionListPage>(
       `/workspace/${urlEncode(workspaceCwd)}/sessions?${query.toString()}`,
       'GET /workspace/sessions',
+      { mode: 'rest' },
     );
   }
 
@@ -3620,11 +3807,29 @@ export class DaemonClient {
     req: RestoreSessionRequest,
     clientId?: string,
   ): Promise<DaemonRestoredSession> {
+    const timeoutMs = this.resolveRestoreTimeoutMs(req.timeoutMs);
+    if (
+      this.transport.type !== 'rest' &&
+      !this.sessionEngines.has(sessionId.toLowerCase())
+    ) {
+      await this.resolveSessionEngine(sessionId, clientId, timeoutMs);
+    }
     let sourceType = req.sourceType;
     let sourceId = req.sourceId;
     if (req.sourceType !== undefined || req.sourceId !== undefined) {
       try {
-        await this.requireCapability('session_source_metadata');
+        if (this.sessionEngines.get(sessionId.toLowerCase()) === 'codex') {
+          const caps = await this.jsonRequest<DaemonCapabilities>(
+            '/capabilities',
+            'Read Codex capabilities',
+            { mode: 'rest' },
+          );
+          if (!caps.features?.includes('session_source_metadata'))
+            throw new DaemonCapabilityMissingError(
+              'session_source_metadata',
+              'Source metadata is unavailable.',
+            );
+        } else await this.requireCapability('session_source_metadata');
       } catch (error) {
         if (!(error instanceof DaemonCapabilityMissingError)) {
           throw error;
@@ -3633,7 +3838,6 @@ export class DaemonClient {
         sourceId = undefined;
       }
     }
-    const timeoutMs = this.resolveRestoreTimeoutMs(req.timeoutMs);
     return await this.fetchWithTimeout(
       `${this.baseUrl}/session/${urlEncode(sessionId)}/${action}`,
       {
@@ -3658,7 +3862,15 @@ export class DaemonClient {
         if (!res.ok) {
           throw await this.failOnError(res, `POST /session/:id/${action}`);
         }
-        return (await res.json()) as DaemonRestoredSession;
+        const restored = (await res.json()) as DaemonRestoredSession;
+        const expected = this.sessionEngines.get(sessionId.toLowerCase());
+        if (expected === 'codex' && restored.engine !== 'codex')
+          throw new Error('Daemon changed the session engine.');
+        this.sessionEngines.set(
+          sessionId.toLowerCase(),
+          restored.engine ?? 'qwen',
+        );
+        return restored;
       },
       timeoutMs,
     );
@@ -3811,7 +4023,7 @@ export class DaemonClient {
     sessionId: string,
     opts?: { signal?: AbortSignal; clientId?: string },
   ): Promise<DaemonSessionRecapResult> {
-    const res = await this.transport.fetch(
+    const res = await this.transportForSession(sessionId).fetch(
       `${this.baseUrl}/session/${urlEncode(sessionId)}/recap`,
       {
         method: 'POST',
@@ -3847,7 +4059,7 @@ export class DaemonClient {
     question: string,
     opts?: { signal?: AbortSignal; clientId?: string },
   ): Promise<DaemonSessionBtwResult> {
-    const res = await this.transport.fetch(
+    const res = await this.transportForSession(sessionId).fetch(
       `${this.baseUrl}/session/${urlEncode(sessionId)}/btw`,
       {
         method: 'POST',
@@ -4121,7 +4333,7 @@ export class DaemonClient {
     command: string,
     opts?: { signal?: AbortSignal; clientId?: string },
   ): Promise<DaemonShellCommandResult> {
-    const res = await this.transport.fetch(
+    const res = await this.transportForSession(sessionId).fetch(
       `${this.baseUrl}/session/${urlEncode(sessionId)}/shell`,
       {
         method: 'POST',
@@ -5296,7 +5508,7 @@ export class DaemonClient {
     const releasePromptSlot = this.reservePromptSlot(sessionId);
     let releaseOnExit = true;
     try {
-      const res = await this.transport.fetch(
+      const res = await this.transportForSession(sessionId).fetch(
         `${this.baseUrl}/session/${urlEncode(sessionId)}/prompt`,
         {
           method: 'POST',
@@ -5363,7 +5575,7 @@ export class DaemonClient {
     signal?: AbortSignal,
     clientId?: string,
   ): Promise<NonBlockingPromptAccepted | PromptResult> {
-    const res = await this.transport.fetch(
+    const res = await this.transportForSession(sessionId).fetch(
       `${this.baseUrl}/session/${urlEncode(sessionId)}/prompt`,
       {
         method: 'POST',
@@ -5486,7 +5698,7 @@ export class DaemonClient {
     // connect-phase timeout, Last-Event-ID, epoch pairing, maxQueued,
     // content-type validation, and SSE parsing (for REST) or JSON-RPC
     // notification filtering (for ACP transports).
-    yield* this.transport.subscribeEvents(sessionId, {
+    yield* this.transportForSession(sessionId).subscribeEvents(sessionId, {
       lastEventId: opts.lastEventId,
       epoch: opts.epoch,
       onEpoch: opts.onEpoch,
@@ -5665,6 +5877,12 @@ export class DaemonClient {
         }
         throw await this.failOnError(res, 'POST /sessions/delete');
       },
+      undefined,
+      sessionIds.some(
+        (id) => this.sessionEngines.get(id.toLowerCase()) === 'codex',
+      )
+        ? 'rest'
+        : 'transport',
     );
   }
 
@@ -5696,6 +5914,12 @@ export class DaemonClient {
         }
         throw await this.failOnError(res, 'POST /sessions/archive');
       },
+      undefined,
+      sessionIds.some(
+        (id) => this.sessionEngines.get(id.toLowerCase()) === 'codex',
+      )
+        ? 'rest'
+        : 'transport',
     );
   }
 
@@ -5727,6 +5951,12 @@ export class DaemonClient {
         }
         throw await this.failOnError(res, 'POST /sessions/unarchive');
       },
+      undefined,
+      sessionIds.some(
+        (id) => this.sessionEngines.get(id.toLowerCase()) === 'codex',
+      )
+        ? 'rest'
+        : 'transport',
     );
   }
 
@@ -5964,6 +6194,8 @@ export class DaemonClient {
    */
   dispose(): void {
     this.transport.dispose();
+    this.codexTransport.dispose();
+    this.sessionEngines.clear();
   }
 
   // -- Session artifacts ---------------------------------------------------
@@ -6969,9 +7201,11 @@ export class WorkspaceDaemonClient {
     if (options?.sourceId !== undefined) {
       query.set('sourceId', options.sourceId);
     }
-    return await this.get(
+    return await this.client.workspaceJsonRequest(
+      this.workspaceSelector,
       `/sessions?${query.toString()}`,
       'GET /workspaces/:workspace/sessions',
+      { mode: 'rest' },
     );
   }
 

@@ -34,8 +34,19 @@ import {
   SelectValue,
 } from '../ui/select';
 import { ArrowLeftIcon, BotIcon, ServerIcon } from 'lucide-react';
+import { CodexAccountCard } from './CodexAccountCard';
+import type { CodexAccountControls } from '../../hooks/useCodexAccount';
 
-export interface ModelSettingsPanelProps {
+export interface ModelSettingsSelection {
+  currentModelId?: string;
+  selectionBusy?: boolean;
+  selectionError?: string;
+  onSelectModel: (modelId: string) => void;
+  canSelectModel?: (modelId: string) => boolean;
+}
+
+export interface ModelSettingsPanelProps extends ModelSettingsSelection {
+  codexAccount?: CodexAccountControls;
   actions: {
     loadModelSettings: DaemonClient['modelSettings'];
     saveModelSettings: DaemonClient['saveModelSettings'];
@@ -43,9 +54,6 @@ export interface ModelSettingsPanelProps {
     checkModelLimits: DaemonClient['checkModelLimits'];
     loadProviders: DaemonClient['workspaceProviders'];
   };
-  currentModelId?: string;
-  selectionBusy?: boolean;
-  onSelectModel: (modelId: string) => void;
   onSaved: () => void;
 }
 
@@ -361,10 +369,13 @@ function ModelEditor({
 }
 
 export function ModelSettingsPanel({
+  codexAccount,
   actions,
   currentModelId,
   selectionBusy = false,
+  selectionError,
   onSelectModel,
+  canSelectModel,
   onSaved,
   scope,
 }: ModelSettingsPanelProps & { scope: DaemonModelSettingsScope }) {
@@ -516,9 +527,9 @@ export function ModelSettingsPanel({
   };
   return (
     <div data-testid="model-settings" className="space-y-6">
-      {error && (
+      {(error || selectionError) && (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {error || selectionError}
         </p>
       )}
       {message && (
@@ -708,7 +719,11 @@ export function ModelSettingsPanel({
                               type="button"
                               size="sm"
                               variant="outline"
-                              disabled={busy}
+                              disabled={
+                                busy ||
+                                canSelectModel?.(providerModel.modelId) ===
+                                  false
+                              }
                               aria-label={`${t('settings.models.setCurrent')} ${model.name}`}
                               onClick={() =>
                                 onSelectModel(providerModel.modelId)
@@ -905,6 +920,15 @@ export function ModelSettingsPanel({
               </a>
             </CardContent>
           </Card>
+          {codexAccount && (
+            <CodexAccountCard
+              account={codexAccount}
+              currentModelId={currentModelId}
+              selectionBusy={busy}
+              onSelectModel={onSelectModel}
+              canSelectModel={canSelectModel}
+            />
+          )}
         </>
       )}
     </div>

@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { useCodexAccount } from '../hooks/useCodexAccount';
+import { codexModelValue, parseEngineModel } from '../utils/codexModels';
 import {
   useCallback,
   useEffect,
@@ -258,6 +260,8 @@ export function ChatPane({
   const actions = useActions();
   const sessionOwnerGuard = useDaemonSessionOwnerGuard();
   const workspace = useWorkspace();
+  const codexAccount = useCodexAccount(workspace.client, false);
+  const codexActive = connection.engine === 'codex';
   const attachmentWorkspaceTarget = useArtifactWorkspaceTarget(
     connection.workspaceCwd,
   );
@@ -729,7 +733,7 @@ export function ChatPane({
       ) {
         return true;
       }
-      if (/^\/goal(?:\s|$)/i.test(trimmed)) {
+      if (!codexActive && /^\/goal(?:\s|$)/i.test(trimmed)) {
         // The same guard App.tsx applies before any slash handling: a control
         // that cannot reach the daemon must leave the text in the composer
         // instead of consuming it, appending a transcript entry, and failing
@@ -881,6 +885,7 @@ export function ChatPane({
       return queued;
     },
     [
+      codexActive,
       actions,
       admissionPayloadLocked,
       catalogOwnerCwd,
@@ -1012,6 +1017,7 @@ export function ChatPane({
   // the outer one. The approval-mode and model pickers likewise drive this
   // session's own actions; the SDK reflects the change back on `connection`.
   const commands = useMemo(() => {
+    if (codexActive) return [];
     return localizeBuiltinDescriptions(
       mergeCommands(connection.commands ?? [], getLocalCommands(t)),
       t,
@@ -1024,7 +1030,7 @@ export function ChatPane({
         description: t(skillKey),
       };
     });
-  }, [connection.commands, t]);
+  }, [codexActive, connection.commands, t]);
   const skills = useMemo(() => {
     const commandsByName = new Map(
       commands.map((command) => [command.name.toLowerCase(), command]),
@@ -1073,11 +1079,21 @@ export function ChatPane({
   );
   const availableModels = useMemo(
     () =>
-      (connection.models ?? []).filter(isVisibleComposerModel).map((model) => ({
-        id: model.id,
-        label: getModelDisplayName(model.label || model.id),
-      })),
-    [connection.models],
+      codexActive
+        ? (codexAccount.state?.models ?? [])
+            .filter((model) => !model.hidden)
+            .map((model) => ({
+              id: codexModelValue(model.model),
+              label: model.displayName,
+              group: 'Codex',
+            }))
+        : (connection.models ?? [])
+            .filter(isVisibleComposerModel)
+            .map((model) => ({
+              id: model.id,
+              label: getModelDisplayName(model.label || model.id),
+            })),
+    [connection.models, codexActive, codexAccount.state?.models],
   );
   const handleSelectMode = useCallback(
     (modeId: string) => {
@@ -1122,7 +1138,7 @@ export function ChatPane({
   const handleSelectModel = useCallback(
     (modelId: string) => {
       actions
-        .setModel(modelId)
+        .setModel(parseEngineModel(modelId).modelId)
         .catch((error: unknown) =>
           reportError(error, 'Failed to switch model'),
         );
@@ -1133,12 +1149,13 @@ export function ChatPane({
     (value: ReasoningSelection) =>
       actions
         .setReasoningEffort(value, {
-          persist: connection.sessionContext?.kind !== 'standalone',
+          persist:
+            !codexActive && connection.sessionContext?.kind !== 'standalone',
         })
         .catch((error: unknown) =>
           reportError(error, t('reasoning.updateFailed')),
         ),
-    [actions, connection.sessionContext?.kind, reportError, t],
+    [actions, codexActive, connection.sessionContext?.kind, reportError, t],
   );
 
   const headerLabel =
@@ -1154,10 +1171,17 @@ export function ChatPane({
   // `React.memo`, and a fresh `[...]` each render would defeat it.
   const paneToolbarActions = useMemo(
     () =>
-      showWorkspaceChip
-        ? [...PANE_TOOLBAR_ACTIONS, 'workspace' as const]
-        : PANE_TOOLBAR_ACTIONS,
-    [showWorkspaceChip],
+      codexActive
+        ? ([
+            'addMenu',
+            'model',
+            'voice',
+            ...(showWorkspaceChip ? ['workspace' as const] : []),
+          ] as ComposerToolbarAction[])
+        : showWorkspaceChip
+          ? [...PANE_TOOLBAR_ACTIONS, 'workspace' as const]
+          : PANE_TOOLBAR_ACTIONS,
+    [showWorkspaceChip, codexActive],
   );
   const headerActions =
     connection.sessionId && renderHeaderActions
@@ -1452,20 +1476,26 @@ export function ChatPane({
             onCancel={handleCancel}
             isRunning={isResponding || sessionHasActivePrompt}
             commands={commands}
-            skills={skills}
+            skills={codexActive ? [] : skills}
             queuedMessages={queuedTexts}
             onPopQueuedMessages={editLastQueuedPrompt}
             onClearQueuedMessages={clearQueuedPrompts}
             visibleToolbarActions={paneToolbarActions}
             tokenCount={connection.tokenCount ?? 0}
             contextWindow={connection.contextWindow ?? 0}
-            onShowContextUsage={handleShowContextUsage}
+            onShowContextUsage={
+              codexActive ? undefined : handleShowContextUsage
+            }
             workspaceName={showWorkspaceChip ? workspaceLabel : undefined}
             workspaceTitle={paneWorkspaceCwd}
             workspaceColor={workspaceAccent}
             currentMode={connection.currentMode ?? 'default'}
-            sessionWorkflowEnabled={sessionWorkflowEnabled}
-            currentModel={connection.currentModel ?? ''}
+            sessionWorkflowEnabled={!codexActive && sessionWorkflowEnabled}
+            currentModel={
+              connection.currentModel && codexActive
+                ? codexModelValue(connection.currentModel)
+                : (connection.currentModel ?? '')
+            }
             availableModels={availableModels}
             onSelectMode={handleSelectMode}
             onSelectModel={handleSelectModel}

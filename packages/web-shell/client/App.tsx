@@ -1,4 +1,14 @@
-import type { ModelSettingsPanelProps } from './components/messages/ModelSettingsPanel';
+import { mapProviderStatus } from './daemon/session/mappers';
+import { useCodexAccount } from './hooks/useCodexAccount';
+import {
+  codexModelValue,
+  codexReasoning,
+  parseEngineModel,
+} from './utils/codexModels';
+import type {
+  ModelSettingsPanelProps,
+  ModelSettingsSelection,
+} from './components/messages/ModelSettingsPanel';
 import './styles/globals.css';
 import {
   forwardRef,
@@ -1008,7 +1018,8 @@ export type WebShellSlashCommandHandler = (
 ) => boolean | void;
 
 export interface WebShellProps {
-  initialPanel?: 'settings' | 'status';
+  settingsModelSelection?: ModelSettingsSelection;
+  initialPanel?: 'settings' | 'status' | 'models';
   onPanelClose?: () => void;
   /** Host-specific label for the Ask User Question free-text choice. */
   askUserFreeTextLabel?: string;
@@ -2139,6 +2150,7 @@ function readScopedModelSetting(
 }
 
 export function App({
+  settingsModelSelection,
   initialPanel,
   onPanelClose,
   askUserFreeTextLabel,
@@ -3511,6 +3523,7 @@ export function App({
     setArtifactPanelFullscreen(false);
   }, [logicalSessionKey]);
   const sideTasksAvailable =
+    connection.engine !== 'codex' &&
     workspaceContextActive &&
     Boolean(connection.sessionId && connection.workspaceCwd) &&
     connection.capabilities?.features.includes(SESSION_SIDE_TASK_FEATURE) ===
@@ -5786,7 +5799,7 @@ export function App({
     | 'channels'
     | 'workspaces'
     | null
-  >(initialPanel ?? null);
+  >(initialPanel === 'models' ? 'settings' : (initialPanel ?? null));
   const activePanelRef = useRef(activePanel);
   // Deep-link target for the Settings panel (e.g. 'Daemon' from the Local
   // Control QR popover). Cleared on any panel close/switch, not just
@@ -5794,7 +5807,8 @@ export function App({
   // overlay auto-close, openScheduledTasks, openSplitView, ...).
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<
     string | undefined
-  >();
+  >(initialPanel === 'models' ? 'Model' : undefined);
+  const [settingsNavigationVersion, setSettingsNavigationVersion] = useState(0);
   useEffect(() => {
     if (activePanel !== 'settings') {
       setSettingsInitialCategory(undefined);
@@ -6469,7 +6483,49 @@ export function App({
   const [selectedTheme, setSelectedTheme] = useState<WebShellTheme>(
     providedTheme ?? WebShellThemeId.Dark,
   );
+  const settingsEnabled = workspaceContextActive || activePanel === 'settings';
+  const providersState = useProviders({
+    autoLoad: settingsEnabled,
+    enabled: settingsEnabled,
+  });
+  const codexAccount = useCodexAccount(
+    workspace.client,
+    activePanel === 'settings',
+  );
   const [currentModel, setCurrentModel] = useState('');
+  const codexActive = connection.sessionId
+    ? connection.engine === 'codex'
+    : parseEngineModel(currentModel).engine === 'codex';
+  const allComposerModels = useMemo(
+    () => [
+      ...(connection.engine === 'codex'
+        ? !connection.workspaceCwd ||
+          providersState.status?.workspaceCwd === connection.workspaceCwd
+          ? mapProviderStatus(providersState.status).models
+          : []
+        : (connection.models ?? [])
+      )
+        .filter(isVisibleComposerModel)
+        .map((model) => ({ ...model, group: 'Qwen' })),
+      ...(codexAccount.state?.account ? codexAccount.state.models : [])
+        .filter((model) => !model.hidden)
+        .map((model) => ({
+          id: codexModelValue(model.model),
+          label: model.displayName,
+          group: 'Codex',
+          reasoningPreview: codexReasoning(model),
+        })),
+    ],
+    [
+      connection.models,
+      connection.engine,
+      connection.workspaceCwd,
+      codexAccount.state,
+      providersState.status,
+    ],
+  );
+  const composerModelsRef = useRef(allComposerModels);
+  composerModelsRef.current = allComposerModels;
   const currentModelRef = useRef(currentModel);
   currentModelRef.current = currentModel;
   const setPendingModel = useCallback((modelId: string) => {
@@ -6491,7 +6547,7 @@ export function App({
   connectionRef.current = connection;
   const selectWelcomeModel = useCallback(
     (modelId: string) => {
-      const models = connectionRef.current.models;
+      const models = composerModelsRef.current;
       const reasoningIntent = pendingReasoningIntentRef.current;
       const sourceReasoningIntent =
         reasoningIntent?.modelId === currentModelRef.current
@@ -6738,7 +6794,7 @@ export function App({
       const modelId =
         currentModelRef.current || connectionRef.current.currentModel;
       const reasoningIntent = pendingReasoningIntentRef.current;
-      const reasoningPreview = connectionRef.current.models?.find(
+      const reasoningPreview = composerModelsRef.current.find(
         (model) => model.id === modelId,
       )?.reasoningPreview;
       const reasoningEffort =
@@ -7312,11 +7368,12 @@ export function App({
 
   const availableModels = useMemo(
     () =>
-      (connection.models ?? []).filter(isVisibleComposerModel).map((m) => ({
+      allComposerModels.map((m) => ({
         id: m.id,
         label: getModelDisplayName(m.label || m.id),
+        group: m.group,
       })),
-    [connection.models],
+    [allComposerModels],
   );
   const hasAuthoritativeReasoningContext = Boolean(
     connection.sessionId &&
@@ -7324,7 +7381,7 @@ export function App({
   );
   const welcomeReasoningPreview =
     !connection.sessionId && !connection.context
-      ? connection.models?.find((model) => model.id === currentModel)
+      ? allComposerModels.find((model) => model.id === currentModel)
           ?.reasoningPreview
       : undefined;
   useEffect(() => {
@@ -7379,7 +7436,8 @@ export function App({
     (entry) => entry.cwd === activeWorkspaceCwd,
   )?.trusted;
   const gitModeEligible = Boolean(
-    !connection.sessionId &&
+    !codexActive &&
+      !connection.sessionId &&
       activeWorkspaceTrusted &&
       selectedWorkspaceGitStatus?.branch,
   );
@@ -8127,12 +8185,7 @@ export function App({
     setShowHelpDialog(true);
   }, []);
 
-  const settingsEnabled = workspaceContextActive || activePanel === 'settings';
   const workspaceSettingsState = useSettings({
-    autoLoad: settingsEnabled,
-    enabled: settingsEnabled,
-  });
-  const providersState = useProviders({
     autoLoad: settingsEnabled,
     enabled: settingsEnabled,
   });
@@ -8712,7 +8765,12 @@ export function App({
 
   const handleSetMode = useCallback(
     (modeId: string) => {
-      if (sessionWriteBlocked) return;
+      if (
+        sessionWriteBlocked ||
+        connectionRef.current.engine === 'codex' ||
+        parseEngineModel(currentModelRef.current).engine === 'codex'
+      )
+        return;
       if (!isDaemonApprovalMode(modeId)) {
         reportError(
           new Error(`Unsupported approval mode: ${modeId}`),
@@ -9043,14 +9101,17 @@ export function App({
 
   const prevConnectionModelRef = useRef(connection.currentModel);
   useLayoutEffect(() => {
-    const next = connection.currentModel;
+    const next =
+      connection.currentModel && connection.engine === 'codex'
+        ? codexModelValue(connection.currentModel)
+        : connection.currentModel;
     // A late standalone options publish lands as an undefined→value change;
     // never let it overwrite a model the user already picked while waiting.
     const wasLateHydration =
       prevConnectionModelRef.current === undefined && next !== undefined;
     prevConnectionModelRef.current = next;
     setCurrentModel((prev) => (wasLateHydration && prev ? prev : (next ?? '')));
-  }, [connection.currentModel, logicalSessionKey]);
+  }, [connection.currentModel, connection.engine, logicalSessionKey]);
 
   const prevConnectionModeRef = useRef(connection.currentMode);
   useLayoutEffect(() => {
@@ -11402,7 +11463,11 @@ export function App({
         });
         return clearComposerOnPromptStart ? false : true;
       };
-      if (text.startsWith('/')) {
+      if (
+        text.startsWith('/') &&
+        connectionRef.current.engine !== 'codex' &&
+        parseEngineModel(currentModelRef.current).engine !== 'codex'
+      ) {
         const match = text.match(SLASH_COMMAND_PATTERN);
         if (match) {
           const cmd = match[1];
@@ -12331,7 +12396,11 @@ export function App({
             inputAnnotations: metadata?.inputAnnotations,
           },
         );
-      } else if (text.startsWith('!')) {
+      } else if (
+        text.startsWith('!') &&
+        connectionRef.current.engine !== 'codex' &&
+        parseEngineModel(currentModelRef.current).engine !== 'codex'
+      ) {
         const cmd = text.slice(1).trim();
         if (!cmd) return false;
         if (streamingStateRef.current !== 'idle') {
@@ -13040,6 +13109,25 @@ export function App({
         selectWelcomeModel(modelId);
         return;
       }
+      const selection = parseEngineModel(modelId);
+      if (selection.engine !== (connectionRef.current.engine ?? 'qwen')) {
+        setModelActionBusy(true);
+        const context = connectionRef.current.sessionContext;
+        const cwd = connectionRef.current.workspaceCwd;
+        void createAndAttachSessionForPrompt({
+          sessionActions,
+          modelId,
+          workspaceCwd: cwd,
+          sessionContext: context,
+          getCurrentSessionId: () => connectionRef.current.sessionId,
+          onSessionAllocated: (sessionId) => {
+            if (cwd) sessionCatalogController.sessionCreated(cwd, sessionId);
+          },
+        })
+          .catch((error: unknown) => reportError(error, t('model.switch')))
+          .finally(() => setModelActionBusy(false));
+        return;
+      }
       // Drive the shared busy flag so the model-management rows disable while a
       // selection is in flight — rapid Set current clicks would otherwise launch
       // concurrent setModel calls that can resolve out of order and leave a
@@ -13048,7 +13136,7 @@ export function App({
       const modelActionToken = ++modelActionTokenRef.current;
       setModelActionBusy(true);
       sessionActions
-        .setModel(modelId)
+        .setModel(selection.modelId)
         .then((result) => {
           if (!owner.isCurrent()) return;
           const summary = getModelSwitchSummary(result);
@@ -13076,6 +13164,7 @@ export function App({
       sessionWriteBlocked,
       reportError,
       sessionActions,
+      sessionCatalogController,
       sessionOwnerGuard,
       setPendingModel,
       selectWelcomeModel,
@@ -13091,7 +13180,9 @@ export function App({
       }
       return sessionActions
         .setReasoningEffort(value, {
-          persist: connectionRef.current.sessionContext?.kind !== 'standalone',
+          persist:
+            connectionRef.current.engine !== 'codex' &&
+            connectionRef.current.sessionContext?.kind !== 'standalone',
         })
         .catch((error: unknown) =>
           reportError(error, t('reasoning.updateFailed')),
@@ -13111,7 +13202,7 @@ export function App({
         return;
       }
       const modelId = currentModelRef.current;
-      const preview = activeConnection.models?.find(
+      const preview = composerModelsRef.current.find(
         (model) => model.id === modelId,
       )?.reasoningPreview;
       if (!preview) return;
@@ -13378,6 +13469,7 @@ export function App({
       (loadedSkillsFallback?.sessionId === connection.sessionId &&
         loadedSkillsFallback.workspaceCwd === connection.workspaceCwd));
   const composerSkills = useMemo(() => {
+    if (codexActive) return [];
     if (!workspaceContextActive) {
       return pendingSessionContext === undefined && connection.sessionId
         ? availableSessionSkillInfos(
@@ -13393,6 +13485,7 @@ export function App({
           connection.commands ?? [],
         );
   }, [
+    codexActive,
     connection.commands,
     connection.sessionId,
     connection.skills,
@@ -13402,6 +13495,7 @@ export function App({
     workspaceContextActive,
   ]);
   const commands = useMemo(() => {
+    if (codexActive) return [];
     const previousSkillNames = new Set(
       (connection.skills ?? []).map((skill) => skill.toLowerCase()),
     );
@@ -13453,6 +13547,7 @@ export function App({
         };
       });
   }, [
+    codexActive,
     additionalSlashCommands,
     connection.commands,
     connection.sessionId,
@@ -13518,6 +13613,13 @@ export function App({
       (composerToolbarAdditionalActions?.length
         ? [...defaults, ...composerToolbarAdditionalActions]
         : defaults);
+    if (codexActive)
+      return configured.filter(
+        (action) =>
+          action !== 'approvalMode' &&
+          action !== 'contextUsage' &&
+          action !== 'commands',
+      );
     return isStandaloneModelPickerUnavailable({
       sessionId: connection.sessionId,
       sessionContextKind: effectiveSessionContext?.kind,
@@ -13526,6 +13628,7 @@ export function App({
       ? configured.filter((action) => action !== 'model')
       : configured;
   }, [
+    codexActive,
     composerToolbarActions,
     composerToolbarAdditionalActions,
     connection.models,
@@ -13818,21 +13921,22 @@ export function App({
     onNestedRightPanelOpen: handleTurnOutputOpen,
     onNestedArtifactsChange: handlePaneArtifactsChange,
     onError: reportError,
-    sessionWorkflowEnabled,
-    workflow: sessionWorkflowEnabled
-      ? {
-          todos: sessionWorkflowTodos,
-          tools: planAgentTools,
-          tasks: environmentAgentTasks,
-          artifacts,
-          selectedTodoId: selectedWorkflowTodoId,
-          onSelectedTodoIdChange: setSelectedWorkflowTodoId,
-          onExpandGraph: expandWorkflowGraph,
-          onOpenSubagent: openSubagentPanel,
-          onOpenArtifact: openArtifactPanel,
-          canvasMode: mainView === 'cockpit',
-        }
-      : undefined,
+    sessionWorkflowEnabled: sessionWorkflowEnabled && !codexActive,
+    workflow:
+      sessionWorkflowEnabled && !codexActive
+        ? {
+            todos: sessionWorkflowTodos,
+            tools: planAgentTools,
+            tasks: environmentAgentTasks,
+            artifacts,
+            selectedTodoId: selectedWorkflowTodoId,
+            onSelectedTodoIdChange: setSelectedWorkflowTodoId,
+            onExpandGraph: expandWorkflowGraph,
+            onOpenSubagent: openSubagentPanel,
+            onOpenArtifact: openArtifactPanel,
+            canvasMode: mainView === 'cockpit',
+          }
+        : undefined,
     onImageIngestionNotice: pushToast,
     deferSubagentMount,
     onClose: closeArtifactPanel,
@@ -13892,7 +13996,7 @@ export function App({
             >
               <ModelDialog
                 mode={modelDialogMode}
-                models={modelDialogMode === 'voice' ? voiceModels : undefined}
+                models={modelDialogMode === 'voice' ? voiceModels : modelDialogMode === 'main' ? allComposerModels : undefined}
                 filterModel={
                   modelDialogMode === 'main' ? mainModelFilter : undefined
                 }
@@ -13903,7 +14007,7 @@ export function App({
                       ? currentVisionModel
                       : modelDialogMode === 'fast'
                         ? currentFastModel
-                        : undefined
+                        : currentModel
                 }
                 onSelect={(modelId) => {
                   if (modelDialogMode) {
@@ -14216,6 +14320,12 @@ export function App({
                   onOpenChannels={() => {
                     closeMobileDrawer();
                     openPanel('channels');
+                  }}
+                  onOpenModels={() => {
+                    closeMobileDrawer();
+                    setSettingsInitialCategory('Model');
+                    setSettingsNavigationVersion((version) => version + 1);
+                    openPanel('settings');
                   }}
                   onOpenDaemonStatus={() => {
                     closeMobileDrawer();
@@ -14719,6 +14829,7 @@ export function App({
                     >
                       {activePanel === 'settings' ? (
                       <SettingsMessage
+                        key={settingsNavigationVersion}
                         settingsState={targetedWorkspaceSettingsState}
                         workspaceScopeAvailable={workspaceContextActive}
                         embedded
@@ -14732,9 +14843,11 @@ export function App({
                             ? {
                                 workspaceKey: activeWorkspaceCwd ?? '',
                                 actions: modelSettingsActions,
+                                codexAccount,
                                 selectionBusy: modelActionBusy,
-                                currentModelId: connection.currentModel ?? undefined,
+                                currentModelId: currentModel || undefined,
                                 onSelectModel: handleModelSelect,
+                                ...settingsModelSelection,
                                 onSaved: () => {
                                   void reloadProviders();
                                   void reloadWorkspaceSettings();
@@ -15287,7 +15400,7 @@ export function App({
                                         )
                                     : undefined
                                 }
-                                onBranchSession={handleBranchCurrentSession}
+                                onBranchSession={codexActive ? undefined : handleBranchCurrentSession}
                                 bottomOverlayInset={bottomPanelInset}
                                 welcomeHeader={
                                   isChatEmptyState ? welcomeHeader : undefined
@@ -15816,7 +15929,7 @@ export function App({
                           onPopQueuedMessages={editLastQueuedPrompt}
                           onClearQueuedMessages={clearQueuedPrompts}
                           currentMode={currentMode}
-                          sessionWorkflowEnabled={sessionWorkflowEnabled}
+                          sessionWorkflowEnabled={!codexActive && sessionWorkflowEnabled}
                           currentModel={currentModel}
                           gitBranch={
                             workspaceContextActive
@@ -15857,7 +15970,7 @@ export function App({
                           contextUsageAlwaysVisible={
                             contextUsageAlwaysVisible
                           }
-                          onShowContextUsage={handleShowContextUsage}
+                          onShowContextUsage={codexActive ? undefined : handleShowContextUsage}
                           availableModels={availableModels}
                           onSelectMode={handleSetMode}
                           onSelectModel={handleModelSelect}

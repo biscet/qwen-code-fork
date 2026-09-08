@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  Fragment,
 } from 'react';
 import type {
   ReactNode,
@@ -248,7 +249,7 @@ interface ChatEditorProps {
     | DaemonSessionContextUsageStatus
     | undefined
     | Promise<DaemonSessionContextUsageStatus | undefined>;
-  availableModels?: Array<{ id: string; label?: string }>;
+  availableModels?: Array<{ id: string; label?: string; group?: string }>;
   onSelectMode?: (mode: string) => void;
   onSelectModel?: (model: string) => void;
   reasoning?: DaemonReasoningControls;
@@ -802,40 +803,47 @@ function ToolbarPopover({
             : ''
       } ${searchable ? styles.dropdownListConstrained : ''}`}
     >
-      {visibleItems.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className={`${styles.dropdownItem} ${
-            item.id === activeId ? styles.dropdownItemActive : ''
-          }`}
-          title={item.label}
-          onClick={() => {
-            selectionRef.current = true;
-            onSelect(item.id);
-          }}
-        >
-          {hasCheckItems ? (
-            <>
-              {hasRichItems && (
-                <span className={styles.dropdownItemIcon}>{item.icon}</span>
-              )}
-              <span className={styles.dropdownItemContent}>
-                <span className={styles.dropdownItemLabel}>{item.label}</span>
-                {item.description && (
-                  <span className={styles.dropdownItemDesc}>
-                    {item.description}
-                  </span>
-                )}
-              </span>
-              <span className={styles.dropdownItemCheck}>
-                {item.id === activeId ? <CheckIcon /> : null}
-              </span>
-            </>
-          ) : (
-            item.label
+      {visibleItems.map((item, index) => (
+        <Fragment key={item.id}>
+          {item.group && item.group !== visibleItems[index - 1]?.group && (
+            <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+              {item.group}
+            </div>
           )}
-        </button>
+          <button
+            key={item.id}
+            type="button"
+            className={`${styles.dropdownItem} ${
+              item.id === activeId ? styles.dropdownItemActive : ''
+            }`}
+            title={item.label}
+            onClick={() => {
+              selectionRef.current = true;
+              onSelect(item.id);
+            }}
+          >
+            {hasCheckItems ? (
+              <>
+                {hasRichItems && (
+                  <span className={styles.dropdownItemIcon}>{item.icon}</span>
+                )}
+                <span className={styles.dropdownItemContent}>
+                  <span className={styles.dropdownItemLabel}>{item.label}</span>
+                  {item.description && (
+                    <span className={styles.dropdownItemDesc}>
+                      {item.description}
+                    </span>
+                  )}
+                </span>
+                <span className={styles.dropdownItemCheck}>
+                  {item.id === activeId ? <CheckIcon /> : null}
+                </span>
+              </>
+            ) : (
+              item.label
+            )}
+          </button>
+        </Fragment>
       ))}
       {visibleItems.length === 0 && noResultsLabel && (
         <div className={styles.dropdownEmpty} role="status">
@@ -1036,7 +1044,11 @@ function ModelReasoningControls({
           aria-label={t('reasoning.thinking')}
           data-web-shell-thinking-toggle
           onCheckedChange={(enabled) =>
-            void select(enabled ? 'default' : 'none')
+            void select(
+              enabled
+                ? (reasoning.defaultEffort ?? reasoning.efforts[0] ?? 'default')
+                : 'none',
+            )
           }
         />
       </div>
@@ -1056,7 +1068,12 @@ function ModelReasoningControls({
               disabled={!reasoning.enabled || busy || !onSelect}
               onClick={() => void select(effort)}
             >
-              <span>{t(`reasoning.effort.${effort}`)}</span>
+              <span>
+                {t(`reasoning.effort.${effort}`) ===
+                `reasoning.effort.${effort}`
+                  ? effort
+                  : t(`reasoning.effort.${effort}`)}
+              </span>
               <span className={styles.dropdownItemCheck}>
                 {reasoning.effort === effort ? <CheckIcon /> : null}
               </span>
@@ -2236,6 +2253,7 @@ export const ChatEditor = memo(
           id: m.id,
           label: getModelDisplayName(m.label || m.id),
           searchText: `${m.label ?? ''}\n${m.id}`,
+          group: m.group,
         })),
       [availableModels],
     );

@@ -5,7 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { HomeChatApp } from './HomeChatApp';
-import { saveHomeChatOptions } from './homechat-api';
+import { saveHomeChatOptions, type HomeChatOptions } from './homechat-api';
+import type { ModelSettingsSelection } from '../messages/ModelSettingsPanel';
 import styles from './HomeChatApp.module.css';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -41,6 +42,135 @@ describe('HomeChatApp', () => {
     expect(modeIndex).toBeGreaterThan(0);
     expect(newChatIndex).toBeGreaterThan(modeIndex);
     expect(markup).not.toMatch(/data-tauri-drag-region[^>]*>[^<]*<button/);
+  });
+
+  it('selects advertised Codex and LLM7 models from settings through HomeChat options only', async () => {
+    let codexAvailable = false;
+    let options: HomeChatOptions = {
+      chatModel: {
+        providerId: 'catalog-llm7-provider',
+        key: 'codestral-latest',
+      },
+      thinking: false,
+      effort: 'medium',
+      optimizationMode: 'speed',
+    };
+    const saved: HomeChatOptions[] = [];
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/options')) {
+        options = JSON.parse(String(init?.body)) as HomeChatOptions;
+        saved.push(options);
+        return Response.json({});
+      }
+      if (url.endsWith('/models'))
+        return Response.json({
+          options,
+          models: [
+            {
+              providerId: 'catalog-llm7-provider',
+              key: 'codestral-latest',
+              name: 'LLM7 Codestral',
+              providerName: 'LLM7',
+              reasoning: false,
+            },
+            ...(codexAvailable
+              ? [
+                  {
+                    providerId: 'homecode-codex',
+                    key: 'gpt-codex',
+                    name: 'Codex',
+                    providerName: 'ChatGPT',
+                    reasoning: true,
+                    reasoningEfforts: ['low', 'high'],
+                    defaultReasoningEffort: 'low',
+                  },
+                ]
+              : []),
+          ],
+        });
+      return Response.json({ chats: [] });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    let selection: ModelSettingsSelection | undefined;
+    let pending: Promise<unknown> | undefined;
+    try {
+      await act(async () =>
+        root.render(
+          <HomeChatApp
+            baseUrl="http://localhost"
+            theme="dark"
+            versionLabel="2.0.0"
+            onProductChange={() => undefined}
+            renderAdministrationPanel={(_panel, _close, value) => {
+              selection = value;
+              return (
+                <div>
+                  <button
+                    onClick={() => {
+                      pending = Promise.resolve(
+                        value.onSelectModel('codex:gpt-codex'),
+                      );
+                    }}
+                  >
+                    Выбрать Codex
+                  </button>
+                  <button
+                    onClick={() => {
+                      pending = Promise.resolve(
+                        value.onSelectModel('codestral-latest(openai)'),
+                      );
+                    }}
+                  >
+                    Выбрать LLM7
+                  </button>
+                </div>
+              );
+            }}
+          />,
+        ),
+      );
+      await act(async () =>
+        container
+          .querySelector<HTMLButtonElement>('button[aria-label="Модели"]')!
+          .click(),
+      );
+      expect(selection?.currentModelId).toBe('codestral-latest');
+      codexAvailable = true;
+      await act(async () => {
+        [...container.querySelectorAll('button')]
+          .find((button) => button.textContent === 'Выбрать Codex')!
+          .click();
+        await pending;
+      });
+      expect(saved[0]).toMatchObject({
+        chatModel: { providerId: 'homecode-codex', key: 'gpt-codex' },
+        effort: 'low',
+      });
+      expect(selection?.currentModelId).toBe('codex:gpt-codex');
+      await act(async () => {
+        [...container.querySelectorAll('button')]
+          .find((button) => button.textContent === 'Выбрать LLM7')!
+          .click();
+        await pending;
+      });
+      expect(saved[1]).toMatchObject({
+        chatModel: {
+          providerId: 'catalog-llm7-provider',
+          key: 'codestral-latest',
+        },
+      });
+      expect(selection?.currentModelId).toBe('codestral-latest');
+      expect(
+        fetch.mock.calls.every(([url]) => url.includes('/homechat/')),
+      ).toBe(true);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('opens administration panels from Chat and preserves the draft on return', async () => {
@@ -117,6 +247,7 @@ describe('HomeChatApp', () => {
       for (const [label, panel] of [
         ['Настройки', 'settings'],
         ['Статус демона', 'status'],
+        ['Модели', 'models'],
       ]) {
         await act(async () => {
           container
@@ -141,7 +272,9 @@ describe('HomeChatApp', () => {
         });
         expect(container.querySelector('[role="dialog"]')).toBeNull();
         expect(container.querySelector('textarea')?.value).toBe(draft);
-        expect(catalogLoads).toBe(panel === 'settings' ? 2 : 3);
+        expect(catalogLoads).toBe(
+          panel === 'settings' ? 2 : panel === 'status' ? 3 : 4,
+        );
         expect(
           container.querySelector('button[aria-label^="Выбрать модель:"]')
             ?.textContent,

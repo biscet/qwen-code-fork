@@ -17,6 +17,7 @@ interface CapturedWorkspaceSessionProps {
 const testState = vi.hoisted(() => ({
   props: undefined as CapturedWorkspaceSessionProps | undefined,
   homeChatTheme: undefined as string | undefined,
+  modelsAdapter: undefined as WebShellProps['settingsModelSelection'],
 }));
 
 vi.mock('react-dom/client', async (importOriginal) => ({
@@ -25,6 +26,7 @@ vi.mock('react-dom/client', async (importOriginal) => ({
 }));
 vi.mock('@qwen-code/web-shell/daemon-react-sdk', () => ({
   DaemonWorkspaceProvider: ({ children }: { children: ReactNode }) => children,
+  useWorkspace: () => ({ capabilities: { workspaceCwd: '/workspace' } }),
 }));
 vi.mock('./components/WorkspaceSessionProvider', () => ({
   WorkspaceSessionProvider: (props: CapturedWorkspaceSessionProps) => {
@@ -33,9 +35,25 @@ vi.mock('./components/WorkspaceSessionProvider', () => ({
   },
 }));
 vi.mock('./components/homechat/HomeChatApp', () => ({
-  HomeChatApp: ({ theme }: { theme: string }) => {
+  HomeChatApp: ({
+    theme,
+    renderAdministrationPanel,
+  }: {
+    theme: string;
+    renderAdministrationPanel: (
+      panel: 'models',
+      onClose: () => void,
+      selection: NonNullable<WebShellProps['settingsModelSelection']>,
+    ) => ReactNode;
+  }) => {
     testState.homeChatTheme = theme;
-    return null;
+    return testState.modelsAdapter
+      ? renderAdministrationPanel(
+          'models',
+          () => undefined,
+          testState.modelsAdapter,
+        )
+      : null;
   },
 }));
 vi.mock('./config/daemon', () => ({
@@ -54,6 +72,7 @@ describe('StandaloneApp', () => {
   beforeEach(() => {
     testState.props = undefined;
     testState.homeChatTheme = undefined;
+    testState.modelsAdapter = undefined;
     window.localStorage.removeItem('homecode-product');
     window.localStorage.removeItem('qwen-code-web-shell-theme');
     window.history.replaceState(null, '', '/');
@@ -104,9 +123,9 @@ describe('StandaloneApp', () => {
         items: ['newTask', 'plugins', 'scheduledTasks'],
       },
       footer: {
-        items: ['settings', 'daemonStatus', 'version'],
+        items: ['settings', 'daemonStatus', 'models', 'version'],
         layout: 'stacked',
-        versionLabel: '1.3.0',
+        versionLabel: '2.1.3',
       },
     });
   });
@@ -136,6 +155,19 @@ describe('StandaloneApp', () => {
     expect(window.location.pathname).toBe('/session/session-a');
     expect(new URLSearchParams(window.location.search).get('workspace')).toBe(
       'workspace-a',
+    );
+  });
+
+  it('forwards Chat model selection into its embedded Models screen', () => {
+    window.localStorage.setItem('homecode-product', 'homechat');
+    testState.modelsAdapter = {
+      currentModelId: 'codex:gpt-codex',
+      onSelectModel: vi.fn(),
+    };
+    act(() => root.render(<StandaloneApp daemonToken="token" />));
+    expect(testState.props?.webShellProps.initialPanel).toBe('models');
+    expect(testState.props?.webShellProps.settingsModelSelection).toBe(
+      testState.modelsAdapter,
     );
   });
 

@@ -73,10 +73,12 @@ export interface WorkspaceGenerationGuard {
   readonly closed: boolean;
   assertOpen(): void;
   close(): void;
+  onClose?(listener: () => void): () => void;
 }
 
 export function createWorkspaceGenerationGuard(): WorkspaceGenerationGuard {
   let closed = false;
+  const listeners = new Set<() => void>();
   return {
     get closed() {
       return closed;
@@ -85,7 +87,15 @@ export function createWorkspaceGenerationGuard(): WorkspaceGenerationGuard {
       if (closed) throw new WorkspaceGenerationClosedError();
     },
     close() {
+      if (closed) return;
       closed = true;
+      for (const listener of listeners) listener();
+      listeners.clear();
+    },
+    onClose(listener) {
+      if (closed) listener();
+      else listeners.add(listener);
+      return () => listeners.delete(listener);
     },
   };
 }

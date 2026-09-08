@@ -542,11 +542,53 @@ function testRuntimePreparation(directory) {
     path.join(sourceRoot, 'package.json'),
     JSON.stringify({ version: '0.0.0-test' }),
   );
+  const codexVersion = '0.153.4';
+  const codexNativeFile =
+    'node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex';
+  const codexFiles = {
+    'packages/cli/package.json': JSON.stringify({
+      dependencies: { '@openai/codex': codexVersion },
+    }),
+    'node_modules/@openai/codex/package.json': JSON.stringify({
+      name: '@openai/codex',
+      version: codexVersion,
+    }),
+    'node_modules/@openai/codex/bin/codex.js': 'codex entrypoint fixture',
+    'node_modules/@openai/codex-darwin-arm64/package.json': JSON.stringify({
+      name: '@openai/codex',
+      version: `${codexVersion}-darwin-arm64`,
+    }),
+    [codexNativeFile]: 'codex native fixture',
+  };
+  for (const [file, contents] of Object.entries(codexFiles)) {
+    const destination = path.join(sourceRoot, file);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, contents);
+  }
   fs.mkdirSync(path.dirname(testScript), { recursive: true });
   fs.copyFileSync(
     path.join(packageDir, 'scripts', 'prepare-runtime.js'),
     testScript,
   );
+  fs.cpSync(
+    path.join(packageDir, 'defaults'),
+    path.join(testPackageDir, 'defaults'),
+    { recursive: true },
+  );
+  for (const name of ['esbuild', 'jsonc-parser']) {
+    fs.symlinkSync(
+      path.join(repoRoot, 'node_modules', name),
+      path.join(sourceRoot, 'node_modules', name),
+      'junction',
+    );
+  }
+  for (const kind of ['skills', 'agents']) {
+    fs.cpSync(
+      path.join(repoRoot, '.qwen', kind),
+      path.join(sourceRoot, '.qwen', kind),
+      { recursive: true },
+    );
+  }
   fs.writeFileSync(
     path.join(directory, '.nvmrc'),
     `${process.versions.node.split('.')[0]}\n`,
@@ -622,6 +664,30 @@ globalThis.fetch = async (url) => {
   assert.ok(
     fs.existsSync(path.join(runtimeDir, 'qwen-code', 'checksums.json')),
   );
+  for (const asset of [
+    'lib/desktop-defaults.js',
+    'defaults/settings.json',
+    'defaults/home-ai-lan-ca.crt',
+    'defaults/skills/feat-dev/SKILL.md',
+    'defaults/agents/test-engineer.md',
+  ]) {
+    assert.ok(fs.existsSync(path.join(runtimeDir, 'qwen-code', asset)), asset);
+  }
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(path.join(runtimeDir, 'qwen-code', 'manifest.json')),
+    ).codexVersion,
+    codexVersion,
+  );
+  for (const file of [
+    'node_modules/@openai/codex/bin/codex.js',
+    codexNativeFile,
+  ]) {
+    assert.equal(
+      fs.readFileSync(path.join(runtimeDir, 'qwen-code', 'lib', file), 'utf8'),
+      codexFiles[file],
+    );
+  }
 
   const second = spawnSync(process.execPath, [testScript], {
     encoding: 'utf8',

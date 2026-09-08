@@ -14162,6 +14162,9 @@ class QwenAgent implements Agent {
       value: modelId,
       name: model.label,
       description: model.description ?? '',
+      _meta: {
+        contextLimit: model.contextWindowSize ?? tokenLimit(model.id),
+      },
     }));
 
     const modelConfigOption: SessionConfigOption = {

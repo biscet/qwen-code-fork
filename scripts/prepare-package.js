@@ -341,7 +341,14 @@ function writeDistPackageJson(rootDir, distDir) {
       // create-standalone-package.js instead.
     ],
     config: rootPackageJson.config,
-    dependencies: {},
+    dependencies: {
+      '@openai/codex': JSON.parse(
+        fs.readFileSync(
+          path.join(rootDir, 'packages/cli/package.json'),
+          'utf8',
+        ),
+      ).dependencies['@openai/codex'],
+    },
     optionalDependencies: {
       '@qwen-code/audio-capture': rootPackageJson.version,
       '@lydell/node-pty': '1.2.0-beta.10',

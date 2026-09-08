@@ -32,6 +32,29 @@ function prepareSession(
 }
 
 describe('createAndAttachSessionForPrompt', () => {
+  it('creates Codex with its engine, raw model and reasoning atomically without Qwen configuration', async () => {
+    const actions = createActions();
+    await prepareSession({
+      sessionActions: actions,
+      modelId: 'codex:gpt-codex',
+      reasoningEffort: 'high',
+      workspaceCwd: '/workspace-a',
+      worktree: { slug: 'unused' },
+      branch: { name: 'unused' },
+    });
+    expect(actions.createSession).toHaveBeenCalledWith({
+      workspaceCwd: '/workspace-a',
+      sessionContext: undefined,
+      sourceType: 'default',
+      engine: 'codex',
+      modelServiceId: 'gpt-codex',
+      reasoningEffort: 'high',
+    });
+    expect(actions.setModel).not.toHaveBeenCalled();
+    expect(actions.setReasoningEffort).not.toHaveBeenCalled();
+    expect(actions.attachSession).toHaveBeenCalledOnce();
+  });
+
   it('folds the approval mode into createSession and applies the model after attach', async () => {
     const order: string[] = [];
     const actions = createActions({

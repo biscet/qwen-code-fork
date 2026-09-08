@@ -1,8 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import {
   ArrowUp,
   Activity,
+  Bot,
   Archive,
   ListChecks,
   Pin,
@@ -10,6 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   SquarePen,
+  Square,
   Settings,
   Trash2,
 } from 'lucide-react';
@@ -25,22 +34,27 @@ import {
 import {
   applyHomeChatEvent,
   deleteHomeChat,
-  loadHomeChat,
+  loadHomeChatDetails,
   loadHomeChatList,
   loadHomeChatModels,
   HOMECHAT_OPTIONS_CHANGED,
+  HOMECHAT_CODEX_PROVIDER,
   saveHomeChatOptions,
   updateHomeChat,
   type HomeChatModel,
   type HomeChatOptions,
   messageText,
   streamHomeChat,
+  stopHomeChat,
   type HomeChatBlock,
   type HomeChatChunk,
   type HomeChatMessage,
   type HomeChatSummary,
 } from './homechat-api';
 import { HomeChatModelPicker } from './HomeChatModelPicker';
+import type { ModelSettingsSelection } from '../messages/ModelSettingsPanel';
+import { codexModelValue, parseEngineModel } from '../../utils/codexModels';
+import { extractBareModelId } from '../../utils/modelEncoding';
 import {
   HomeChatManager,
   type HomeChatAction,
@@ -60,8 +74,9 @@ interface HomeChatAppProps {
   macOSDesktop?: boolean;
   onProductChange: (product: HomeProduct) => void;
   renderAdministrationPanel: (
-    panel: 'settings' | 'status',
+    panel: 'settings' | 'status' | 'models',
     onClose: () => void,
+    modelSelection: ModelSettingsSelection,
   ) => ReactNode;
 }
 
@@ -155,7 +170,7 @@ function AssistantMessage({
           </I18nProvider>
         </div>
       )}
-      {!streaming && !text && error?.type === 'error' && (
+      {!streaming && error?.type === 'error' && (
         <p className={styles.messageError} role="alert">
           {error.data.message || 'Исследование завершилось с ошибкой.'}
         </p>
@@ -193,8 +208,10 @@ export function HomeChatApp({
   renderAdministrationPanel,
 }: HomeChatAppProps) {
   const [administrationPanel, setAdministrationPanel] = useState<
-    'settings' | 'status' | null
+    'settings' | 'status' | 'models' | null
   >(null);
+  const [administrationNavigationVersion, setAdministrationNavigationVersion] =
+    useState(0);
   const [managerView, setManagerView] = useState<HomeChatView | null>(null);
   const [models, setModels] = useState<HomeChatModel[]>([]);
   const [options, setOptions] = useState<HomeChatOptions>();
@@ -215,6 +232,7 @@ export function HomeChatApp({
   const scrollRef = useRef<HTMLDivElement>(null);
   const turnsRef = useRef<HTMLDivElement>(null);
   const followAnswer = useRef(true);
+  const streamController = useRef<AbortController | undefined>(undefined);
 
   useLayoutEffect(() => {
     const root = document.createElement('div');
@@ -264,12 +282,11 @@ export function HomeChatApp({
   useEffect(() => {
     let active = true;
     if (administrationPanel) return;
-    setOptions(undefined);
     void loadHomeChatModels(baseUrl, token).then(
       (catalog) => {
         if (active) {
           setModels(catalog.models ?? []);
-          setOptions(catalog.options);
+          setOptions((current) => (activeChatId ? current : catalog.options));
         }
       },
       (reason: unknown) => {
@@ -284,11 +301,12 @@ export function HomeChatApp({
     return () => {
       active = false;
     };
-  }, [baseUrl, token, administrationPanel, optionsRevision]);
+  }, [baseUrl, token, administrationPanel, optionsRevision, activeChatId]);
 
   useEffect(
     () => () => {
       chatRequest.current += 1;
+      streamController.current?.abort();
     },
     [baseUrl, token],
   );
@@ -297,6 +315,14 @@ export function HomeChatApp({
     setSavingOptions(true);
     try {
       await saveHomeChatOptions(baseUrl, token, next);
+      if (
+        activeChatId &&
+        (options?.chatModel.providerId === HOMECHAT_CODEX_PROVIDER) !==
+          (next.chatModel.providerId === HOMECHAT_CODEX_PROVIDER)
+      ) {
+        setActiveChatId(undefined);
+        setMessages([]);
+      }
       setOptions(next);
       setError(undefined);
     } catch (reason) {
@@ -308,6 +334,61 @@ export function HomeChatApp({
     } finally {
       setSavingOptions(false);
     }
+  };
+
+  const settingsModel = (value: string, catalog = models) => {
+    const { engine, modelId } = parseEngineModel(value);
+    const matches = catalog.filter(
+      (model) =>
+        (model.providerId === HOMECHAT_CODEX_PROVIDER) ===
+          (engine === 'codex') && model.key === extractBareModelId(modelId),
+    );
+    return matches.length === 1 ? matches[0] : undefined;
+  };
+  const settingsCurrentModel =
+    options?.chatModel.providerId === HOMECHAT_CODEX_PROVIDER
+      ? codexModelValue(options.chatModel.key)
+      : options?.chatModel.key;
+  const modelSelection: ModelSettingsSelection = {
+    currentModelId:
+      settingsCurrentModel &&
+      settingsModel(settingsCurrentModel)?.providerId ===
+        options?.chatModel.providerId
+        ? settingsCurrentModel
+        : `homechat:${options?.chatModel.providerId ?? ''}/${options?.chatModel.key ?? ''}`,
+    selectionBusy: savingOptions || Boolean(streamingMessageId),
+    selectionError: error,
+    canSelectModel: (value) =>
+      parseEngineModel(value).engine === 'codex' ||
+      Boolean(settingsModel(value)),
+    onSelectModel: async (value) => {
+      if (savingOptions || streamingMessageId) return;
+      setSavingOptions(true);
+      try {
+        const catalog = await loadHomeChatModels(baseUrl, token);
+        setModels(catalog.models);
+        const model = settingsModel(value, catalog.models);
+        if (!model) throw new Error('Эта модель недоступна в HomeChat.');
+        const efforts = model.reasoningEfforts ?? ['low', 'medium', 'high'];
+        const effort = options?.effort ?? 'medium';
+        await changeOptions({
+          chatModel: { providerId: model.providerId, key: model.key },
+          thinking: model.reasoning && (options?.thinking ?? false),
+          effort: efforts.includes(effort)
+            ? effort
+            : (model.defaultReasoningEffort ?? efforts[0] ?? 'medium'),
+          optimizationMode: options?.optimizationMode ?? 'speed',
+        });
+      } catch (reason) {
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось выбрать модель.',
+        );
+      } finally {
+        setSavingOptions(false);
+      }
+    },
   };
 
   const openManager = (view: HomeChatView) => {
@@ -355,8 +436,36 @@ export function HomeChatApp({
     setLoading(true);
     setSidebarOpen(false);
     try {
-      const loaded = await loadHomeChat(baseUrl, token, chatId);
-      if (requestId === chatRequest.current) setMessages(loaded);
+      const loaded = await loadHomeChatDetails(baseUrl, token, chatId);
+      if (requestId === chatRequest.current) {
+        setMessages(loaded.messages);
+        if (loaded.engine === 'codex') {
+          setOptions(loaded.options);
+          const pending = loaded.messages.at(-1);
+          if (pending?.status === 'answering' && loaded.options)
+            void followStream(
+              chatId,
+              pending.messageId,
+              pending.query,
+              loaded.options,
+              [],
+            );
+        } else if (options?.chatModel.providerId === HOMECHAT_CODEX_PROVIDER) {
+          const model = models.find(
+            (entry) => entry.providerId !== HOMECHAT_CODEX_PROVIDER,
+          );
+          setOptions(
+            model
+              ? {
+                  chatModel: { providerId: model.providerId, key: model.key },
+                  thinking: false,
+                  effort: 'medium',
+                  optimizationMode: 'speed',
+                }
+              : undefined,
+          );
+        }
+      }
     } catch (reason) {
       if (requestId !== chatRequest.current) return;
       setError(
@@ -474,19 +583,44 @@ export function HomeChatApp({
     }
     setDraft('');
     setError(undefined);
+    await followStream(chatId, messageId, content, options, history);
+  };
+
+  const followStream = async (
+    chatId: string,
+    messageId: string,
+    content: string,
+    requestOptions: HomeChatOptions,
+    requestHistory: Array<['human' | 'assistant', string]>,
+  ) => {
     setStreamingMessageId(messageId);
+    const controller = new AbortController();
+    streamController.current = controller;
     try {
       let completed = false;
       let hasAnswer = false;
-      for await (const streamEvent of streamHomeChat(baseUrl, token, {
-        messageId,
-        chatId,
-        content,
-        history,
-        options,
-      })) {
+      let stopped = false;
+      for await (const streamEvent of streamHomeChat(
+        baseUrl,
+        token,
+        {
+          messageId,
+          chatId,
+          content,
+          history:
+            requestOptions.chatModel.providerId === HOMECHAT_CODEX_PROVIDER
+              ? []
+              : requestHistory,
+          options: requestOptions,
+        },
+        controller.signal,
+      )) {
         if (streamEvent.type === 'error') {
-          throw new Error('Не удалось завершить интернет-исследование.');
+          throw new Error(
+            typeof streamEvent.data === 'string'
+              ? streamEvent.data
+              : 'Не удалось завершить интернет-исследование.',
+          );
         }
         if (
           streamEvent.type === 'block' &&
@@ -506,7 +640,10 @@ export function HomeChatApp({
         ) {
           hasAnswer = true;
         }
-        if (streamEvent.type === 'messageEnd') completed = true;
+        if (streamEvent.type === 'messageEnd') {
+          completed = true;
+          stopped = streamEvent.stopped === true;
+        }
         setMessages((current) =>
           current.map((message) =>
             message.messageId === messageId
@@ -518,18 +655,30 @@ export function HomeChatApp({
                   ),
                   status:
                     streamEvent.type === 'messageEnd'
-                      ? 'completed'
+                      ? streamEvent.stopped
+                        ? 'stopped'
+                        : 'completed'
                       : message.status,
                 }
               : message,
           ),
         );
       }
-      if (!completed || !hasAnswer) {
+      if (!stopped && (!completed || !hasAnswer)) {
         throw new Error('HomeChat не вернул завершённый ответ.');
       }
       setChats(await loadHomeChatList(baseUrl, token));
     } catch (reason) {
+      if (controller.signal.aborted) {
+        setMessages((current) =>
+          current.map((item) =>
+            item.messageId === messageId
+              ? { ...item, status: 'stopped' }
+              : item,
+          ),
+        );
+        return;
+      }
       const message =
         reason instanceof Error
           ? reason.message
@@ -553,7 +702,25 @@ export function HomeChatApp({
         ),
       );
     } finally {
+      streamController.current = undefined;
       setStreamingMessageId(undefined);
+    }
+  };
+
+  const stop = async () => {
+    try {
+      if (
+        activeChatId &&
+        options?.chatModel.providerId === HOMECHAT_CODEX_PROVIDER
+      )
+        await stopHomeChat(baseUrl, token, activeChatId);
+      else streamController.current?.abort();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось остановить ответ.',
+      );
     }
   };
 
@@ -689,6 +856,11 @@ export function HomeChatApp({
                                 Boolean(streamingMessageId) || managingChats
                               }
                               onClick={() => void selectChat(chat.id)}
+                              title={
+                                chat.engine === 'codex'
+                                  ? `${chat.title} · OpenAI · вход ChatGPT`
+                                  : chat.title
+                              }
                             >
                               {chat.title}
                             </button>
@@ -766,6 +938,22 @@ export function HomeChatApp({
                   <span>Статус демона</span>
                 )}
               </button>
+              <button
+                className={`${sidebarStyles.collapseButton} ${sidebarStyles.footerButton}`}
+                type="button"
+                title="Модели"
+                aria-label="Модели"
+                onClick={() => {
+                  setAdministrationPanel('models');
+                  setAdministrationNavigationVersion((version) => version + 1);
+                  setSidebarOpen(false);
+                }}
+              >
+                <span className={sidebarStyles.navIcon}>
+                  <Bot size={16} strokeWidth={1.2} aria-hidden="true" />
+                </span>
+                {(!sidebarCollapsed || sidebarOpen) && <span>Модели</span>}
+              </button>
               <small className={sidebarStyles.version}>{versionLabel}</small>
             </div>
           </aside>
@@ -781,9 +969,13 @@ export function HomeChatApp({
               <PanelLeft aria-hidden="true" />
             </button>
             {administrationPanel ? (
-              renderAdministrationPanel(administrationPanel, () =>
-                setAdministrationPanel(null),
-              )
+              <Fragment key={administrationNavigationVersion}>
+                {renderAdministrationPanel(
+                  administrationPanel,
+                  () => setAdministrationPanel(null),
+                  modelSelection,
+                )}
+              </Fragment>
             ) : managerView ? (
               <HomeChatManager
                 key={managerView}
@@ -880,19 +1072,24 @@ export function HomeChatApp({
                         />
                         <button
                           className={editorStyles.sendBtn}
-                          type="submit"
-                          aria-label="Отправить"
+                          type={streamingMessageId ? 'button' : 'submit'}
+                          aria-label={
+                            streamingMessageId ? 'Остановить' : 'Отправить'
+                          }
+                          onClick={
+                            streamingMessageId ? () => void stop() : undefined
+                          }
                           disabled={
-                            !draft.trim() ||
-                            Boolean(streamingMessageId) ||
-                            loading ||
-                            savingOptions ||
-                            managingChats ||
-                            !options
+                            !streamingMessageId &&
+                            (!draft.trim() ||
+                              loading ||
+                              savingOptions ||
+                              managingChats ||
+                              !options)
                           }
                         >
                           {streamingMessageId ? (
-                            <HomeCodeSpinner aria-hidden="true" />
+                            <Square aria-hidden="true" />
                           ) : (
                             <ArrowUp aria-hidden="true" />
                           )}

@@ -867,7 +867,9 @@ describe('package asset scripts', () => {
       expect.arrayContaining(['patches', installScriptFile]),
     );
     expect(distPackageJson.scripts).toBeUndefined();
-    expect(distPackageJson.dependencies).toEqual({});
+    expect(distPackageJson.dependencies).toEqual({
+      '@openai/codex': '0.153.4',
+    });
     expect(distPackageJson.optionalDependencies).not.toHaveProperty(
       browserMcpPackageName,
     );
@@ -1206,6 +1208,11 @@ describe('package asset scripts', () => {
       rootDir,
       'packages/cli/src/i18n/locales/en.json',
       '{"hello":"world"}\n',
+    );
+    writeFile(
+      rootDir,
+      'packages/cli/package.json',
+      JSON.stringify({ dependencies: { '@openai/codex': '0.153.4' } }),
     );
     writeFile(
       rootDir,

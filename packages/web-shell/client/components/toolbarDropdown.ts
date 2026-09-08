@@ -2,6 +2,7 @@ export interface ToolbarDropdownItem {
   id: string;
   label: string;
   searchText?: string;
+  group?: string;
 }
 
 const TOOLBAR_LABEL_EXPANSION_HYSTERESIS_PX = 32;

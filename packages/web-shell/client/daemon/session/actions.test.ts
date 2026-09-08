@@ -29,6 +29,8 @@ describe('getConnectionAfterSessionClear', () => {
         status: 'disconnected',
         workspaceCwd: '/workspace',
         sessionId: 'session-a',
+        engine: 'codex',
+        currentModel: 'codex-model',
         clientId: 'client-a',
         displayName: 'Session A',
         titleSource: 'manual',
@@ -57,6 +59,8 @@ describe('getConnectionAfterSessionClear', () => {
       missingSession: false,
     });
     expect(next).not.toHaveProperty('sessionId');
+    expect(next).not.toHaveProperty('engine');
+    expect(next).not.toHaveProperty('currentModel');
     expect(next).not.toHaveProperty('clientId');
     expect(next).not.toHaveProperty('displayName');
     expect(next).not.toHaveProperty('titleSource');
@@ -2282,6 +2286,83 @@ describe('createDaemonSessionActions', () => {
       session.submitPrompt.mock.invocationCallOrder[0]!,
     );
   });
+
+  it.each([
+    ['submitPrompt', 'look'],
+    ['submitPrompt', '/help explain this image'],
+    ['sendPrompt', 'look'],
+    ['sendPrompt', '/help explain this image'],
+  ] as const)(
+    'preserves Codex image and File attachments through %s for %s',
+    async (action, text) => {
+      const session = createMockSession('codex-session');
+      const { actions, store } = createActionsHarness({
+        session,
+        connection: {
+          status: 'connected',
+          engine: 'codex',
+          workspaceCwd: '/workspace',
+          commands: [],
+          capabilities: {
+            v: 1,
+            mode: 'http-bridge',
+            features: ['session_attachments'],
+            modelServices: [],
+          },
+        },
+      });
+      const data = new File(['hello'], 'notes.txt', { type: 'text/plain' });
+      const prompt = actions[action](text, {
+        images: [{ data: 'AQID', mimeType: 'image/png' }],
+        files: [{ name: data.name, data, media_type: data.type }],
+      });
+      if (action === 'sendPrompt') {
+        await vi.waitFor(() => expect(session.submitPrompt).toHaveBeenCalled());
+        await actions.cancel();
+      }
+      await prompt;
+
+      expect(session.uploadAttachment).toHaveBeenCalledTimes(2);
+      expect(session.uploadAttachment.mock.calls[1]?.slice(0, 3)).toEqual([
+        data,
+        'notes.txt',
+        'text/plain',
+      ]);
+      expect(session.submitPrompt.mock.calls[0]?.[0]).toEqual({
+        prompt: [
+          {
+            type: 'text',
+            text: text.startsWith('/')
+              ? text
+              : `${text}\n\n@attachment:///notes.txt`,
+          },
+          {
+            type: 'image',
+            attachmentId: 'image.png',
+            mimeType: 'image/png',
+            size: 3,
+          },
+          {
+            type: 'resource',
+            attachmentId: 'notes.txt',
+            mimeType: 'text/plain',
+            size: 5,
+          },
+        ],
+      });
+      expect(store.appendLocalUserMessage).toHaveBeenCalledWith(
+        text,
+        [{ data: 'AQID', mimeType: 'image/png' }],
+        undefined,
+        [
+          expect.objectContaining({
+            name: 'notes.txt',
+            attachmentId: 'notes.txt',
+          }),
+        ],
+      );
+    },
+  );
 
   it('does not upload attachments discarded by slash commands', async () => {
     const session = createMockSession('session-a');

@@ -3792,6 +3792,8 @@ describe('DaemonClient', () => {
           const client = new DaemonClient({
             baseUrl: 'http://daemon',
             transport,
+            fetch: async () =>
+              jsonResponse(200, { sessionId: 'slow-session', engine: 'qwen' }),
           });
           const restore = client.loadSession('slow-session', {
             timeoutMs: 5_000,

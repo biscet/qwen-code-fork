@@ -1084,6 +1084,9 @@ export interface DaemonSessionIssueInfo {
 
 /** Returned from `POST /session`. */
 export interface DaemonSession {
+  engine?: 'qwen' | 'codex';
+  modelId?: string;
+  reasoningEffort?: string;
   sessionId: string;
   /** Immutable runtime ownership root used for daemon routing. */
   workspaceCwd: string;
@@ -1295,6 +1298,9 @@ export type DaemonPendingInteraction =
 
 /** Wire-format mirror of the bridge's `BridgeSessionSummary`; keep fields synchronized. */
 export interface DaemonSessionSummary {
+  engine?: 'qwen' | 'codex';
+  modelId?: string;
+  reasoningEffort?: string;
   sessionId: string;
   workspaceCwd: string;
   createdAt?: string;
@@ -3062,6 +3068,8 @@ export interface SetModelResult {
 
 /** Returned from `POST /session/:id/config-option`. */
 export type ReasoningSelection =
+  | 'minimal'
+  | 'ultra'
   | 'none'
   | 'default'
   | 'low'

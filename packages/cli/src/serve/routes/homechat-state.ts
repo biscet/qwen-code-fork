@@ -43,6 +43,14 @@ export interface HomeChatCodexMessage {
   responseBlocks: HomeChatResponseBlock[];
   status: 'answering' | 'completed' | 'stopped' | 'error';
   turnId?: string;
+  attachments?: HomeChatAttachment[];
+}
+
+export interface HomeChatAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface HomeChatCodexChat {
@@ -58,11 +66,12 @@ interface HomeChatState {
   chats: Record<string, HomeChatFlags>;
   options?: HomeChatOptions;
   codexChats?: Record<string, HomeChatCodexChat>;
+  attachments?: Record<string, Record<string, HomeChatAttachment[]>>;
 }
 
 export class HomeChatStateStore {
   constructor(
-    private readonly directory = join(
+    readonly directory = join(
       process.env['QWEN_HOME'] || join(homedir(), '.qwen'),
       'homechat',
     ),

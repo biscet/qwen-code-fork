@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -211,6 +211,37 @@ describe('Codex Harness session ownership and persistence', () => {
         }),
       ]),
     );
+  });
+
+  it.each([
+    ['report.pdf', 'application/pdf'],
+    [
+      'document.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ],
+    ['bundle.zip', 'application/zip'],
+  ])('gives Codex a readable durable path for %s', async (name, mimeType) => {
+    const created = await manager.create(runtime, {});
+    const data = Buffer.from([0x50, 0x4b, 0, 0xff, 0x42]);
+    const reference = await manager
+      .attachments(created.sessionId)
+      .putAttachment(data, mimeType, name);
+    await manager.prompt(created.sessionId, [reference]);
+
+    const turn = mock.request.mock.calls.find(
+      ([method]) => method === 'turn/start',
+    )?.[1];
+    expect(turn.input).toHaveLength(1);
+    expect(turn.input[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('Attached file: '),
+    });
+    const filePath = turn.input[0].text.slice('Attached file: '.length);
+    expect(path.isAbsolute(filePath)).toBe(true);
+    expect(path.basename(filePath)).toBe(name);
+    expect(readFileSync(filePath)).toEqual(data);
+    await manager.dispose();
+    expect(readFileSync(filePath)).toEqual(data);
   });
 
   it('rejects a binary file resource before submitting a turn', async () => {

@@ -476,3 +476,59 @@ describe('Codex HomeChat protocol and persistence', () => {
     ]);
   });
 });
+
+it('sends selected document contents and inline images to Codex, retaining refs for idempotent reconnect', async () => {
+  const f = fixture();
+  const attachments = [
+    {
+      id: 'attachment-doc',
+      name: 'probe.txt',
+      mimeType: 'text/plain',
+      size: 12,
+    },
+    {
+      id: 'attachment-image',
+      name: 'probe.png',
+      mimeType: 'image/png',
+      size: 1,
+    },
+  ];
+  const input = {
+    ...f.input,
+    attachments,
+    files: [
+      { ...attachments[0]!, text: 'violet-attach-42' },
+      { ...attachments[1]!, imageUrl: 'data:image/png;base64,eA==' },
+    ],
+  };
+  const stream = f.manager.stream(input, () => {}, f.controller.signal);
+  await f.started();
+  expect(f.request).toHaveBeenCalledWith(
+    'turn/start',
+    expect.objectContaining({
+      input: [
+        expect.objectContaining({
+          type: 'text',
+          text: expect.stringContaining('violet-attach-42'),
+        }),
+        { type: 'image', url: 'data:image/png;base64,eA==' },
+      ],
+    }),
+  );
+  f.complete();
+  await stream;
+  expect(f.manager.get(f.input.chatId)?.messages[0]?.attachments).toEqual(
+    attachments,
+  );
+  await f.manager.stream(input, () => {}, f.controller.signal);
+  expect(
+    f.request.mock.calls.filter(([method]) => method === 'turn/start'),
+  ).toHaveLength(1);
+  await expect(
+    f.manager.stream(
+      { ...input, attachments: [] },
+      () => {},
+      f.controller.signal,
+    ),
+  ).rejects.toThrow('уже использован');
+});

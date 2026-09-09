@@ -60,6 +60,13 @@ export type HomeChatBlock =
   | { id: string; type: 'suggestion'; data: string[] }
   | { id: string; type: 'widget'; data: unknown };
 
+export interface HomeChatAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface HomeChatMessage {
   messageId: string;
   chatId: string;
@@ -67,6 +74,7 @@ export interface HomeChatMessage {
   createdAt: string;
   responseBlocks: HomeChatBlock[];
   status?: string;
+  attachments?: HomeChatAttachment[];
 }
 
 interface HomeChatPatch {
@@ -214,6 +222,52 @@ export async function deleteHomeChat(
   if (!response.ok) throw await responseError(response);
 }
 
+export async function uploadHomeChatAttachment(
+  baseUrl: string,
+  token: string | undefined,
+  chatId: string,
+  file: File,
+  signal?: AbortSignal,
+): Promise<HomeChatAttachment> {
+  const response = await fetch(
+    endpoint(
+      baseUrl,
+      `/homechat/chats/${encodeURIComponent(chatId)}/attachments?name=${encodeURIComponent(file.name)}`,
+    ),
+    {
+      method: 'POST',
+      headers: {
+        ...headers(token),
+        'Content-Type': 'application/octet-stream',
+      },
+      body: file,
+      signal,
+    },
+  );
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<HomeChatAttachment>;
+}
+
+export async function removeHomeChatUpload(
+  baseUrl: string,
+  token: string | undefined,
+  chatId: string,
+  id: string,
+): Promise<void> {
+  const response = await fetch(
+    endpoint(
+      baseUrl,
+      `/homechat/chats/${encodeURIComponent(chatId)}/attachments/${encodeURIComponent(id)}`,
+    ),
+    {
+      method: 'DELETE',
+      headers: headers(token),
+      signal: AbortSignal.timeout(5_000),
+    },
+  );
+  if (!response.ok) throw await responseError(response);
+}
+
 export async function* streamHomeChat(
   baseUrl: string,
   token: string | undefined,
@@ -223,6 +277,7 @@ export async function* streamHomeChat(
     content: string;
     history: Array<['human' | 'assistant', string]>;
     options?: HomeChatOptions;
+    attachments?: string[];
   },
   signal?: AbortSignal,
 ): AsyncGenerator<HomeChatStreamEvent> {
@@ -265,6 +320,7 @@ async function* streamHomeChatOnce(
     content: string;
     history: Array<['human' | 'assistant', string]>;
     options?: HomeChatOptions;
+    attachments?: string[];
   },
   signal?: AbortSignal,
 ): AsyncGenerator<HomeChatStreamEvent> {

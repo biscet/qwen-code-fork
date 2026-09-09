@@ -21,6 +21,9 @@ import {
   Square,
   Settings,
   Trash2,
+  Paperclip,
+  FileText,
+  X,
 } from 'lucide-react';
 import { ThemeProvider, type WebShellTheme } from '../../themeContext';
 import { WebShellPortalRootContext } from '../../portalRoot';
@@ -46,6 +49,9 @@ import {
   messageText,
   streamHomeChat,
   stopHomeChat,
+  uploadHomeChatAttachment,
+  removeHomeChatUpload,
+  type HomeChatAttachment,
   type HomeChatBlock,
   type HomeChatChunk,
   type HomeChatMessage,
@@ -60,6 +66,11 @@ import {
   type HomeChatAction,
   type HomeChatView,
 } from './HomeChatManager';
+import {
+  extractFileTransfer,
+  hasFileTransferPayload,
+  normalizeImageMediaType,
+} from '../../utils/imageIngestion';
 import styles from './HomeChatApp.module.css';
 import sidebarStyles from '../sidebar/WebShellSidebar.module.css';
 import welcomeStyles from '../WelcomeHeader.module.css';
@@ -226,6 +237,12 @@ export function HomeChatApp({
   const [activeChatId, setActiveChatId] = useState<string>();
   const [messages, setMessages] = useState<HomeChatMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const submitting = useRef(false);
+  const uploadController = useRef<AbortController | undefined>(undefined);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [streamingMessageId, setStreamingMessageId] = useState<string>();
   const [error, setError] = useState<string>();
@@ -307,11 +324,13 @@ export function HomeChatApp({
     () => () => {
       chatRequest.current += 1;
       streamController.current?.abort();
+      uploadController.current?.abort();
     },
     [baseUrl, token],
   );
 
   const changeOptions = async (next: HomeChatOptions) => {
+    if (submitting.current) return;
     setSavingOptions(true);
     try {
       await saveHomeChatOptions(baseUrl, token, next);
@@ -425,12 +444,14 @@ export function HomeChatApp({
   }, [messages]);
 
   const selectChat = async (chatId: string) => {
-    if (streamingMessageId || managingChats) return;
+    if (submitting.current || streamingMessageId || managingChats) return;
     followAnswer.current = true;
     setAdministrationPanel(null);
     setManagerView(null);
     const requestId = ++chatRequest.current;
     setActiveChatId(chatId);
+    setDraft('');
+    setFiles([]);
     setMessages([]);
     setError(undefined);
     setLoading(true);
@@ -449,6 +470,7 @@ export function HomeChatApp({
               pending.query,
               loaded.options,
               [],
+              pending.attachments,
             );
         } else if (options?.chatModel.providerId === HOMECHAT_CODEX_PROVIDER) {
           const model = models.find(
@@ -477,7 +499,7 @@ export function HomeChatApp({
   };
 
   const startNewChat = () => {
-    if (streamingMessageId || managingChats) return;
+    if (submitting.current || streamingMessageId || managingChats) return;
     followAnswer.current = true;
     setAdministrationPanel(null);
     setManagerView(null);
@@ -486,6 +508,7 @@ export function HomeChatApp({
     setActiveChatId(undefined);
     setMessages([]);
     setDraft('');
+    setFiles([]);
     setError(undefined);
     setSidebarOpen(false);
   };
@@ -494,7 +517,7 @@ export function HomeChatApp({
     ids: string[],
     action: HomeChatAction,
   ): Promise<string[]> => {
-    if (streamingMessageId || managingChats) return ids;
+    if (submitting.current || streamingMessageId || managingChats) return ids;
     setManagingChats(true);
     setError(undefined);
     const flags =
@@ -524,6 +547,7 @@ export function HomeChatApp({
             setActiveChatId(undefined);
             setMessages([]);
             setDraft('');
+            setFiles([]);
             setLoading(false);
           }
         } catch {
@@ -541,16 +565,52 @@ export function HomeChatApp({
   };
 
   const removeChat = async (chat: HomeChatSummary) => {
-    if (streamingMessageId || managingChats) return;
+    if (submitting.current || streamingMessageId || managingChats) return;
     if (window.confirm(`Удалить чат «${chat.title}»?`))
       await manageChats([chat.id], 'delete');
   };
 
+  const addFiles = (incoming: File[]) => {
+    if (submitting.current || streamingMessageId) return;
+    const accepted: File[] = [];
+    const rejected: string[] = [];
+    for (const file of incoming) {
+      if (!file.size || file.size > 8 * 1024 * 1024)
+        rejected.push(`${file.name}: размер должен быть от 1 байта до 8 МБ.`);
+      else if (
+        normalizeImageMediaType(file.type, file.name) &&
+        options?.chatModel.providerId !== HOMECHAT_CODEX_PROVIDER
+      )
+        rejected.push(`${file.name}: для изображений выберите Codex.`);
+      else accepted.push(file);
+    }
+    setFiles((current) => [...current, ...accepted].slice(0, 8));
+    if (files.length + accepted.length > 8)
+      rejected.push('Можно прикрепить до 8 файлов.');
+    setError(rejected.length ? rejected.join(' ') : undefined);
+  };
+
+  const receiveFiles = (transfer: DataTransfer, source: 'paste' | 'drop') => {
+    const result = extractFileTransfer(transfer, source);
+    if (result.claimed) {
+      addFiles(
+        [...result.imageCandidates, ...result.fileCandidates].map(
+          (entry) => entry.file,
+        ),
+      );
+      if (result.rejected.length)
+        setError('Не удалось получить файл. Используйте кнопку прикрепления.');
+    }
+    return result.claimed;
+  };
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
-    const content = draft.trim();
+    const content =
+      draft.trim() || (files.length ? 'Изучи прикреплённые файлы.' : '');
     if (
       !content ||
+      submitting.current ||
       streamingMessageId ||
       loading ||
       savingOptions ||
@@ -558,13 +618,63 @@ export function HomeChatApp({
       !options
     )
       return;
+    if (
+      options.chatModel.providerId !== HOMECHAT_CODEX_PROVIDER &&
+      files.some((file) => normalizeImageMediaType(file.type, file.name))
+    ) {
+      setError(
+        'Для прикреплённых изображений выберите Codex или уберите изображения.',
+      );
+      return;
+    }
     const chatId = activeChatId ?? `homechat-${crypto.randomUUID()}`;
+    submitting.current = true;
+    setUploading(true);
+    const requestId = chatRequest.current;
+    const controller = new AbortController();
+    uploadController.current = controller;
+    const attachments: HomeChatAttachment[] = [];
+    let uploaded = false;
+    try {
+      for (const file of files)
+        attachments.push(
+          await uploadHomeChatAttachment(
+            baseUrl,
+            token,
+            chatId,
+            file,
+            controller.signal,
+          ),
+        );
+      if (requestId !== chatRequest.current) return;
+      uploaded = true;
+    } catch (reason) {
+      if (!controller.signal.aborted)
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось прикрепить файлы.',
+        );
+      return;
+    } finally {
+      if (!uploaded)
+        await Promise.allSettled(
+          attachments.map((file) =>
+            removeHomeChatUpload(baseUrl, token, chatId, file.id),
+          ),
+        );
+      setUploading(false);
+      submitting.current = false;
+      uploadController.current = undefined;
+    }
+    submitting.current = true;
     followAnswer.current = true;
     const messageId = crypto.randomUUID();
     const nextMessage: HomeChatMessage = {
       messageId,
       chatId,
       query: content,
+      attachments,
       createdAt: new Date().toISOString(),
       responseBlocks: [],
       status: 'answering',
@@ -582,8 +692,16 @@ export function HomeChatApp({
       ]);
     }
     setDraft('');
+    setFiles([]);
     setError(undefined);
-    await followStream(chatId, messageId, content, options, history);
+    await followStream(
+      chatId,
+      messageId,
+      content,
+      options,
+      history,
+      attachments,
+    );
   };
 
   const followStream = async (
@@ -592,6 +710,7 @@ export function HomeChatApp({
     content: string,
     requestOptions: HomeChatOptions,
     requestHistory: Array<['human' | 'assistant', string]>,
+    attachments: HomeChatAttachment[] = [],
   ) => {
     setStreamingMessageId(messageId);
     const controller = new AbortController();
@@ -612,6 +731,9 @@ export function HomeChatApp({
               ? []
               : requestHistory,
           options: requestOptions,
+          ...(attachments.length
+            ? { attachments: attachments.map((file) => file.id) }
+            : {}),
         },
         controller.signal,
       )) {
@@ -702,6 +824,7 @@ export function HomeChatApp({
         ),
       );
     } finally {
+      submitting.current = false;
       streamController.current = undefined;
       setStreamingMessageId(undefined);
     }
@@ -794,7 +917,7 @@ export function HomeChatApp({
                 aria-label="Новый чат"
                 title="Новый чат"
                 onClick={startNewChat}
-                disabled={Boolean(streamingMessageId)}
+                disabled={uploading || Boolean(streamingMessageId)}
               >
                 <span className={sidebarStyles.navIcon}>
                   <SquarePen size={16} aria-hidden="true" />
@@ -1028,6 +1151,26 @@ export function HomeChatApp({
                                 data-user-selectable
                               >
                                 {message.query}
+                                {!!message.attachments?.length && (
+                                  <div
+                                    className={styles.attachments}
+                                    aria-label="Вложения сообщения"
+                                  >
+                                    {message.attachments.map((file) => (
+                                      <span
+                                        className={styles.attachment}
+                                        key={file.id}
+                                        title={file.name}
+                                      >
+                                        <FileText
+                                          size={14}
+                                          aria-hidden="true"
+                                        />
+                                        <span>{file.name}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1047,10 +1190,82 @@ export function HomeChatApp({
                     </p>
                   )}
                   <form
-                    className={`${editorStyles.container} ${styles.composer}`}
+                    className={`${editorStyles.container} ${styles.composer} ${dragging ? styles.dragging : ''}`}
                     onSubmit={submit}
+                    onDragOver={(event) => {
+                      if (hasFileTransferPayload(event.dataTransfer)) {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect =
+                          uploading || streamingMessageId ? 'none' : 'copy';
+                        setDragging(!uploading && !streamingMessageId);
+                      }
+                    }}
+                    onDragLeave={(event) => {
+                      if (
+                        !event.currentTarget.contains(
+                          event.relatedTarget as Node | null,
+                        )
+                      )
+                        setDragging(false);
+                    }}
+                    onDrop={(event) => {
+                      setDragging(false);
+                      if (receiveFiles(event.dataTransfer, 'drop'))
+                        event.preventDefault();
+                    }}
+                    onPaste={(event) => {
+                      if (receiveFiles(event.clipboardData, 'paste'))
+                        event.preventDefault();
+                    }}
                   >
                     <div className={editorStyles.content}>
+                      <input
+                        ref={fileInput}
+                        type="file"
+                        multiple
+                        hidden
+                        aria-label="Выбрать файлы для Chat"
+                        onChange={(event) => {
+                          addFiles(Array.from(event.target.files ?? []));
+                          event.target.value = '';
+                        }}
+                      />
+                      {!!files.length && (
+                        <div
+                          className={styles.attachments}
+                          aria-label="Прикреплённые файлы"
+                        >
+                          {files.map((file, index) => (
+                            <span
+                              className={styles.attachment}
+                              key={`${file.name}-${index}`}
+                              title={file.name}
+                            >
+                              <FileText size={14} aria-hidden="true" />
+                              <span>{file.name}</span>
+                              <button
+                                type="button"
+                                aria-label={`Убрать ${file.name}`}
+                                disabled={uploading}
+                                onClick={() =>
+                                  setFiles((current) =>
+                                    current.filter(
+                                      (_, position) => position !== index,
+                                    ),
+                                  )
+                                }
+                              >
+                                <X size={14} aria-hidden="true" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {uploading && (
+                        <span className={styles.uploadStatus} role="status">
+                          Читает файлы…
+                        </span>
+                      )}
                       <textarea
                         value={draft}
                         rows={2}
@@ -1059,14 +1274,26 @@ export function HomeChatApp({
                         aria-label="Сообщение HomeChat"
                         onChange={(event) => setDraft(event.target.value)}
                         onKeyDown={onComposerKeyDown}
-                        disabled={Boolean(streamingMessageId)}
+                        disabled={uploading || Boolean(streamingMessageId)}
                       />
                       <div className={styles.composerFooter}>
+                        <button
+                          type="button"
+                          className={styles.attachButton}
+                          aria-label="Прикрепить файлы"
+                          title="Текст, код, PDF и офисные документы · до 8 МБ; изображения с Codex"
+                          disabled={uploading || Boolean(streamingMessageId)}
+                          onClick={() => fileInput.current?.click()}
+                        >
+                          <Paperclip size={18} aria-hidden="true" />
+                        </button>
                         <HomeChatModelPicker
                           models={models}
                           options={options}
                           disabled={
-                            Boolean(streamingMessageId) || savingOptions
+                            uploading ||
+                            Boolean(streamingMessageId) ||
+                            savingOptions
                           }
                           onChange={changeOptions}
                         />
@@ -1081,7 +1308,8 @@ export function HomeChatApp({
                           }
                           disabled={
                             !streamingMessageId &&
-                            (!draft.trim() ||
+                            ((!draft.trim() && !files.length) ||
+                              uploading ||
                               loading ||
                               savingOptions ||
                               managingChats ||

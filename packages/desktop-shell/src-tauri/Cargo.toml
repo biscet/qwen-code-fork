@@ -1,6 +1,6 @@
 [package]
 name = "qwen-code-desktop"
-version = "2.1.4"
+version = "2.1.7"
 description = "Thin desktop shell for Qwen Code Web Shell"
 authors = ["Qwen Team"]
 license = "Apache-2.0"

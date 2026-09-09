@@ -503,3 +503,225 @@ describe('Chat management', () => {
     }
   });
 });
+
+describe('Chat file composer', () => {
+  it.each(['paste', 'drop'] as const)(
+    'uploads %s files, sends refs and shows them in history',
+    async (eventType) => {
+      const attachments = [
+        { id: 'file-one', name: 'probe.ts', mimeType: 'text/plain', size: 12 },
+      ];
+      const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
+        if (url.endsWith('/models'))
+          return Response.json({
+            options: {
+              chatModel: { providerId: 'test', key: 'text-model' },
+              thinking: false,
+              effort: 'medium',
+              optimizationMode: 'speed',
+            },
+            models: [
+              {
+                providerId: 'test',
+                key: 'text-model',
+                name: 'Test',
+                reasoning: false,
+              },
+            ],
+          });
+        if (url.includes('/attachments?')) return Response.json(attachments[0]);
+        if (url.endsWith('/chat'))
+          return new Response(
+            '{"type":"block","block":{"id":"answer","type":"text","data":"Read file successfully"}}\n{"type":"messageEnd"}\n',
+          );
+        return Response.json({ chats: [], messages: [] });
+      });
+      vi.stubGlobal('fetch', fetch);
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          observe() {}
+          disconnect() {}
+        },
+      );
+      const container = document.createElement('div');
+      document.body.append(container);
+      const root = createRoot(container);
+      const originalScrollTo = HTMLElement.prototype.scrollTo;
+      HTMLElement.prototype.scrollTo = vi.fn();
+      try {
+        await act(async () =>
+          root.render(
+            <HomeChatApp
+              baseUrl="http://localhost"
+              theme="dark"
+              versionLabel="2.1.6"
+              onProductChange={() => {}}
+              renderAdministrationPanel={() => null}
+            />,
+          ),
+        );
+        const file = new File(['export x = 1'], 'probe.ts', {
+          type: 'text/plain',
+        });
+        const transfer = {
+          files: eventType === 'drop' ? [file] : [],
+          items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+          types: ['Files'],
+        };
+        const event = new Event(eventType, { bubbles: true, cancelable: true });
+        Object.defineProperty(
+          event,
+          eventType === 'paste' ? 'clipboardData' : 'dataTransfer',
+          { value: transfer },
+        );
+        await act(async () => {
+          container.querySelector('textarea')!.dispatchEvent(event);
+        });
+        expect(event.defaultPrevented).toBe(true);
+        expect(container.querySelector('textarea')!.value).toBe('');
+        expect(
+          container.querySelector('[aria-label="Прикреплённые файлы"]')
+            ?.textContent,
+        ).toContain('probe.ts');
+        expect(
+          container.querySelector<HTMLButtonElement>('[aria-label="Отправить"]')
+            ?.disabled,
+        ).toBe(false);
+        await act(async () =>
+          container
+            .querySelector('form')!
+            .dispatchEvent(
+              new Event('submit', { bubbles: true, cancelable: true }),
+            ),
+        );
+        const upload = fetch.mock.calls.find(([url]) =>
+          url.includes('/attachments?'),
+        );
+        expect(upload?.[1]?.body).toBe(file);
+        expect(new URL(upload![0]).searchParams.get('name')).toBe('probe.ts');
+        expect(upload?.[1]?.headers).toMatchObject({
+          'Content-Type': 'application/octet-stream',
+        });
+        const sent = JSON.parse(
+          String(
+            fetch.mock.calls.find(([url]) => url.endsWith('/chat'))?.[1]?.body,
+          ),
+        );
+        expect(sent.attachments).toEqual(['file-one']);
+        expect(sent.content).toBe('Изучи прикреплённые файлы.');
+        expect(
+          container.querySelector('[aria-label="Прикреплённые файлы"]'),
+        ).toBeNull();
+        expect(
+          container.querySelector('[aria-label="Вложения сообщения"]')
+            ?.textContent,
+        ).toContain('probe.ts');
+      } finally {
+        await act(async () => root.unmount());
+        container.remove();
+        HTMLElement.prototype.scrollTo = originalScrollTo;
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('preserves normal text paste, keeps files on upload failure, and removes them on a new chat', async () => {
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith('/models'))
+        return Response.json({
+          options: {
+            chatModel: { providerId: 'test', key: 'text-model' },
+            thinking: false,
+            effort: 'medium',
+            optimizationMode: 'speed',
+          },
+          models: [],
+        });
+      if (url.includes('/attachments?name=probe.txt'))
+        return Response.json({
+          id: 'unused-upload',
+          name: 'probe.txt',
+          mimeType: 'text/plain',
+          size: 5,
+        });
+      if (url.includes('/attachments?'))
+        return Response.json({ error: 'Файл повреждён' }, { status: 400 });
+      return Response.json({ chats: [] });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(async () =>
+        root.render(
+          <HomeChatApp
+            baseUrl="http://localhost"
+            theme="dark"
+            versionLabel="2.1.6"
+            onProductChange={() => {}}
+            renderAdministrationPanel={() => null}
+          />,
+        ),
+      );
+      const paste = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(paste, 'clipboardData', {
+        value: {
+          files: [],
+          items: [{ kind: 'string', type: 'text/plain' }],
+          types: ['text/plain'],
+        },
+      });
+      await act(async () => {
+        container.querySelector('textarea')!.dispatchEvent(paste);
+      });
+      expect(paste.defaultPrevented).toBe(false);
+      const picker =
+        container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      Object.defineProperty(picker, 'files', {
+        value: [
+          new File(['probe'], 'probe.txt'),
+          new File(['broken pdf'], 'probe.pdf'),
+        ],
+      });
+      await act(async () =>
+        picker.dispatchEvent(new Event('change', { bubbles: true })),
+      );
+      await act(async () =>
+        container
+          .querySelector('form')!
+          .dispatchEvent(
+            new Event('submit', { bubbles: true, cancelable: true }),
+          ),
+      );
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        'Файл повреждён',
+      );
+      expect(
+        container.querySelector('[aria-label="Прикреплённые файлы"]')
+          ?.textContent,
+      ).toContain('probe.pdf');
+      expect(fetch.mock.calls.some(([url]) => url.endsWith('/chat'))).toBe(
+        false,
+      );
+      expect(
+        fetch.mock.calls.some(([url]) =>
+          url.endsWith('/attachments/unused-upload'),
+        ),
+      ).toBe(true);
+      await act(async () =>
+        container
+          .querySelector<HTMLButtonElement>('[aria-label="Новый чат"]')!
+          .click(),
+      );
+      expect(
+        container.querySelector('[aria-label="Прикреплённые файлы"]'),
+      ).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+});

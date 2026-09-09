@@ -7,11 +7,12 @@
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HomeChatStateStore } from './homechat-state.js';
 import { registerHomeChatRoutes } from './homechat.js';
+import { HomeChatAttachments } from './homechat-attachments.js';
 import { HOMECHAT_CODEX_PROVIDER } from './homechat-codex.js';
 
 vi.mock('../codex/codex-service.js', () => ({
@@ -667,4 +668,216 @@ describe('HomeChat models and organization', () => {
       JSON.parse(String(fetchImpl.mock.calls[1][1]?.body)),
     ).not.toHaveProperty('homechatReasoning');
   });
+});
+
+describe('HomeChat uploaded documents', () => {
+  it('sends uploaded content and retains it on later turns and in history, then deletes it', async () => {
+    const store = createStore();
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+      if (String(url).endsWith('/api/providers'))
+        return jsonResponse({
+          providers: [
+            {
+              id: 'test',
+              chatModels: [{ key: 'text-model' }],
+              embeddingModels: [{ key: 'embed' }],
+            },
+          ],
+        });
+      if (String(url).endsWith('/api/chat'))
+        return new Response('{"type":"messageEnd"}\n');
+      return jsonResponse({
+        messages: [{ messageId: MESSAGE_ID, query: 'Read the file' }],
+      });
+    });
+    const app = mount(fetchImpl, store);
+    const uploaded = await request(app)
+      .post(`/homechat/chats/${CHAT_ID}/attachments`)
+      .set('Content-Type', 'application/octet-stream')
+      .query({ name: 'проверка.ts' })
+      .send(Buffer.from('export const secret = "violet-attach-42";'));
+    expect(uploaded.status).toBe(200);
+    expect(uploaded.body).toMatchObject({
+      name: 'проверка.ts',
+      mimeType: 'text/plain',
+    });
+    const body = {
+      chatId: CHAT_ID,
+      messageId: MESSAGE_ID,
+      content: 'Read the file',
+      history: [],
+      attachments: [uploaded.body.id],
+    };
+    expect((await request(app).post('/homechat/chat').send(body)).status).toBe(
+      200,
+    );
+    const sent = JSON.parse(
+      String(
+        fetchImpl.mock.calls.find(([url]) =>
+          String(url).endsWith('/api/chat'),
+        )?.[1]?.body,
+      ),
+    );
+    expect(sent.message.content).toBe('Read the file');
+    expect(sent.history[0]).toEqual([
+      'human',
+      expect.stringContaining('violet-attach-42'),
+    ]);
+    const history = await request(app).get(`/homechat/chats/${CHAT_ID}`);
+    expect(history.body.messages[0].attachments).toEqual([uploaded.body]);
+    expect(
+      (
+        await request(app).delete(
+          `/homechat/chats/${CHAT_ID}/attachments/${uploaded.body.id}`,
+        )
+      ).status,
+    ).toBe(400);
+    fetchImpl.mockClear();
+    expect(
+      (
+        await request(app)
+          .post('/homechat/chat')
+          .send({
+            ...body,
+            messageId: '018f0ec4-31c4-4f2f-9c1f-5f47e6be37f3',
+            attachments: [],
+          })
+      ).status,
+    ).toBe(200);
+    const next = JSON.parse(
+      String(
+        fetchImpl.mock.calls.find(([url]) =>
+          String(url).endsWith('/api/chat'),
+        )?.[1]?.body,
+      ),
+    );
+    expect(next.history[0][1]).toContain('violet-attach-42');
+    expect(
+      (await request(app).delete(`/homechat/chats/${CHAT_ID}`)).status,
+    ).toBe(200);
+    expect(store.read().attachments?.[CHAT_ID]).toBeUndefined();
+    expect((await request(app).post('/homechat/chat').send(body)).status).toBe(
+      400,
+    );
+  });
+
+  it('rejects missing, foreign and excessive references without contacting models', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const app = mount(fetchImpl);
+    const uploaded = await request(app)
+      .post(`/homechat/chats/${CHAT_ID}/attachments`)
+      .set('Content-Type', 'application/octet-stream')
+      .query({ name: 'probe.txt' })
+      .send(Buffer.from('probe'));
+    for (const attachments of [
+      [MESSAGE_ID],
+      ['../../state.json'],
+      Array(9).fill(uploaded.body.id),
+    ]) {
+      expect(
+        (
+          await request(app).post('/homechat/chat').send({
+            chatId: CHAT_ID,
+            messageId: MESSAGE_ID,
+            content: 'read',
+            history: [],
+            attachments,
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect(
+      (
+        await request(app)
+          .post('/homechat/chat')
+          .send({
+            chatId: `homechat-${MESSAGE_ID}`,
+            messageId: MESSAGE_ID,
+            content: 'read',
+            history: [],
+            attachments: [uploaded.body.id],
+          })
+      ).status,
+    ).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(
+      (
+        await request(app).delete(
+          `/homechat/chats/${CHAT_ID}/attachments/${uploaded.body.id}`,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .post('/homechat/chat')
+          .send({
+            chatId: CHAT_ID,
+            messageId: MESSAGE_ID,
+            content: 'read',
+            history: [],
+            attachments: [uploaded.body.id],
+          })
+      ).status,
+    ).toBe(400);
+  });
+});
+
+it('removes an unfinished upload when the client disconnects during document parsing', async () => {
+  const store = createStore();
+  let disconnected = () => {};
+  const closed = new Promise<void>((resolve) => {
+    disconnected = resolve;
+  });
+  const app = express();
+  app.use((_req, res, next) => {
+    res.once('close', disconnected);
+    next();
+  });
+  registerHomeChatRoutes(app, {
+    mutate: () => (_req, _res, next) => next(),
+    fetchImpl: vi.fn<typeof fetch>(),
+    backendUrl: 'http://vane.test',
+    stateStore: store,
+  });
+  const original = HomeChatAttachments.prototype.put;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let savedId: string | undefined;
+  const spy = vi
+    .spyOn(HomeChatAttachments.prototype, 'put')
+    .mockImplementation(async function (this: HomeChatAttachments, ...args) {
+      const file = await original.apply(this, args);
+      savedId = file.id;
+      await held;
+      return file;
+    });
+  const upload = request(app)
+    .post(`/homechat/chats/${CHAT_ID}/attachments`)
+    .query({ name: 'slow.txt' })
+    .set('Content-Type', 'application/octet-stream')
+    .send(Buffer.from('cancelled content'));
+  const response = upload.then(
+    () => undefined,
+    () => undefined,
+  );
+  try {
+    await vi.waitFor(() => expect(savedId).toBeDefined());
+    upload.abort();
+    await response;
+    await closed;
+    release();
+    await vi.waitFor(() =>
+      expect(
+        existsSync(
+          join(store.directory, 'attachments', CHAT_ID, `${savedId}.json`),
+        ),
+      ).toBe(false),
+    );
+  } finally {
+    release();
+    spy.mockRestore();
+  }
 });

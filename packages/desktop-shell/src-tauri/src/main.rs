@@ -209,6 +209,8 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let window_builder =
         WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
+        // The composer handles browser File drops; the native handler consumes them.
+        .disable_drag_drop_handler()
         .title("HomeCode")
         .inner_size(width, height)
         .min_inner_size(900.0, 600.0)

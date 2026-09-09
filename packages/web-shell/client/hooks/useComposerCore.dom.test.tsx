@@ -905,6 +905,62 @@ describe('useComposerCore history and drafts', () => {
 });
 
 describe('useComposerCore paste', () => {
+  it.each(['files', 'items'] as const)(
+    'attaches mixed clipboard %s without pasting their text representation',
+    async (source) => {
+      const onSubmit = vi.fn();
+      await mount({ onSubmit });
+      const files = [
+        new File(['screenshot'], 'screen.png', { type: 'image/png' }),
+        new File(['const value = 42;'], 'example.ts', { type: 'video/mp2t' }),
+        new File(['%PDF-1.7'], 'report.pdf', { type: 'application/pdf' }),
+        new File(['archive'], 'bundle.zip', { type: 'application/zip' }),
+      ];
+      const event = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', {
+        value: {
+          files: source === 'files' ? files : [],
+          items: files.map((file) => ({
+            kind: 'file',
+            type: file.type,
+            getAsFile: () => file,
+          })),
+          types: ['Files', 'text/plain'],
+          getData: () => 'screen.png example.ts report.pdf bundle.zip',
+        },
+      });
+
+      await act(async () => {
+        latest!.setText('Inspect these files');
+        container!.querySelector('.cm-content')!.dispatchEvent(event);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(latest!.getText()).toBe('Inspect these files');
+      expect(latest!.pastedImages).toEqual([
+        { media_type: 'image/png', data: btoa('screenshot') },
+      ]);
+      expect(latest!.pastedFiles).toMatchObject([
+        { name: 'example.ts', media_type: 'text/plain', data: files[1] },
+        { name: 'report.pdf', media_type: 'application/pdf', data: files[2] },
+        { name: 'bundle.zip', media_type: 'application/zip', data: files[3] },
+      ]);
+      act(() => latest!.submitText());
+      expect(onSubmit).toHaveBeenCalledWith(
+        'Inspect these files',
+        [{ media_type: 'image/png', data: btoa('screenshot') }],
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'example.ts', data: files[1] }),
+          expect.objectContaining({ name: 'report.pdf', data: files[2] }),
+          expect.objectContaining({ name: 'bundle.zip', data: files[3] }),
+        ]),
+        expect.any(Function),
+        undefined,
+      );
+    },
+  );
+
   it('lets long plain text paste directly into the editor', async () => {
     await mount();
     const event = new Event('paste', { bubbles: true, cancelable: true });

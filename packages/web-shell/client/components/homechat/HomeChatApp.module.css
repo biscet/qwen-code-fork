@@ -307,6 +307,11 @@
 
 .composerFooter {
   composes: toolbar from '../ChatEditor.module.css';
+  justify-content: flex-start;
+}
+
+.composerFooter > button:last-child {
+  margin-left: auto;
 }
 
 .composerFooter button svg {
@@ -543,4 +548,57 @@
     gap: 16px;
     padding: 60px 12px 16px;
   }
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0;
+}
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+}
+.attachment > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment > svg {
+  flex-shrink: 0;
+}
+.attachment button,
+.attachButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.attachButton {
+  width: 30px;
+  height: 30px;
+}
+.attachment button:hover,
+.attachButton:hover {
+  color: var(--foreground);
+}
+.dragging {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.uploadStatus {
+  color: var(--muted-foreground);
+  font-size: 12px;
 }

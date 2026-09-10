@@ -23,6 +23,11 @@ export interface HomeChatModelCatalog {
   options?: HomeChatOptions;
 }
 
+export interface HomeChatConnection {
+  apiKeyConfigured: boolean;
+  requiresApiKey: boolean;
+}
+
 export interface HomeChatSummary {
   id: string;
   title: string;
@@ -120,6 +125,32 @@ export async function loadHomeChatModels(
   });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<HomeChatModelCatalog>;
+}
+
+export async function loadHomeChatConnection(
+  baseUrl: string,
+  token?: string,
+): Promise<HomeChatConnection> {
+  const response = await fetch(endpoint(baseUrl, '/homechat/connection'), {
+    headers: headers(token),
+  });
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<HomeChatConnection>;
+}
+
+export async function saveHomeChatConnection(
+  baseUrl: string,
+  token: string | undefined,
+  apiKey: string,
+): Promise<HomeChatConnection> {
+  const response = await fetch(endpoint(baseUrl, '/homechat/connection'), {
+    method: 'PUT',
+    headers: headers(token, true),
+    body: JSON.stringify({ apiKey }),
+  });
+  if (!response.ok) throw await responseError(response);
+  globalThis.dispatchEvent?.(new Event(HOMECHAT_OPTIONS_CHANGED));
+  return response.json() as Promise<HomeChatConnection>;
 }
 
 export async function saveHomeChatOptions(

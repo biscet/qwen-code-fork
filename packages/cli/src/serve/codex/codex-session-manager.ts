@@ -29,6 +29,29 @@ import type {
 } from '../workspace-registry.js';
 import { getCodexService } from './codex-service.js';
 import { CodexTools } from './codex-tools.js';
+import { loadSettings } from '../../config/settings.js';
+import {
+  generateOutputLanguageFileContent,
+  resolveOutputLanguageOrPreserveAuto,
+} from '../../i18n/languageUtils.js';
+
+function harnessInstructions(workspaceCwd: string): string {
+  const settings = loadSettings(workspaceCwd, {
+    skipLoadEnvironment: true,
+    workspaceTrusted: true,
+  });
+  const language = resolveOutputLanguageOrPreserveAuto(
+    settings.merged.general?.outputLanguage,
+  );
+  return (
+    'You are Codex in HomeCode Harness. Use the HomeCode dynamic tools for findings, artifacts, images and the selected workspace MCP integrations. Do not call a Qwen model or start another Qwen agent.\n\n' +
+    `## Workspace MCPs and agents
+Use the connected tool inventory and read relevant workspace skills and agent instructions. Prefer Serena for semantic navigation and symbol changes, Node REPL for JavaScript and local APIs, and Playwright for browser interactions and end-to-end checks. Use Chrome DevTools (--slim) for navigation, in-page JavaScript and screenshots. MCPs using the bundled local launcher run in the selected workspace: localhost refers to this Mac. Before semantic edits, confirm Serena's active project matches the selected workspace. MCPs configured with remote URLs use their remote host's paths and localhost; check each server's configuration before using it. Home AI Research remains a remote web-search service and requires LOCAL_QWEN_API_KEY. Do not claim an MCP check succeeded unless its tool call succeeded; report unavailable integrations and use another available tool when appropriate.
+
+` +
+    generateOutputLanguageFileContent(language)
+  );
+}
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -354,8 +377,7 @@ export class CodexSessionManager {
           'features.multi_agent_v2': false,
           'agents.enabled': false,
         },
-        developerInstructions:
-          'You are Codex in HomeCode Harness. Use the HomeCode dynamic tools for findings, artifacts, images and the selected workspace MCP integrations. Do not call a Qwen model or start another Qwen agent.',
+        developerInstructions: harnessInstructions(runtime.workspaceCwd),
         allowProviderModelFallback: false,
       });
       const now = new Date().toISOString();
@@ -548,6 +570,7 @@ export class CodexSessionManager {
           model: session.stored.modelId,
           approvalPolicy: 'on-request',
           sandbox: 'workspace-write',
+          developerInstructions: harnessInstructions(runtime.workspaceCwd),
         });
         session.loaded = true;
       }

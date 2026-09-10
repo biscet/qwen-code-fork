@@ -34,6 +34,7 @@ import {
   isHiddenQwenOAuthModelAlias,
   isHiddenQwenOAuthModelValue,
 } from '../../utils/composerModels';
+import { useBrowserNotificationSettings } from '../../browser-turn-notifications';
 import { LiveVoiceSettingsCard } from '../../live/LiveVoiceSettingsCard';
 import type { UseLiveVoiceSetupResult } from '../../live/useLiveVoiceSetup';
 import {
@@ -270,7 +271,7 @@ interface CategoryGroup {
 
 type SettingsPageItem =
   | { type: 'setting'; setting: DaemonSettingDescriptor }
-  | { type: 'local'; localKey: 'chatWidth' }
+  | { type: 'local'; localKey: 'chatWidth' | 'browserNotifications' }
   | { type: 'local-control' }
   | { type: 'live' };
 
@@ -430,7 +431,7 @@ function SettingInput({
 export type FlatRow =
   | { type: 'header'; category: string }
   | { type: 'setting'; setting: DaemonSettingDescriptor }
-  | { type: 'local'; localKey: 'chatWidth' };
+  | { type: 'local'; localKey: 'chatWidth' | 'browserNotifications' };
 
 /* Wraps around at both ends (matching the native CLI) while skipping
    category-header rows. Exported for tests. */
@@ -464,6 +465,11 @@ export function SettingsMessage({
 }: SettingsMessageProps) {
   const { language: selectedLanguage, t } = useI18n();
   const selectedTheme = useTheme();
+  const notifications = useBrowserNotificationSettings();
+  const refreshNotificationPermission = notifications?.refreshPermission;
+  useEffect(() => {
+    refreshNotificationPermission?.();
+  }, [refreshNotificationPermission]);
   const { status, settings, loading, error, reload, setValue, liveSetup } =
     settingsState;
   const [selectedScope, setScope] = useState<Scope>('workspace');
@@ -473,6 +479,7 @@ export function SettingsMessage({
   const [message, setMessage] = useState<string | null>(null);
   const [restartPending, setRestartPending] = useState(false);
 
+  const hasNotifications = notifications !== undefined;
   const showInitialLoading = !status && !error;
   const categories = useMemo(() => {
     const visibleSettings = settings.filter(
@@ -535,6 +542,10 @@ export function SettingsMessage({
         items: [localItem],
       });
     }
+    if (hasNotifications) {
+      const group = groups.find((item) => item.items.includes(localItem));
+      group?.items.push({ type: 'local', localKey: 'browserNotifications' });
+    }
     if (liveSetup?.supported) {
       const experimental = groups.find((group) => group.id === 'Experimental');
       if (experimental) {
@@ -559,7 +570,14 @@ export function SettingsMessage({
     }
     groups.push({ id: 'Vane', label: 'Vane', items: [] });
     return groups;
-  }, [liveSetup, settings, t, modelSettings, modelManagement]);
+  }, [
+    liveSetup,
+    settings,
+    t,
+    modelSettings,
+    modelManagement,
+    hasNotifications,
+  ]);
 
   useEffect(() => {
     if (categories.length === 0) return;
@@ -770,6 +788,26 @@ export function SettingsMessage({
       );
     }
 
+    if (setting.key === 'general.outputLanguage') {
+      const current = typeof value === 'string' && value ? value : 'auto';
+      const options = ['auto', 'Russian', 'English', 'Chinese'].map(
+        (language) => ({
+          value: language,
+          label: t(`settings.option.general.outputLanguage.${language}`),
+        }),
+      );
+      if (!options.some((option) => option.value === current)) {
+        options.unshift({ value: current, label: current });
+      }
+      return renderSelect(
+        current,
+        (next) => handleSetValue(setting.key, next),
+        options,
+        formatSettingLabel(setting, t),
+        disabled,
+      );
+    }
+
     if (SUB_DIALOG_KEYS.has(setting.key)) {
       const displayValue =
         typeof value === 'string'
@@ -867,7 +905,11 @@ export function SettingsMessage({
       <SettingInput
         name={setting.key}
         label={formatSettingLabel(setting, t)}
-        type={setting.type === 'number' ? 'number' : 'text'}
+        type={
+          setting.type === 'number' || setting.type === 'integer'
+            ? 'number'
+            : 'text'
+        }
         value={value}
         disabled={disabled}
         onCommit={(next) => handleSetValue(setting.key, next)}
@@ -1057,6 +1099,73 @@ export function SettingsMessage({
                         const separator = index > 0 && (
                           <Separator className="mx-5 w-auto max-md:mx-4" />
                         );
+                        if (
+                          item.type === 'local' &&
+                          item.localKey === 'browserNotifications' &&
+                          notifications
+                        ) {
+                          const unavailable =
+                            notifications.permission === 'unavailable';
+                          const status = unavailable
+                            ? 'unavailable'
+                            : notifications.pending
+                              ? 'requesting'
+                              : notifications.permission === 'denied'
+                                ? 'denied'
+                                : notifications.error
+                                  ? 'error'
+                                  : notifications.enabled
+                                    ? notifications.permission === 'granted'
+                                      ? 'enabled'
+                                      : 'waiting'
+                                    : 'disabled';
+                          return (
+                            <div key={item.localKey}>
+                              {separator}
+                              <SettingsRow
+                                title={t('browserNotifications.label')}
+                                description={[
+                                  t('browserNotifications.description'),
+                                  t(`browserNotifications.${status}`),
+                                  ...(!notifications.persistent
+                                    ? [t('browserNotifications.temporary')]
+                                    : []),
+                                ].join(' ')}
+                                control={
+                                  <div className="flex items-center gap-2">
+                                    {notifications.enabled &&
+                                      notifications.permission ===
+                                        'default' && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={notifications.pending}
+                                          onClick={() =>
+                                            void notifications.setEnabled(true)
+                                          }
+                                        >
+                                          {t('browserNotifications.allow')}
+                                        </Button>
+                                      )}
+                                    <Switch
+                                      aria-label={t(
+                                        'browserNotifications.label',
+                                      )}
+                                      checked={notifications.enabled}
+                                      disabled={
+                                        notifications.pending ||
+                                        (unavailable && !notifications.enabled)
+                                      }
+                                      onCheckedChange={(enabled) =>
+                                        void notifications.setEnabled(enabled)
+                                      }
+                                    />
+                                  </div>
+                                }
+                              />
+                            </div>
+                          );
+                        }
                         if (item.type === 'local') {
                           return (
                             <div key={item.localKey}>

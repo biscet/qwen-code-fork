@@ -1,5 +1,8 @@
 {
   "$version": 4,
+  "general": {
+    "outputLanguage": "Russian"
+  },
   "env": {
     "HOMECODE_LLM7_API_KEY": "unused"
   },
@@ -79,6 +82,22 @@
     "exclude": ["report_findings"]
   },
   "mcpServers": {
+    "playwright": {
+      "description": "Playwright на домашнем Mac-сервере: взаимодействие с веб-интерфейсами и проверка пользовательских сценариев.",
+      "httpUrl": "https://biscet-server.local:9454/playwright/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LOCAL_QWEN_API_KEY}"
+      },
+      "timeout": 120000
+    },
+    "chrome-devtools": {
+      "description": "Chrome DevTools --slim на домашнем Mac-сервере: навигация, JavaScript на странице и снимки экрана.",
+      "httpUrl": "https://biscet-server.local:9454/chrome-devtools/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LOCAL_QWEN_API_KEY}"
+      },
+      "timeout": 120000
+    },
     "node-repl": {
       "description": "Node.js REPL на домашнем Mac-сервере: JavaScript, вычисления и серверные API.",
       "httpUrl": "https://biscet-server.local:9454/node-repl/mcp",

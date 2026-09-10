@@ -51,7 +51,8 @@ function makeStatus(
 
 function render(
   status: DaemonSessionContextUsageStatus,
-  compact = false,
+  compact?: boolean,
+  detailNameMaxLen?: number,
 ): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -59,7 +60,11 @@ function render(
   act(() => {
     root.render(
       <I18nProvider language="en">
-        <ContextUsageMessage status={status} compact={compact} />
+        <ContextUsageMessage
+          status={status}
+          {...(compact === undefined ? {} : { compact })}
+          {...(detailNameMaxLen === undefined ? {} : { detailNameMaxLen })}
+        />
       </I18nProvider>,
     );
   });
@@ -94,6 +99,63 @@ describe('ContextUsageMessage', () => {
     expect(filledClass(render(makeStatus(61, false)))).toContain('warning');
     expect(filledClass(render(makeStatus(80, false)))).toContain('warning');
     expect(filledClass(render(makeStatus(81, false)))).toContain('error');
+  });
+
+  it('renders the compact meter in legend order with threshold colors', () => {
+    const container = render(makeStatus(60, false), true);
+    const [used, free, buffer] = Array.from(
+      container.querySelectorAll<HTMLSpanElement>(
+        '[role="progressbar"] > span',
+      ),
+    );
+    expect(used!.style.width).toBe('60%');
+    expect(used!.className).toContain('accent');
+    expect(free!.className).toContain('progressFree');
+    expect(buffer!.style.width).toBe('10%');
+    expect(buffer!.className).toContain('progressBuffer');
+    const first = (root: HTMLElement) =>
+      root.querySelector('[role="progressbar"] > span')!.className;
+    expect(first(render(makeStatus(61, false), true))).toContain('warning');
+    expect(first(render(makeStatus(81, false), true))).toContain('error');
+  });
+
+  it('keeps the transcript glyph track at exactly 56 cells', () => {
+    const container = render(makeStatus(60, false));
+    const [used, free, buffer] = Array.from(
+      container.querySelectorAll('[aria-hidden="true"] > span'),
+    ).map((node) => node.textContent?.length ?? 0);
+    expect(used).toBe(34);
+    expect(free).toBe(16);
+    expect(buffer).toBe(6);
+  });
+
+  it('suppresses its own title in compact mode so the panel toolbar is the only heading', () => {
+    const status = makeStatus(60, false);
+    status.usage.showDetails = true;
+    const compactContainer = render(status, true);
+    expect(compactContainer.querySelector('[class*="title"]')).toBeNull();
+    expect(compactContainer.querySelector('[class*="compact"]')).not.toBeNull();
+
+    const normalContainer = render(makeStatus(60, false));
+    expect(normalContainer.querySelector('[class*="title"]')).not.toBeNull();
+  });
+
+  it('keeps full detail names only when the caller opts out of the cap', () => {
+    const status = makeStatus(60, false);
+    const longName = 'mcp__github__create_repository_issue';
+    status.usage.showDetails = true;
+    status.usage.builtinTools = [{ name: longName, tokens: 10 }];
+
+    const uncappedContainer = render(status, true, Infinity);
+    expect(uncappedContainer.textContent).toContain(longName);
+    expect(uncappedContainer.textContent).not.toContain('…');
+
+    // Both the transcript default and an unpinned compact caller keep the
+    // cap; ContextUsagePanel.test.tsx pins that the panel passes the opt-out.
+    for (const container of [render(status, true), render(status)]) {
+      expect(container.textContent).not.toContain(longName);
+      expect(container.textContent).toContain('mcp__github__create_repositor…');
+    }
   });
 
   it('uses the pre-conversation view before any token count is available', () => {

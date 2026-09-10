@@ -40,6 +40,14 @@ The daemon log is written to `~/Library/Logs/com.alibaba.qwen-code/desktop-runti
 tail -f ~/Library/Logs/com.alibaba.qwen-code/desktop-runtime.log
 ```
 
+In the desktop app, open **Daemon status → Download logs** to save a diagnostic
+text file using the native Save dialog. The download includes the latest 8 MiB
+from the current and previous application launch, plus the desktop version and
+platform. It remains available when daemon status cannot load. Recognizable
+credentials are masked in the exported copy; workspace paths and other log text
+remain. The original logs are unchanged. The previous launch is retained as
+`desktop-runtime.previous.log` when the application restarts.
+
 The desktop state (saved workspace, window position) is stored in `~/Library/Application Support/com.alibaba.qwen-code/desktop-state.json`.
 
 ### WebView DevTools
@@ -65,11 +73,15 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ### Included HomeCode defaults
 
-The desktop runtime ships the project skills and `test-engineer` agent, and installs missing entries into the resolved user `QWEN_HOME` on first launch. Existing model/MCP definitions and custom skill files take precedence. The installation marker preserves subsequent deletions; existing CLI settings migrations still run normally.
+The desktop runtime installs missing model settings, skills and agents into the resolved user `QWEN_HOME` on first launch. Opening a trusted development workspace also creates missing `.qwen/settings.json`, `.qwen/skills/` and `.qwen/agents/` entries before its runtime starts. This covers the primary workspace, restored projects and projects added later. Untrusted workspaces and HomeChat do not receive this initialization.
 
-Qwen3.8-27B is preset with a 131072-token context at `https://biscet-server.local:9454/v1`. Node REPL, Serena and Home AI Research connect to the same Mac server over HTTPS. Enter the Qwen API key in model settings; all three MCP connections use that key. Serena operates on server projects, and each Node REPL connection has its own server-side session. The fresh Qwen profile excludes `report_findings`, whose structured-output schema is rejected by this model server.
+In Apple Silicon builds, each workspace uses local Node REPL, Serena, Playwright and Chrome DevTools on the Mac running HomeCode. Their processes start in the selected project; browser `localhost` points to that Mac. The Apple Silicon DMG requires macOS 15 or newer because the bundled Codex shell declares that minimum; Chromium requires macOS 13. The app includes Node, Python, the four MCP runtimes and Chromium. TypeScript/JavaScript and Python language servers are included. Other platform builds retain their remote MCP defaults. Separate connections have independent REPL and browser state. Serena binds to the project at startup and preserves existing project metadata. Additional language support may require the corresponding language toolchain.
 
-The public Home AI LAN CA is included for the desktop Node runtime and its children; existing additional certificates from the process or trusted home `.env` files are retained. No private key, API key, server credential, personal configuration or model weights are included. The server must be reachable from the client Mac, normally on the same LAN. The gateway's source/deployment instructions live in `home-ai-platform/mcp/homecode-gateway`; it runs independently of the HomeCode application.
+Existing project MCP declarations, custom user MCP overrides and existing skill/agent files take precedence. A user-local installation receipt preserves later deletions. Only unchanged declarations written by the bundled installer are automatically approved; project-authored configurations and explicit rejections keep the existing approval rules. Generated executable references resolve from the current app installation, so moving HomeCode does not leave build-machine paths in project settings.
+
+Qwen3.8-27B remains preset with a 131072-token context at `https://biscet-server.local:9454/v1`. Home AI Research remains remote at the same home server; enter the Qwen API key in model settings (`LOCAL_QWEN_API_KEY`) and make the server reachable from the client Mac. Local development MCPs do not need this key. The user-level remote MCP definitions remain available outside the workspace defaults. The fresh Qwen profile excludes `report_findings`, whose structured-output schema is rejected by this model server.
+
+The public Home AI LAN CA is included for the desktop Node runtime and its children; existing additional certificates from the process or trusted home `.env` files are retained. No private key, API key, server credential, personal configuration or model weights are included. The gateway's source/deployment instructions live in `home-ai-platform/mcp/homecode-gateway`; it runs independently of the HomeCode application.
 
 ### Local macOS DMG
 
@@ -81,7 +93,9 @@ npm run tauri --workspaces=false -- build --no-bundle
 npm run bundle:mac:local --workspaces=false
 ```
 
-If the release executable and runtime are already current, only the last command is needed. It signs the complete app bundle with an ad-hoc identity, packages the app and DMG, and verifies the app's resource seal. Do not add `--no-sign`: the executable's linker signature alone is not a valid app bundle signature and can cause macOS to report the installed app as damaged.
+The Apple Silicon runtime assembly requires `uv` on the build Mac; the installed app includes its own Python and does not require `uv`.
+
+If the release executable and runtime are already current, only the last command is needed. It creates the app in an isolated target directory, preserves Chromium framework symlinks, verifies Chromium's signature, signs the complete app with an ad-hoc identity, and checks every runtime checksum. It publishes a verified DMG containing HomeCode.app and an Applications link, then removes its temporary app. The existing `bundle/macos/HomeCode.app` is not replaced. Do not add `--no-sign`: the executable's linker signature alone is not a valid app bundle signature and can cause macOS to report the installed app as damaged.
 
 The local configuration disables updater artifacts and does not change production signing. Ad-hoc signing is not Apple Developer ID signing or notarization; a downloaded app may still require **System Settings → Privacy & Security → Open Anyway**. See [Tauri's ad-hoc signing documentation](https://v2.tauri.app/distribute/sign/macos/#ad-hoc-signing).
 

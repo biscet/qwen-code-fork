@@ -2727,12 +2727,13 @@ dependencies = [
 
 [[package]]
 name = "qwen-code-desktop"
-version = "2.1.8"
+version = "2.1.12"
 dependencies = [
  "command-group",
  "dunce",
  "open",
  "rand",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

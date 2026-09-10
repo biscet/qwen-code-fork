@@ -4,6 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import path from 'node:path';
+import {
+  Storage,
+  MAX_CONCURRENT_BACKGROUND_AGENTS,
+} from '@qwen-code/qwen-code-core';
+import { updateOutputLanguageFile } from '../../i18n/languageUtils.js';
 import type { Application, Request, Response } from 'express';
 import { SERVE_CONTROL_EXT_METHODS } from '@qwen-code/acp-bridge/status';
 import { loadSettings, SettingScope } from '../../config/settings.js';
@@ -39,9 +45,9 @@ const TUI_ONLY_SETTINGS = new Set([
   'general.terminalBell',
   'general.notificationMode',
   'general.preferredEditor',
-  'general.outputLanguage',
   'ide.enabled',
   'ui.showLineNumbers',
+  'ui.showToolCallArgs',
   'ui.renderMode',
   'ui.useTerminalBuffer',
   'ui.mouseTracking',
@@ -55,6 +61,7 @@ const TUI_ONLY_SETTINGS = new Set([
 // the Web Shell `/model --voice` picker needs to read + persist it; the daemon
 // `/voice/stream` then reads it back via `loadSettings`.
 const WEB_SHELL_SETTINGS = new Set([
+  'agents.maxParallelAgents',
   'ui.compactMode',
   'voiceModel',
   'mcpServers',
@@ -128,13 +135,15 @@ function rejectWorkspaceRestrictedWrite(
   scope: string,
   key: string,
 ): boolean {
-  if (scope !== 'workspace' || !WORKSPACE_RESTRICTED_SETTING_KEYS.includes(key))
-    return false;
-  res.status(400).json({
-    error: `Setting "${key}" is not honored from workspace scope; set it at user scope instead`,
-    code: 'workspace_restricted_setting',
-  });
-  return true;
+  if (scope !== 'workspace') return false;
+  if (WORKSPACE_RESTRICTED_SETTING_KEYS.includes(key)) {
+    res.status(400).json({
+      error: `Setting "${key}" is not honored from workspace scope; set it at user scope instead`,
+      code: 'workspace_restricted_setting',
+    });
+    return true;
+  }
+  return false;
 }
 
 function getAllowedKeys(includeLiveVoice = false): Set<string> {
@@ -184,7 +193,10 @@ function buildSettingsResponse(
       key === 'mcpServers' ? redactMcpServersSetting(value) : value;
     const effective = LIVE_MANAGED_SETTINGS.has(key)
       ? (userVal ?? def.default)
-      : (mergedEffective ?? def.default);
+      : (mergedEffective ??
+        (key === 'agents.maxParallelAgents'
+          ? MAX_CONCURRENT_BACKGROUND_AGENTS
+          : def.default));
     const values: SettingDescriptor['values'] = {
       effective: publicValue(effective),
     };
@@ -226,6 +238,21 @@ const SCOPE_MAP: Record<string, SettingScope> = {
   workspace: SettingScope.Workspace,
 };
 
+function writeSettingLanguageRule(
+  workspace: string,
+  scope: SettingScope,
+  key: string,
+  value: unknown,
+): void {
+  if (key !== 'general.outputLanguage' || typeof value !== 'string') return;
+  updateOutputLanguageFile(
+    value,
+    scope === SettingScope.User
+      ? undefined
+      : path.join(new Storage(workspace).getQwenDir(), 'output-language.md'),
+  );
+}
+
 export function prepareSettingWrite(
   workspace: string,
   scope: SettingScope,
@@ -234,6 +261,12 @@ export function prepareSettingWrite(
   mcpServerMutation?: McpServerSettingMutation,
   workspaceTrusted = true,
 ): { persistedValue: unknown; publicValue: unknown } {
+  if (key === 'general.outputLanguage' && typeof value === 'string') {
+    // eslint-disable-next-line no-control-regex
+    const controlCharacters = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+    const language = value.replace(controlCharacters, ' ').trim() || 'auto';
+    return { persistedValue: language, publicValue: language };
+  }
   if (key !== 'mcpServers') {
     return { persistedValue: value, publicValue: value };
   }
@@ -605,6 +638,13 @@ export function registerWorkspaceSettingsRoutes(
                   prepared.persistedValue,
                 );
               }
+              assertGenerationOpen();
+              writeSettingLanguageRule(
+                boundWorkspace,
+                settingScope,
+                key,
+                prepared.persistedValue,
+              );
             };
             if (mcpServerMutation) {
               await withMcpServerMutationLock(
@@ -861,6 +901,13 @@ export function registerWorkspaceQualifiedSettingsRoutes(
                 key,
                 prepared.persistedValue,
                 assertGenerationOpen,
+              );
+              assertGenerationOpen();
+              writeSettingLanguageRule(
+                runtime.workspaceCwd,
+                settingScope,
+                key,
+                prepared.persistedValue,
               );
             };
             if (mcpServerMutation) {

@@ -2,14 +2,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { parseEnv } from 'node:util';
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual, parseEnv } from 'node:util';
 import { applyEdits, modify, parse } from 'jsonc-parser';
 
 export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
   configureServerTrust(runtimeRoot, qwenHome);
   const initialMarker = path.join(qwenHome, '.desktop-defaults-v1');
   const previouslyInstalled = fs.existsSync(initialMarker);
-  const marker = path.join(qwenHome, '.desktop-defaults-v2');
+  const previousMarker = path.join(qwenHome, '.desktop-defaults-v2');
+  const languageMarker = path.join(qwenHome, '.desktop-defaults-v3');
+  const marker = path.join(qwenHome, '.desktop-defaults-v4');
   if (fs.existsSync(marker)) return;
 
   const defaultsRoot = path.join(runtimeRoot, 'defaults');
@@ -39,7 +42,14 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
       }),
     );
   };
+  const initializeLanguage =
+    !fs.existsSync(languageMarker) &&
+    settings.general?.outputLanguage === undefined;
+  if (initializeLanguage) {
+    set(['general', 'outputLanguage'], defaults.general.outputLanguage);
+  }
   for (const [key, value] of Object.entries(defaults.env)) {
+    if (fs.existsSync(previousMarker)) break;
     if (!Object.hasOwn(settings.env ?? {}, key)) set(['env', key], value);
   }
   const provider = settings.modelProviders?.openai;
@@ -47,6 +57,7 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
     provider && !Array.isArray(provider) && typeof provider === 'object';
   const models = (wrapped ? provider.models : provider) ?? [];
   for (const model of defaults.modelProviders.openai) {
+    if (fs.existsSync(previousMarker)) break;
     if (previouslyInstalled && model.id === 'local-coder') continue;
     if (!models.some((existing) => existing.id === model.id)) {
       models.push(model);
@@ -59,7 +70,12 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
     }
   }
   for (const [name, config] of Object.entries(defaults.mcpServers)) {
-    if (previouslyInstalled) break;
+    if (
+      previouslyInstalled &&
+      name !== 'playwright' &&
+      name !== 'chrome-devtools'
+    )
+      continue;
     if (!Object.hasOwn(settings.mcpServers ?? {}, name)) {
       set(['mcpServers', name], config);
     }
@@ -104,11 +120,183 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
   }
   const temporary = `${settingsPath}.desktop-${process.pid}.tmp`;
   try {
+    if (initializeLanguage) {
+      fs.copyFileSync(
+        path.join(defaultsRoot, 'output-language.md'),
+        path.join(qwenHome, 'output-language.md'),
+      );
+    }
     fs.writeFileSync(temporary, text, { mode: 0o600 });
     fs.renameSync(temporary, settingsPath);
     if (!previouslyInstalled)
       fs.writeFileSync(initialMarker, '1\n', { mode: 0o600 });
+    fs.writeFileSync(previousMarker, '1\n', { mode: 0o600 });
+    fs.writeFileSync(languageMarker, '1\n', { mode: 0o600 });
     fs.writeFileSync(marker, '1\n', { mode: 0o600 });
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
+export function installDesktopWorkspaceDefaults({
+  runtimeRoot,
+  qwenHome,
+  workspaceDir,
+}) {
+  const workspace = fs.realpathSync(workspaceDir);
+  const projectHome = path.join(workspace, '.qwen');
+  const defaultsRoot = path.join(runtimeRoot, 'defaults');
+  const defaults = readSettings(path.join(defaultsRoot, 'settings.json'));
+  const settingsPath = path.join(projectHome, 'settings.json');
+  const receiptPath = path.join(
+    qwenHome,
+    'desktop-workspaces',
+    `${createHash('sha256').update(workspace).digest('hex')}.json`,
+  );
+  for (const destination of [projectHome, settingsPath]) {
+    if (
+      fs.lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()
+    ) {
+      throw new Error(
+        `Cannot initialize workspace defaults through symlink: ${destination}`,
+      );
+    }
+  }
+  const definitions = Object.fromEntries(
+    Object.entries(defaults.mcpServers).map(([name, server]) => [
+      name,
+      name === 'home-ai-research'
+        ? server
+        : {
+            command: '${HOMECODE_MCP_NODE}',
+            args: ['${HOMECODE_MCP_LAUNCHER}', name],
+            timeout: 120000,
+            description: {
+              'node-repl':
+                'Локальный Node.js REPL в выбранном рабочем пространстве.',
+              serena:
+                'Локальная Serena: семантическая навигация и редактирование выбранного проекта.',
+              playwright:
+                'Локальный Playwright: браузерная проверка проекта, включая localhost.',
+              'chrome-devtools':
+                'Локальный Chrome DevTools: навигация, JavaScript и снимки экрана.',
+            }[name],
+            ...(server.includeTools
+              ? { includeTools: server.includeTools }
+              : {}),
+          },
+    ]),
+  );
+  const settings = readSettings(settingsPath);
+  let receipt;
+  if (fs.existsSync(receiptPath)) {
+    receipt = readSettings(receiptPath);
+  } else {
+    const projectMcp = readSettings(path.join(workspace, '.mcp.json'));
+    const userSettings = readSettings(path.join(qwenHome, 'settings.json'));
+    const names = Object.keys(definitions).filter((name) => {
+      if (
+        Object.hasOwn(settings.mcpServers ?? {}, name) ||
+        Object.hasOwn(projectMcp.mcpServers ?? {}, name)
+      )
+        return false;
+      const inherited = userSettings.mcpServers?.[name];
+      if (inherited === undefined) {
+        return !fs.existsSync(path.join(qwenHome, '.desktop-defaults-v1'));
+      }
+      return isDeepStrictEqual(
+        { ...inherited, description: undefined },
+        { ...defaults.mcpServers[name], description: undefined },
+      );
+    });
+    let text = fs.existsSync(settingsPath)
+      ? fs.readFileSync(settingsPath, 'utf8')
+      : '{}\n';
+    for (const name of names) {
+      text = applyEdits(
+        text,
+        modify(text, ['mcpServers', name], definitions[name], {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+    }
+    fs.mkdirSync(projectHome, { recursive: true });
+    for (const kind of ['skills', 'agents']) {
+      const target = path.join(projectHome, kind);
+      if (fs.lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        throw new Error(
+          `Cannot initialize workspace defaults through symlink: ${target}`,
+        );
+      }
+      fs.mkdirSync(target, { recursive: true });
+      for (const name of fs.readdirSync(path.join(defaultsRoot, kind))) {
+        const destination = path.join(target, name);
+        if (fs.lstatSync(destination, { throwIfNoEntry: false })) continue;
+        const inherited = path.join(qwenHome, kind, name);
+        const hasInherited = fs.existsSync(inherited);
+        if (
+          !hasInherited &&
+          fs.existsSync(path.join(qwenHome, '.desktop-defaults-v1'))
+        )
+          continue;
+        // Upgrade the stock v4 agent without changing custom tool restrictions.
+        const legacyTestEngineer =
+          kind === 'agents' &&
+          name === 'test-engineer.md' &&
+          hasInherited &&
+          createHash('sha256')
+            .update(fs.readFileSync(inherited))
+            .digest('hex') ===
+            '11c41de1d3ebbd7329c84a09b4603d141234f1f8975709393fe651298550bd95';
+        const useInherited = hasInherited && !legacyTestEngineer;
+        fs.cpSync(
+          useInherited ? inherited : path.join(defaultsRoot, kind, name),
+          destination,
+          {
+            recursive: true,
+          },
+        );
+        if (!useInherited)
+          resolveSkillReferences(destination, projectHome, defaultsRoot);
+      }
+    }
+    if (names.length) writeJsonText(settingsPath, text);
+    receipt = { installedMcpNames: names };
+    writeJsonText(receiptPath, `${JSON.stringify(receipt)}\n`);
+  }
+  const currentSettings = readSettings(settingsPath);
+  return Object.fromEntries(
+    Object.entries(definitions).filter(
+      ([name, definition]) =>
+        receipt.installedMcpNames?.includes(name) &&
+        isDeepStrictEqual(currentSettings.mcpServers?.[name], definition),
+    ),
+  );
+}
+
+function readSettings(file) {
+  if (!fs.existsSync(file)) return {};
+  const errors = [];
+  const value = parse(fs.readFileSync(file, 'utf8'), errors, {
+    allowTrailingComma: true,
+  });
+  if (
+    errors.length ||
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value)
+  ) {
+    throw new Error(`Cannot initialize desktop defaults: invalid ${file}`);
+  }
+  return value;
+}
+
+function writeJsonText(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.desktop-${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporary, text, { mode: 0o600 });
+    fs.renameSync(temporary, file);
   } finally {
     fs.rmSync(temporary, { force: true });
   }

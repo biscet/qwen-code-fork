@@ -58,6 +58,7 @@ describe('Core System Prompt (prompts.ts)', () => {
     vi.stubEnv('QWEN_SYSTEM_MD', undefined);
     vi.stubEnv('QWEN_SYSTEM_IDENTITY_MD', undefined);
     vi.stubEnv('QWEN_WRITE_SYSTEM_MD', undefined);
+    vi.stubEnv('QWEN_CODE_DESKTOP', undefined);
   });
 
   it('should return the base prompt when no userMemory is provided', () => {
@@ -67,6 +68,49 @@ describe('Core System Prompt (prompts.ts)', () => {
     expect(prompt).toContain('You are Qwen Code, an interactive CLI agent'); // Check for core content
     expect(prompt).toContain('# Executing actions with care');
     expect(prompt).toMatchSnapshot(); // Use snapshot for base prompt structure
+  });
+
+  it('does not advertise todo_write by default', () => {
+    vi.stubEnv('SANDBOX', undefined);
+    const prompt = getCoreSystemPrompt();
+
+    expect(prompt).not.toContain('todo_write');
+    expect(prompt).not.toContain('# Task Management');
+    expect(prompt).toContain('revise it as you learn');
+  });
+
+  it('adds local workspace MCP and proactive agent guidance only in desktop', () => {
+    expect(getCoreSystemPrompt()).not.toContain('## Workspace MCPs and agents');
+    vi.stubEnv('QWEN_CODE_DESKTOP', '1');
+    const prompt = getCoreSystemPrompt();
+    expect(prompt).toContain('connected tool inventory');
+    expect(prompt).toContain('Chrome DevTools (--slim)');
+    expect(prompt).toContain('localhost refers to this Mac');
+    expect(prompt).toContain("Serena's active project matches");
+    expect(prompt).toContain('requires LOCAL_QWEN_API_KEY');
+    expect(prompt).toContain(
+      'without waiting for a separate delegation request',
+    );
+    expect(prompt).not.toContain(
+      'exactly one foreground `general-purpose` writer',
+    );
+    expect(prompt).not.toContain('browser MCPs run on the home Mac server');
+  });
+
+  it('advertises todo_write when it is enabled', () => {
+    vi.stubEnv('SANDBOX', undefined);
+    const prompt = getCoreSystemPrompt(
+      undefined,
+      undefined,
+      undefined,
+      'interactive',
+      undefined,
+      true,
+    );
+
+    expect(prompt).toContain('# Task Management');
+    expect(prompt).toContain("Use 'todo_write'");
+    expect(prompt).toContain('pass the matching Todo ID as `todo_id`');
   });
 
   it('instructs the model not to bypass denied tool calls through equivalent paths', () => {
@@ -193,7 +237,14 @@ describe('Core System Prompt (prompts.ts)', () => {
 
   it('uses todos selectively and keeps plans outcome-oriented', () => {
     vi.stubEnv('SANDBOX', undefined);
-    const prompt = getCoreSystemPrompt();
+    const prompt = getCoreSystemPrompt(
+      undefined,
+      undefined,
+      undefined,
+      'interactive',
+      undefined,
+      true,
+    );
 
     expect(prompt).toContain('complex, ambiguous, or multi-phase tasks');
     expect(prompt).toContain('Do not use it for simple or single-step queries');
@@ -827,6 +878,7 @@ describe('main-session style: reminder decision matches prompt section', () => {
     getExperimentalZedIntegration: () => opts.acp,
     getInputFormat: () => InputFormat.TEXT,
     isInteractive: () => opts.interactive,
+    isTodoWriteEnabled: () => false,
   });
 
   beforeEach(() => {
@@ -920,6 +972,88 @@ describe('main-session style: reminder decision matches prompt section', () => {
 
     expect(getMainSessionBaseSystemPrompt(config)).toContain(
       '<function=run_shell_command>',
+    );
+  });
+
+  it('forwards the todo_write setting to the base prompt', () => {
+    const config = {
+      ...makeConfig({ interactive: false, acp: false }),
+      isTodoWriteEnabled: () => true,
+    };
+
+    expect(getMainSessionBaseSystemPrompt(config)).toContain('todo_write');
+  });
+});
+
+describe('main-session style: project trust gate', () => {
+  const projectStyle: OutputStyleDefinition = {
+    name: 'Team',
+    source: 'project',
+    description: 'The style this repo ships',
+    keepCodingInstructions: true,
+    prompt: 'Answer the way this team answers.',
+  };
+  const userStyle: OutputStyleDefinition = {
+    ...projectStyle,
+    name: 'Mine',
+    source: 'user',
+  };
+
+  const makeConfig = (style: OutputStyleDefinition, trusted?: boolean) => ({
+    getSystemPrompt: () => undefined,
+    getModel: () => 'test-model',
+    getOutputStyle: () => style,
+    getExperimentalZedIntegration: () => false,
+    getInputFormat: () => InputFormat.TEXT,
+    isInteractive: () => true,
+    isTodoWriteEnabled: () => false,
+    ...(trusted === undefined ? {} : { isTrustedFolder: () => trusted }),
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubEnv('QWEN_SYSTEM_MD', undefined);
+    vi.stubEnv('QWEN_SYSTEM_IDENTITY_MD', undefined);
+    vi.stubEnv('QWEN_WRITE_SYSTEM_MD', undefined);
+    vi.stubEnv('QWEN_CODE_TOOL_CALL_STYLE', undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // Trust can be revoked mid-session — the IDE branch flips the verdict in
+  // place — while the catalog is read once at startup, so the gate has to hold
+  // where the style is consumed, not only where it is loaded.
+  it('drops a project style once the workspace is untrusted', () => {
+    const config = makeConfig(projectStyle, false);
+    expect(resolveMainSessionOutputStyle(config)).toBeUndefined();
+    expect(getMainSessionBaseSystemPrompt(config)).not.toContain(
+      '# Output Style: Team',
+    );
+  });
+
+  it('keeps a project style while the workspace is trusted', () => {
+    const config = makeConfig(projectStyle, true);
+    expect(resolveMainSessionOutputStyle(config)).toBe(projectStyle);
+    expect(getMainSessionBaseSystemPrompt(config)).toContain(
+      '# Output Style: Team',
+    );
+  });
+
+  // The gate is about repo-authored prompts; a style from the user's own home
+  // directory is theirs either way.
+  it('keeps a user style in an untrusted workspace', () => {
+    const config = makeConfig(userStyle, false);
+    expect(resolveMainSessionOutputStyle(config)).toBe(userStyle);
+    expect(getMainSessionBaseSystemPrompt(config)).toContain(
+      '# Output Style: Mine',
+    );
+  });
+
+  it('keeps a project style when the config reports no trust verdict', () => {
+    expect(resolveMainSessionOutputStyle(makeConfig(projectStyle))).toBe(
+      projectStyle,
     );
   });
 });

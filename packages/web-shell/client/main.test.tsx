@@ -59,6 +59,7 @@ vi.mock('./components/homechat/HomeChatApp', () => ({
 vi.mock('./config/daemon', () => ({
   getDaemonBaseUrl: () => '',
   getDaemonToken: () => 'token',
+  persistDaemonToken: vi.fn(),
   removeDaemonTokenFromUrl: vi.fn(),
   waitForDaemonTokenMessage: vi.fn(),
 }));
@@ -107,6 +108,18 @@ describe('StandaloneApp', () => {
     expect(
       testState.props?.webShellProps.composerToolbarAdditionalActions,
     ).toEqual(['addMenu']);
+    expect(testState.props?.webShellProps.environmentPanel?.items).toEqual([
+      'environment',
+      'subagents',
+      'backgroundTasks',
+    ]);
+    expect(testState.props?.webShellProps.header?.items).not.toContain(
+      'contextUsage',
+    );
+    expect(testState.props?.webShellProps.sidebar).toMatchObject({
+      showSessionSourceSwitch: false,
+      showWorkspaceGit: false,
+    });
   });
 
   it('uses the simplified Desktop sidebar', () => {
@@ -125,7 +138,7 @@ describe('StandaloneApp', () => {
       footer: {
         items: ['settings', 'daemonStatus', 'models', 'version'],
         layout: 'stacked',
-        versionLabel: '2.1.8',
+        versionLabel: '2.1.12',
       },
     });
   });
@@ -215,7 +228,7 @@ describe('StandaloneApp', () => {
     );
   });
 
-  it('keeps standalone context in the URL for an unallocated draft', () => {
+  it('keeps standalone context out of the URL for an unallocated draft', () => {
     act(() => root.render(<StandaloneApp daemonToken="token" />));
 
     act(() => {
@@ -233,8 +246,8 @@ describe('StandaloneApp', () => {
       sessionContext: { kind: 'standalone' },
     });
     expect(window.location.pathname).toBe('/');
-    expect(new URLSearchParams(window.location.search).get('context')).toBe(
-      'standalone',
+    expect(new URLSearchParams(window.location.search).has('context')).toBe(
+      false,
     );
   });
 

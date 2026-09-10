@@ -1022,6 +1022,10 @@ export const RU = {
   'daemon.details.loading': 'Загрузка диагностики...',
   'daemon.details.failed': 'Не удалось загрузить диагностику.',
   'daemon.refresh': 'Обновить',
+  'daemon.logs.download': 'Скачать логи',
+  'daemon.logs.saving': 'Сохранение…',
+  'daemon.logs.saved': 'Логи сохранены',
+  'daemon.logs.failed': 'Не удалось сохранить логи. Повторите попытку.',
   'daemon.loading': 'Загрузка статуса демона...',
   'daemon.loadFailed': 'Не удалось загрузить статус демона',
   'daemon.updatedAt': (v) =>
@@ -3937,6 +3941,16 @@ export const RU = {
     interpolateRu('(Изменено в {{HC0}})', [v?.scope ?? '']),
   'settings.alsoModifiedIn': (v) =>
     interpolateRu('(Также изменено в {{HC0}})', [v?.scope ?? '']),
+  'settings.label.general.outputLanguage': 'Язык ответов',
+  'settings.description.general.outputLanguage':
+    'Язык ответов модели. Применяется после перезапуска HomeCode.',
+  'settings.option.general.outputLanguage.auto': 'Как в вашем сообщении',
+  'settings.option.general.outputLanguage.Russian': 'Русский',
+  'settings.option.general.outputLanguage.English': 'Английский',
+  'settings.option.general.outputLanguage.Chinese': 'Китайский',
+  'settings.label.agents.maxParallelAgents': 'Лимит параллельных сабагентов',
+  'settings.description.agents.maxParallelAgents':
+    'Сколько фоновых сабагентов могут работать одновременно в каждой сессии Qwen. Остальные ждут в очереди. Применяется после перезапуска HomeCode.',
   'settings.invalidNumber': 'Некорректное число',
   'settings.requiresRestart': 'Это изменение вступит в силу после перезапуска.',
   'settings.localControl.title': 'Локальное управление',
@@ -3960,6 +3974,15 @@ export const RU = {
   'localControl.disabledHint':
     'Локальное управление выключено. Включите его в Настройках для сопряжения телефона на той же сети.',
   'localControl.openSettings': 'Открыть настройки',
+  'settings.vane.apiKey': 'API-ключ Qwen 27B',
+  'settings.vane.apiKeyHint':
+    'Ключ домашнего сервера для подключения Vane к Qwen3.8-27B.',
+  'settings.vane.enterKey': 'Вставьте API-ключ',
+  'settings.vane.replaceKey': 'Вставьте новый ключ',
+  'settings.vane.saveKey': 'Сохранить ключ',
+  'settings.vane.savingKey': 'Сохранение…',
+  'settings.vane.keySaved': 'Ключ сохранён',
+  'settings.vane.keyConfigured': 'Ключ настроен',
   'settings.vane.description':
     'Параметры поиска и ответов в режиме Chat. Сохраняются автоматически для всех чатов.',
   'settings.vane.unavailable':
@@ -4360,4 +4383,223 @@ export const RU = {
   'settings.label.experimental.artifact': 'Включить артефакты',
   'settings.description.experimental.artifact':
     'Включить инструменты артефактов. По умолчанию они включены. В интерактивных сессиях вне SDK модель может публиковать автономную HTML-страницу как интерактивный артефакт и открывать её в браузере. Сессии демона вне SDK могут использовать инструмент record_artifact, сохраняющий только метаданные. Установите false или QWEN_CODE_DISABLE_ARTIFACT=1, чтобы отключить оба варианта.',
+  'branchPicker.hint.createsPushBranch': (v) => `Создаст ${v?.target ?? ''}`,
+  'subagent.creating': 'Создание…',
+  'approval.explain': 'Объяснить',
+  'approval.explanation': 'Объяснение команды',
+  'approval.explaining': 'Подготовка объяснения…',
+  'approval.explanationThinking': 'Размышление…',
+  'approval.explanationFailed': 'Не удалось объяснить команду',
+  'approval.reExplain': 'Объяснить ещё раз',
+  'session.writerBlocked':
+    'Другой процесс Qwen или оставшаяся блокировка записи могут мешать работе с этим чатом. Закройте его в других процессах и повторите попытку. Если ошибка сохраняется, перед восстановлением проверьте диагностику локального демона.',
+  'history.openEarlier': 'Открыть раннюю историю',
+  'history.loadEarlier': 'Загрузить предыдущие сообщения',
+  'history.loadNewer': 'Загрузить следующие сообщения',
+  'history.returnLatest': 'Вернуться к последним сообщениям',
+  'history.viewUnavailable':
+    'История временно недоступна: сессия переподключается или восстанавливает запись чата.',
+  'history.snapshotView': 'Снимок истории · только чтение',
+  'history.viewError':
+    'Не удалось загрузить этот раздел. Перейдите к другому месту истории и повторите попытку или вернитесь к последним сообщениям.',
+  'workflowRuns.title': 'Рабочие процессы',
+  'workflowRuns.saved': 'Сохранённые',
+  'workflowRuns.active': 'Выполняются',
+  'workflowRuns.history': 'История',
+  'workflowRuns.create': 'Создать',
+  'workflowRuns.refresh': 'Обновить',
+  'workflowRuns.loading': 'Загрузка запусков рабочих процессов…',
+  'workflowRuns.loadFailed': 'Не удалось загрузить запуски рабочих процессов.',
+  'workflowRuns.noSession':
+    'Откройте сессию в этом проекте, чтобы увидеть запуски рабочих процессов.',
+  'workflowRuns.emptyActive': 'Сейчас нет выполняющихся рабочих процессов.',
+  'workflowRuns.emptyHistory': 'Сохранённых запусков пока нет.',
+  'workflowRuns.emptySaved':
+    'Рабочие процессы для повторного запуска ещё не сохранены.',
+  'workflowRuns.emptySavedHint':
+    'Нажмите «Создать», чтобы подготовить рабочий процесс с Qwen Code, сохраните завершённый запуск из терминала или добавьте файл .js в .qwen/workflows.',
+  'workflowRuns.project': 'Проект',
+  'workflowRuns.user': 'Пользователь',
+  'workflowRuns.projectDescription': 'Доступен в этом проекте',
+  'workflowRuns.userDescription': 'Доступен во всех проектах',
+  'workflowRuns.detail.toggle': (v) => `Показать сведения: ${v?.name ?? ''}`,
+  'workflowRuns.detail.loading': 'Загрузка описания рабочего процесса…',
+  'workflowRuns.detail.unavailable':
+    'Описание этого рабочего процесса больше недоступно.',
+  'workflowRuns.detail.loadFailed':
+    'Не удалось прочитать описание рабочего процесса.',
+  'workflowRuns.detail.retry': 'Повторить',
+  'workflowRuns.detail.noDescription':
+    'У этого рабочего процесса нет описания.',
+  'workflowRuns.detail.whenToUse': 'Когда использовать',
+  'workflowRuns.detail.metaError': (v) =>
+    `Не удалось разобрать блок meta: ${v?.error ?? ''}`,
+  'workflowRuns.detail.phases': (v) => `Этапы (${v?.count ?? 0})`,
+  'workflowRuns.detail.recentRuns': 'Последние запуски',
+  'workflowRuns.detail.noRuns': 'В этой сессии запусков пока нет.',
+  'workflowRuns.detail.viewRuns': (v) =>
+    `Показать ${v?.count ?? 0} ${pluralRu(v?.count, 'запуск', 'запуска', 'запусков')} в истории`,
+  'workflowRuns.detail.showSource': 'Показать исходный код',
+  'workflowRuns.detail.hideSource': 'Скрыть исходный код',
+  'workflowRuns.run': 'Запустить',
+  'workflowRuns.starting': 'Запуск…',
+  'workflowRuns.runNamed': (v) => `Запустить ${v?.name ?? ''}`,
+  'workflowRuns.startFailed':
+    'Не удалось запустить сохранённый рабочий процесс. Обновите список и повторите попытку.',
+  'localFiles.title': 'Локальные файлы',
+  'localFiles.trigger': 'Локальные файлы',
+  'localFiles.hint':
+    'Разрешает этой сессии читать и изменять файлы одной папки на вашем компьютере. Файлы остаются на компьютере; агент получает только запрошенные данные.',
+  'localFiles.connect': 'Подключить папку…',
+  'localFiles.reconnect': 'Подключить заново',
+  'localFiles.disconnect': 'Отключить',
+  'localFiles.openInNewTab': 'Открыть в новой вкладке',
+  'localFiles.directory': 'Папка',
+  'localFiles.tools': (v) =>
+    `${v?.count ?? 0} ${pluralRu(v?.count, 'инструмент', 'инструмента', 'инструментов')}`,
+  'localFiles.status.idle': 'Не подключено',
+  'localFiles.status.connecting': 'Подключение…',
+  'localFiles.status.registering': 'Регистрация…',
+  'localFiles.status.connected': 'Подключено',
+  'localFiles.status.reconnecting': 'Повторное подключение…',
+  'localFiles.status.heldElsewhere': 'Подключено в другой вкладке',
+  'localFiles.status.needsSession': 'Ожидание сессии',
+  'localFiles.status.needsGesture': 'Подключите заново, чтобы продолжить',
+  'localFiles.status.failed': 'Ошибка',
+  'localFiles.status.unavailable': 'Здесь недоступно',
+  'localFiles.needsSessionHint':
+    'Сначала запустите сессию. Подключение привязано только к ней: другие сессии не получат доступ к вашим файлам.',
+  'localFiles.blocker.insecureContext':
+    'Страница открыта в небезопасном контексте, поэтому браузер не разрешит доступ к локальным файлам. Откройте Web Shell по HTTPS или перенаправьте порт демона через SSH и откройте http://localhost:<port>.',
+  'localFiles.blocker.crossOriginFrame':
+    'Доступ к локальным файлам заблокирован во встроенном фрейме другого сайта. Откройте Web Shell в отдельной вкладке браузера, чтобы подключить папку.',
+  'localFiles.blocker.unsupportedBrowser':
+    'Этот браузер не поддерживает File System Access API. Для подключения локальной папки используйте Chrome или Edge.',
+  'localFiles.blocker.workspaceIneligible':
+    'Рабочая область этого чата не поддерживает подключение локальной папки: она не является доверенной или используется для Live.',
+  'sidebar.noWorkspaceSessions': 'Сессии без рабочей области',
+  'sidebar.workflows': 'Рабочие процессы',
+  'sidebar.activeWork': 'Текущая работа',
+  'sidebar.activityUnknown': 'Фоновая активность неизвестна',
+  'goal.usageLimited': 'Достигнут лимит использования для цели',
+  'goal.tokens': (v) =>
+    `${v?.used ?? 0} ${pluralRu(v?.used, 'токен', 'токена', 'токенов')}`,
+  'goal.tokensOfBudget': (v) => `${v?.used ?? 0} / ${v?.budget ?? 0} токенов`,
+  'plan.toggle.on': 'Составить план перед выполнением',
+  'plan.toggle.off': (v) =>
+    `Планирование; после подтверждения выполнить в режиме «${v?.mode}». Нажмите, чтобы выйти из планирования.`,
+  'approval.option.executePlan': (v) => `Подтвердить и выполнить · ${v?.mode}`,
+  'mode.changePending':
+    'Ожидается смена режима или подтверждение плана. Повторите попытку после завершения.',
+  'contextUsage.refresh': 'Обновить',
+  'contextUsage.retry': 'Повторить',
+  'contextUsage.loadError': 'Не удалось загрузить использование контекста.',
+  'contextUsage.unavailable':
+    'Использование контекста недоступно для этой сессии.',
+  'workflow.open': 'Открыть рабочий процесс агентов',
+  'workflow.mainAgent': 'Основной агент',
+  'workflow.empty': 'В этом рабочем процессе нет сабагентов',
+  'workflow.loadFailed': 'Не удалось загрузить рабочий процесс агентов',
+  'environment.attachments': 'Вложения',
+  'environment.artifacts': 'Артефакты',
+  'environment.artifactsEmpty':
+    'Здесь появятся артефакты, созданные в этой сессии.',
+  'rightPanel.attachmentLoadFailed': (v) =>
+    `Не удалось загрузить вложение: ${v?.error ?? 'Неизвестная ошибка'}`,
+  'rightPanel.savedContentUnavailable':
+    'Сохранённое содержимое панели недоступно',
+  'rightPanel.restoreFailed': (v) =>
+    `Не удалось восстановить панель: ${v?.error ?? 'Неизвестная ошибка'}`,
+  'tasks.pausing': 'Приостановка',
+  'tasks.kind.workflow': 'Рабочий процесс',
+  'workflow.graph.waiting': 'Ожидание запуска первого агента…',
+  'workflow.graph.notRecorded':
+    'Граф выполнения этого запуска не был сохранён.',
+  'workflow.inline.loading': 'Загрузка текущего выполнения рабочего процесса…',
+  'workflow.inline.unavailable':
+    'Этот запуск рабочего процесса больше недоступен в текущей сессии.',
+  'workflow.graph.omitted': (v) =>
+    `Граф сокращён для быстродействия. Скрыто этапов: ${v?.lanes ?? 0}, агентов: ${v?.nodes ?? 0}, связей: ${v?.edges ?? 0}.`,
+  'workflow.noPhase': 'Без этапа',
+  'workflow.dispatchCount': (v) =>
+    `${v?.count ?? 0} ${pluralRu(v?.count, 'вызов', 'вызова', 'вызовов')}`,
+  'workflow.selectedDispatch': 'Выбранный вызов',
+  'workflow.dependencies': 'Зависит от',
+  'workflow.action.pause': 'Приостановить',
+  'workflow.action.resume': 'Продолжить',
+  'workflow.action.retry': 'Повторить ветку с ошибкой',
+  'workflow.action.rerun': 'Повторить всё',
+  'workflow.action.unavailable':
+    'Состояние рабочего процесса изменилось до выполнения действия.',
+  'workflow.action.failed': 'Не удалось обновить рабочий процесс.',
+  'workflow.history.retry': (v) => `Повтор после ошибки в ${v?.runId ?? ''}`,
+  'workflow.history.rerun': (v) => `Повторный запуск из ${v?.runId ?? ''}`,
+  'workflow.history.cached': (v) => `В кэше: ${v?.count ?? 0}`,
+  'workflow.history.saved': (v) =>
+    `${v?.count ?? 0} ${pluralRu(v?.count, 'сохранённый запуск', 'сохранённых запуска', 'сохранённых запусков')}`,
+  'workflow.history.restored': 'Сохранённый запуск · только чтение',
+  'workflow.history.showRuns': (v) => `История запусков (${v?.count ?? 0})`,
+  'workflow.history.hideRuns': 'Скрыть историю',
+  'workflow.history.filter': 'Фильтр запусков',
+  'workflow.history.filterAll': 'Все статусы',
+  'workflow.history.visibleCount': (v) =>
+    `${v?.count ?? 0} из ${v?.total ?? 0}`,
+  'workflow.history.filterEmpty':
+    'Нет сохранённых запусков, соответствующих фильтру.',
+  'workflow.history.exportVisible': 'Экспортировать отображаемые',
+  'workflow.history.delete': 'Удалить',
+  'workflow.history.deleteSaved': 'Удалить сохранённый запуск',
+  'workflow.history.confirmDelete': 'Подтвердить удаление',
+  'workflow.history.deleteUnavailable': 'Сохранённый запуск больше недоступен.',
+  'workflow.history.deleteFailed': 'Не удалось удалить сохранённый запуск.',
+  'workflow.history.compareRun': (v) => `Сравнить запуск ${v?.runId ?? ''}`,
+  'workflow.history.compare': 'Сравнить запуски',
+  'workflow.history.hideComparison': 'Скрыть сравнение',
+  'workflow.history.source': 'Исходный запуск',
+  'workflow.history.compared': 'Сравниваемый запуск',
+  'workflow.history.current': 'Текущий запуск',
+  'workflow.history.status': 'Статус',
+  'workflow.history.agents': 'Агенты',
+  'workflow.approvalNeeded': 'Требуется подтверждение',
+  'workflow.respondInChat': 'Ответить в чате',
+  'workflow.metric.agents': 'агентов',
+  'workflow.metric.running': 'выполняются',
+  'workflow.metric.queued': 'в очереди',
+  'workflow.metric.tokens': 'токенов',
+  'workflow.dispatch.queued': 'В очереди',
+  'workflow.dispatch.running': 'Выполняется',
+  'workflow.dispatch.completed': 'Завершено',
+  'workflow.dispatch.failed': 'Ошибка',
+  'workflow.dispatch.cancelled': 'Отменено',
+  'workflow.dispatch.cached': 'Из кэша',
+  'tasks.pill.workflow': (v) =>
+    `${v?.count ?? 0} ${pluralRu(v?.count, 'рабочий процесс', 'рабочих процесса', 'рабочих процессов')}`,
+  'tasks.pill.workflows': (v) =>
+    `${v?.count ?? 0} ${pluralRu(v?.count, 'рабочий процесс', 'рабочих процесса', 'рабочих процессов')}`,
+  'splitView.pendingCount': (v) => `Ожидают ввода: ${v?.count ?? 0}`,
+  'splitView.nextPending': 'Перейти к следующей сессии, ожидающей ввода',
+  'channels.editor.field.shared.instructions': 'Инструкции',
+  'channels.editor.field.shared.instructions.description':
+    'Инструкции, добавляемые в контекст каждой сессии канала. Для некоторых каналов заменяют стандартные инструкции.',
+  'browserNotifications.label': 'Уведомления браузера о задачах',
+  'browserNotifications.description':
+    'Уведомлять о завершении или ошибке в текущем чате или чате разделённого экрана, когда страница находится в фоне или не в фокусе. Настройка сохраняется только для этого сайта в браузере; страница должна оставаться открытой.',
+  'browserNotifications.completed': 'Текущий запрос выполнен.',
+  'browserNotifications.failed':
+    'Текущий запрос завершился с ошибкой. Вернитесь, чтобы посмотреть подробности.',
+  'browserNotifications.ended':
+    'Обработка текущего запроса завершена. Вернитесь, чтобы проверить результат.',
+  'browserNotifications.allow': 'Разрешить уведомления',
+  'browserNotifications.enabled': 'Включены.',
+  'browserNotifications.disabled': 'Отключены.',
+  'browserNotifications.waiting': 'Ожидание разрешения браузера.',
+  'browserNotifications.denied':
+    'Уведомления заблокированы. Разрешите их в настройках сайта в браузере.',
+  'browserNotifications.unavailable':
+    'Уведомления недоступны в этом браузере или контексте страницы.',
+  'browserNotifications.requesting': 'Ожидание вашего разрешения…',
+  'browserNotifications.error':
+    'Не удалось включить или показать уведомления. Проверьте настройки браузера и системы.',
+  'browserNotifications.temporary':
+    'Настройка сохранена только для текущей страницы.',
 } satisfies Record<string, MessageValue>;

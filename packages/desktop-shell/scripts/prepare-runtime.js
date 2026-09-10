@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { prepareMcpRuntime } from './prepare-mcp-runtime.js';
 
 const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -53,22 +54,6 @@ if (!skipBuild) {
     cwd: sourceRoot,
     stdio: 'inherit',
   });
-  execFileSync(
-    process.execPath,
-    [npm, 'run', 'build', '--workspace=packages/webui'],
-    {
-      cwd: sourceRoot,
-      stdio: 'inherit',
-    },
-  );
-  execFileSync(
-    process.execPath,
-    [npm, 'run', 'build', '--workspace=packages/web-shell'],
-    {
-      cwd: sourceRoot,
-      stdio: 'inherit',
-    },
-  );
   execFileSync(process.execPath, [npm, 'run', 'bundle'], {
     cwd: sourceRoot,
     stdio: 'inherit',
@@ -99,6 +84,9 @@ try {
   copyDirectory(distDir, libDir);
   const codexVersion = installCodexRuntime();
   await installNodeRuntime(nodeDir, target);
+  if (target === 'darwin-arm64') {
+    prepareMcpRuntime({ packageRoot, sourceRoot, packageDir, target });
+  }
   await installDesktopDefaults();
   writeLaunchers(target);
   copyRequiredFile(
@@ -185,6 +173,10 @@ async function installDesktopDefaults() {
   copyRequiredFile(
     path.join(packageDir, 'defaults', 'settings.json'),
     path.join(defaultsRoot, 'settings.json'),
+  );
+  copyRequiredFile(
+    path.join(packageDir, 'defaults', 'output-language.md'),
+    path.join(defaultsRoot, 'output-language.md'),
   );
   copyRequiredFile(
     path.join(packageDir, 'defaults', 'home-ai-lan-ca.crt'),
@@ -397,7 +389,9 @@ function runtimeFiles(directory) {
     .readdirSync(directory, { withFileTypes: true })
     .flatMap((entry) => {
       const absolute = path.join(directory, entry.name);
-      return entry.isDirectory() ? runtimeFiles(absolute) : [absolute];
+      return fs.statSync(absolute).isDirectory()
+        ? runtimeFiles(absolute)
+        : [absolute];
     })
     .sort();
 }

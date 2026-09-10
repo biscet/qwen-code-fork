@@ -27,6 +27,7 @@ function supportedModelEfforts(
 ): readonly ReasoningEffort[] | undefined {
   const reasoning = getModelConfiguration(
     model.id,
+    model.capabilities?.reasoning,
     model.generationConfig,
   )?.reasoning;
   return reasoning && 'efforts' in reasoning ? reasoning.efforts : undefined;

@@ -70,6 +70,7 @@ export interface RegisterHomeChatRoutesDeps {
   fetchImpl?: FetchLike;
   backendUrl?: string;
   getBackendApiKey?: () => string | undefined;
+  onConnectionChanged?: () => Promise<void>;
   stateStore?: HomeChatStateStore;
   codex?: HomeChatCodex;
 }
@@ -161,29 +162,48 @@ function parseRequest(body: unknown): HomeChatRequest | undefined {
   };
 }
 
+const DESKTOP_CHAT_PROVIDER: Provider = {
+  id: 'home-ai-openai-local',
+  name: 'Qwen',
+  chatModels: [
+    {
+      key: 'windows-lmstudio/windows-qwen35-9b',
+      name: 'Qwen3.8-27B',
+      homechatReasoning: true,
+    },
+  ],
+};
+
+function selectChatModel(providers: Provider[]) {
+  const preferred = providers.find(
+    (provider) => provider.id === DESKTOP_CHAT_PROVIDER.id,
+  );
+  const preferredModel =
+    preferred?.chatModels?.find((model) =>
+      /qwen.*27b/i.test(`${model.name ?? ''} ${model.key}`),
+    ) ??
+    preferred?.chatModels?.find(
+      (model) => model.key === 'windows-lmstudio/windows-qwen35-9b',
+    );
+  const provider = preferredModel
+    ? preferred
+    : providers.find((entry) => entry.chatModels?.length);
+  const model = preferredModel ?? provider?.chatModels?.[0];
+  return provider && model ? { providerId: provider.id, key: model.key } : null;
+}
+
 function selectModels(providers: Provider[]): {
   chatModel: { providerId: string; key: string };
   embeddingModel: { providerId: string; key: string };
 } | null {
-  const preferredChatProvider = providers.find(
-    (provider) => provider.id === 'home-ai-openai-local',
-  );
-  const preferredChatModel = preferredChatProvider?.chatModels?.find(
-    (model) => model.key === 'windows-lmstudio/windows-qwen35-9b',
-  );
-  const chatProvider = preferredChatModel
-    ? preferredChatProvider
-    : providers.find((provider) => provider.chatModels?.length);
-  const chatModel = preferredChatModel ?? chatProvider?.chatModels?.[0];
+  const chatModel = selectChatModel(providers);
   const embeddingProvider = providers.find(
     (provider) => provider.embeddingModels?.length,
   );
   const embeddingModel = embeddingProvider?.embeddingModels?.[0];
-  if (!chatProvider || !chatModel || !embeddingProvider || !embeddingModel) {
-    return null;
-  }
+  if (!chatModel || !embeddingProvider || !embeddingModel) return null;
   return {
-    chatModel: { providerId: chatProvider.id, key: chatModel.key },
+    chatModel,
     embeddingModel: {
       providerId: embeddingProvider.id,
       key: embeddingModel.key,
@@ -206,11 +226,19 @@ export function registerHomeChatRoutes(
   const backendUrl =
     deps.backendUrl ??
     (desktopBackend ? HOMECHAT_DESKTOP_BACKEND_URL : HOMECHAT_BACKEND_URL);
+  const stateStore = deps.stateStore ?? new HomeChatStateStore();
+  const getApiKey = () =>
+    stateStore.read().backendApiKey ??
+    (deps.getBackendApiKey
+      ? deps.getBackendApiKey()
+      : process.env['LOCAL_QWEN_API_KEY']);
+  const connection = () => ({
+    apiKeyConfigured: Boolean(getApiKey()),
+    requiresApiKey: desktopBackend,
+  });
   const fetchBackend = (pathname: string, init?: RequestInit) => {
     if (!desktopBackend) return fetchImpl(`${backendUrl}${pathname}`, init);
-    const apiKey = deps.getBackendApiKey
-      ? deps.getBackendApiKey()
-      : process.env['LOCAL_QWEN_API_KEY'];
+    const apiKey = getApiKey();
     if (!apiKey) throw new Error('HomeChat server API key is missing');
     const headers = new Headers(init?.headers);
     headers.set('Authorization', `Bearer ${apiKey}`);
@@ -220,7 +248,6 @@ export function registerHomeChatRoutes(
       redirect: 'error',
     });
   };
-  const stateStore = deps.stateStore ?? new HomeChatStateStore();
   const attachments = new HomeChatAttachments(stateStore);
   const codex =
     deps.codex ??
@@ -234,6 +261,10 @@ export function registerHomeChatRoutes(
     const value = (await readJson(response)) as ProviderResponse;
     return value.providers ?? [];
   };
+  const getCatalogProviders = () =>
+    desktopBackend && !getApiKey()
+      ? Promise.resolve([DESKTOP_CHAT_PROVIDER])
+      : getProviders();
   const canUseOptions = (providers: Provider[], options: HomeChatOptions) =>
     ['low', 'medium', 'high'].includes(options.effort) &&
     providers.some(
@@ -245,6 +276,51 @@ export function registerHomeChatRoutes(
             (!options.thinking || model.homechatReasoning === true),
         ),
     );
+
+  app.get('/homechat/connection', (_req, res) => {
+    try {
+      res.json(connection());
+    } catch {
+      sendError(
+        res,
+        500,
+        'connection_unavailable',
+        'Не удалось прочитать настройки Vane.',
+      );
+    }
+  });
+
+  app.put(
+    '/homechat/connection',
+    deps.mutate({ strict: true }),
+    async (req, res) => {
+      const body: unknown = req.body;
+      if (
+        !isObject(body) ||
+        Object.keys(body).length !== 1 ||
+        typeof body['apiKey'] !== 'string' ||
+        !/^[\x21-\x7e]{1,4096}$/.test(body['apiKey'].trim())
+      ) {
+        sendError(res, 400, 'invalid_api_key', 'Введите корректный API-ключ.');
+        return;
+      }
+      const apiKey = body['apiKey'].trim();
+      try {
+        stateStore.update((state) => {
+          state.backendApiKey = apiKey;
+        });
+        if (desktopBackend) await deps.onConnectionChanged?.();
+        res.json(connection());
+      } catch {
+        sendError(
+          res,
+          500,
+          'connection_unavailable',
+          'Не удалось сохранить API-ключ.',
+        );
+      }
+    },
+  );
 
   app.post(
     '/homechat/chats/:chatId/attachments',
@@ -305,7 +381,7 @@ export function registerHomeChatRoutes(
   app.get('/homechat/models', async (_req, res) => {
     try {
       const [vane, openai] = await Promise.allSettled([
-        getProviders(),
+        getCatalogProviders(),
         codex.models(),
       ]);
       const providers = vane.status === 'fulfilled' ? vane.value : [];
@@ -325,10 +401,11 @@ export function registerHomeChatRoutes(
         ...codexModels,
       ];
       const saved = stateStore.read().options;
-      const fallback = selectModels(providers)?.chatModel;
+      const fallback = selectChatModel(providers);
       const options =
         saved &&
-        (saved.chatModel.providerId === HOMECHAT_CODEX_PROVIDER ||
+        ((desktopBackend && !getApiKey()) ||
+          saved.chatModel.providerId === HOMECHAT_CODEX_PROVIDER ||
           canUseOptions(providers, saved))
           ? saved
           : fallback
@@ -368,7 +445,7 @@ export function registerHomeChatRoutes(
         if (
           !(options.chatModel.providerId === HOMECHAT_CODEX_PROVIDER
             ? await codex.validate(options)
-            : canUseOptions(await getProviders(), options))
+            : canUseOptions(await getCatalogProviders(), options))
         ) {
           sendError(res, 400, 'invalid_model', 'Модель Chat недоступна.');
           return;

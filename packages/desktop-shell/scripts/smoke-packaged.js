@@ -46,9 +46,8 @@ let previousLog = fs.readFileSync(logPath, {
   encoding: 'utf8',
   flag: 'a+',
 });
-// The packaged app opens the log append-only and never rotates it, so every
-// read extends this pre-spawn snapshot. A broken prefix means a foreign
-// writer rewrote the file; readNewLog then warns and rebases the baseline.
+// The packaged app preserves the previous log and starts a fresh one at launch.
+// readNewLog also handles that reset when this directory already has a log.
 const child = spawn(executable, [], {
   detached: process.platform !== 'win32',
   env: {

@@ -138,7 +138,13 @@ async function verify(baseUrl) {
     [
       'config/mcp/servers',
       'effective',
-      ['node-repl', 'serena', 'home-ai-research'],
+      [
+        'node-repl',
+        'serena',
+        'home-ai-research',
+        'playwright',
+        'chrome-devtools',
+      ],
     ],
     ['model-settings', 'models', ['local-coder']],
   ]) {

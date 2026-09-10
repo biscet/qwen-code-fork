@@ -122,6 +122,13 @@ delete process.env['QWEN_CODE_MANAGED_NPM_UPDATE'];
 preResolveQwenHome();
 
 if (process.env['QWEN_CODE_DESKTOP'] === '1') {
+  process.env['QWEN_CODE_DESKTOP_RUNTIME_ROOT'] = resolve(__dirname, '..');
+  process.env['HOMECODE_MCP_NODE'] = process.execPath;
+  process.env['HOMECODE_MCP_LAUNCHER'] = join(
+    resolve(__dirname, '..'),
+    'mcp',
+    'launch.mjs',
+  );
   const defaultsPath = join(__dirname, 'desktop-defaults.js');
   if (existsSync(defaultsPath)) {
     const loadedCertificates = process.env['NODE_EXTRA_CA_CERTS'];

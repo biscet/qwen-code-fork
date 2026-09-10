@@ -42,7 +42,9 @@ test('persists collapsed session groups across reload @smoke', async ({
     .toBe(JSON.stringify(['group:group-backend']));
 
   await page.reload();
-  await expect(page.locator('[data-web-shell-root]')).toBeVisible();
+  await expect(
+    page.locator('[data-web-shell-root]:not([data-web-shell-gate])'),
+  ).toBeVisible();
   await completeReplay(
     page,
     daemon,
@@ -114,7 +116,9 @@ test('keeps long session details inside a constrained WebShell @smoke', async ({
   await page.setViewportSize({ width: 700, height: 500 });
   await gotoSession(page, scenario, daemon);
 
-  const webShellRoot = page.locator('[data-web-shell-root]');
+  const webShellRoot = page.locator(
+    '[data-web-shell-root]:not([data-web-shell-gate])',
+  );
   await page.getByRole('button', { name: 'Toggle menu' }).click();
   const sessionTitle = webShellRoot.getByText(longTitle, { exact: true });
   await expect(sessionTitle).toBeVisible();
@@ -271,7 +275,9 @@ async function gotoSession(
   daemon: MockDaemonController,
 ): Promise<void> {
   await page.goto(`/session/${encodeURIComponent(scenario.sessionId)}`);
-  await expect(page.locator('[data-web-shell-root]')).toBeVisible();
+  await expect(
+    page.locator('[data-web-shell-root]:not([data-web-shell-gate])'),
+  ).toBeVisible();
   await completeReplay(
     page,
     daemon,

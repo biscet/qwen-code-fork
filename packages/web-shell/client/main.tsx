@@ -6,7 +6,9 @@ import {
   useWorkspace,
   type DaemonProductSessionContext,
 } from '@qwen-code/web-shell/daemon-react-sdk';
+import { BrowserTurnNotifications } from './browser-turn-notifications';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { StandaloneAuth } from './components/StandaloneAuth';
 import { RootErrorFallback } from './components/RootErrorFallback';
 import { WorkspaceSessionProvider } from './components/WorkspaceSessionProvider';
 import { HomeChatApp } from './components/homechat/HomeChatApp';
@@ -35,7 +37,7 @@ const STANDALONE_COMPOSER_TOOLBAR_ADDITIONS = ['addMenu'] as const;
 const LANGUAGE_STORAGE_KEY = 'qwen-code-web-shell-language';
 const THEME_STORAGE_KEY = 'qwen-code-web-shell-theme';
 const PRODUCT_STORAGE_KEY = 'homecode-product';
-const DESKTOP_VERSION = '2.1.8';
+const DESKTOP_VERSION = '2.1.12';
 
 function readStoredProduct(): HomeProduct {
   try {
@@ -140,8 +142,8 @@ function replaceStandaloneSessionUrl(
     sessionId,
   );
   if (
-    sessionContext?.kind === 'standalone' ||
-    sessionContext?.kind === 'live'
+    sessionId &&
+    (sessionContext?.kind === 'standalone' || sessionContext?.kind === 'live')
   ) {
     url.searchParams.set('context', sessionContext.kind);
     url.searchParams.delete('workspace');
@@ -157,8 +159,10 @@ function replaceStandaloneSessionUrl(
   url.searchParams.delete('theme');
   url.searchParams.delete('language');
   url.searchParams.delete('lang');
+  // Boot already scrubbed ?token= (dev included), so drop it here too; dev
+  // keeps ?daemon= so a reload still targets the same local daemon.
+  url.searchParams.delete('token');
   if (!import.meta.env.DEV) {
-    url.searchParams.delete('token');
     url.searchParams.delete('daemon');
   }
   window.history.replaceState(null, '', url);
@@ -291,91 +295,93 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
         <RootErrorFallback error={error} onRetry={reset} language={language} />
       )}
     >
-      {product === 'homechat' ? (
-        <HomeChatApp
-          macOSDesktop={macOSDesktop}
-          baseUrl={baseUrl}
-          token={daemonToken}
-          theme={renderedTheme}
-          versionLabel={DESKTOP_VERSION}
-          onProductChange={handleProductChange}
-          renderAdministrationPanel={(panel, onClose, modelSelection) => (
-            <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
-              <AdministrationPanel
-                key={panel}
-                workspaceId={workspaceId}
-                initialPanel={panel}
-                settingsModelSelection={modelSelection}
-                onPanelClose={onClose}
-                theme={renderedTheme}
-                onThemeChange={handleThemeChange}
-                language={language}
-                onLanguageChange={handleLanguageChange}
-                sidebar={false}
-                header={{ items: [] }}
-                rightPanel={{ items: [] }}
-                environmentPanel={{ items: [] }}
-              />
-            </DaemonWorkspaceProvider>
-          )}
-        />
-      ) : (
-        <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
-          {macOSDesktop && (
-            <div
-              className="homecode-window-drag-region"
-              data-tauri-drag-region
-              aria-hidden="true"
-            />
-          )}
-          <WorkspaceSessionProvider
-            sessionId={sessionId}
-            workspaceId={workspaceId}
-            sessionContext={sessionContext}
-            webShellProps={{
-              theme,
-              onThemeChange: handleThemeChange,
-              language,
-              onLanguageChange: handleLanguageChange,
-              onSessionIdChange: handleSessionIdChange,
-              sidebar: {
-                showSessionSourceSwitch: false,
-                showWorkspaceGit: false,
-                branding: {
-                  hideWhenCompact: false,
-                  render: () => (
-                    <HomeProductSwitcher
-                      product="homecode"
-                      onProductChange={handleProductChange}
-                    />
-                  ),
-                },
-                primaryNav: {
-                  items: ['newTask', 'plugins', 'scheduledTasks'],
-                },
-                footer: {
-                  items: ['settings', 'daemonStatus', 'models', 'version'],
-                  layout: 'stacked',
-                  versionLabel: DESKTOP_VERSION,
-                },
-              },
-              header: {
-                items: ['title', 'environment', 'rightPanel', 'tokenUsage'],
-              },
-              rightPanel: {
-                items: ['review', 'sideTask', 'terminal'],
-              },
-              environmentPanel: {
-                items: ['environment', 'subagents', 'backgroundTasks'],
-              },
-              compactThinking: true,
-              markdownTableMode: 'advanced',
-              composerToolbarAdditionalActions:
-                STANDALONE_COMPOSER_TOOLBAR_ADDITIONS,
-            }}
+      <BrowserTurnNotifications language={language}>
+        {product === 'homechat' ? (
+          <HomeChatApp
+            macOSDesktop={macOSDesktop}
+            baseUrl={baseUrl}
+            token={daemonToken}
+            theme={renderedTheme}
+            versionLabel={DESKTOP_VERSION}
+            onProductChange={handleProductChange}
+            renderAdministrationPanel={(panel, onClose, modelSelection) => (
+              <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
+                <AdministrationPanel
+                  key={panel}
+                  workspaceId={workspaceId}
+                  initialPanel={panel}
+                  settingsModelSelection={modelSelection}
+                  onPanelClose={onClose}
+                  theme={renderedTheme}
+                  onThemeChange={handleThemeChange}
+                  language={language}
+                  onLanguageChange={handleLanguageChange}
+                  sidebar={false}
+                  header={{ items: [] }}
+                  rightPanel={{ items: [] }}
+                  environmentPanel={{ items: [] }}
+                />
+              </DaemonWorkspaceProvider>
+            )}
           />
-        </DaemonWorkspaceProvider>
-      )}
+        ) : (
+          <DaemonWorkspaceProvider baseUrl={baseUrl} token={daemonToken}>
+            {macOSDesktop && (
+              <div
+                className="homecode-window-drag-region"
+                data-tauri-drag-region
+                aria-hidden="true"
+              />
+            )}
+            <WorkspaceSessionProvider
+              sessionId={sessionId}
+              workspaceId={workspaceId}
+              sessionContext={sessionContext}
+              webShellProps={{
+                theme,
+                onThemeChange: handleThemeChange,
+                language,
+                onLanguageChange: handleLanguageChange,
+                onSessionIdChange: handleSessionIdChange,
+                sidebar: {
+                  showSessionSourceSwitch: false,
+                  showWorkspaceGit: false,
+                  branding: {
+                    hideWhenCompact: false,
+                    render: () => (
+                      <HomeProductSwitcher
+                        product="homecode"
+                        onProductChange={handleProductChange}
+                      />
+                    ),
+                  },
+                  primaryNav: {
+                    items: ['newTask', 'plugins', 'scheduledTasks'],
+                  },
+                  footer: {
+                    items: ['settings', 'daemonStatus', 'models', 'version'],
+                    layout: 'stacked',
+                    versionLabel: DESKTOP_VERSION,
+                  },
+                },
+                header: {
+                  items: ['title', 'environment', 'rightPanel', 'tokenUsage'],
+                },
+                rightPanel: {
+                  items: ['review', 'sideTask', 'terminal'],
+                },
+                environmentPanel: {
+                  items: ['environment', 'subagents', 'backgroundTasks'],
+                },
+                compactThinking: true,
+                markdownTableMode: 'advanced',
+                composerToolbarAdditionalActions:
+                  STANDALONE_COMPOSER_TOOLBAR_ADDITIONS,
+              }}
+            />
+          </DaemonWorkspaceProvider>
+        )}
+      </BrowserTurnNotifications>
     </ErrorBoundary>
   );
 }
@@ -394,7 +400,14 @@ async function main() {
 
   ReactDOM.createRoot(container!).render(
     <React.StrictMode>
-      <StandaloneApp daemonToken={daemonToken} />
+      <StandaloneAuth
+        baseUrl={DAEMON_BASE_URL || window.location.origin}
+        initialToken={daemonToken}
+        language={getInitialLanguage()}
+        theme={getInitialTheme()}
+      >
+        {(token) => <StandaloneApp daemonToken={token} />}
+      </StandaloneAuth>
     </React.StrictMode>,
   );
 }

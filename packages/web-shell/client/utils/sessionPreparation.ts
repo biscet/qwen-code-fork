@@ -29,6 +29,10 @@ type PromptSessionActions = {
   attachSession: () => Promise<void>;
   clearSession: () => Promise<void>;
   releaseSession: (sessionId: string) => Promise<void>;
+  setApprovalMode?: (
+    mode: DaemonApprovalMode,
+    opts?: { planMode?: boolean },
+  ) => Promise<{ mode: string }>;
   setModel: (modelId: string) => Promise<unknown>;
   setReasoningEffort: (
     value: ReasoningSelection,
@@ -45,6 +49,7 @@ export async function createAndAttachSessionForPrompt({
   modelId,
   reasoningEffort,
   modeId,
+  planMode = false,
   workspaceCwd,
   sessionContext,
   worktree,
@@ -59,6 +64,7 @@ export async function createAndAttachSessionForPrompt({
   modelId?: string;
   reasoningEffort?: ReasoningSelection;
   modeId?: string;
+  planMode?: boolean;
   workspaceCwd?: string;
   sessionContext?: DaemonProductSessionContext;
   worktree?: { slug?: string };
@@ -194,6 +200,27 @@ export async function createAndAttachSessionForPrompt({
       } catch (error) {
         if (reasoningEffort) throw error;
         warn('[WebShell] failed to set model for new session:', error);
+      }
+    }
+    if (planMode && !codex) {
+      preparationStep = 'enable Plan for new session';
+      if (
+        !approvalMode ||
+        approvalMode === 'plan' ||
+        !sessionActions.setApprovalMode
+      )
+        throw new Error(
+          'Plan requires an execution approval mode and session mode control.',
+        );
+      const currentSessionId = getCurrentSessionId();
+      if (currentSessionId !== undefined && currentSessionId !== sessionId) {
+        throw new Error('Session changed before enabling Plan.');
+      }
+      const result = await sessionActions.setApprovalMode(approvalMode, {
+        planMode: true,
+      });
+      if (result.mode !== 'plan') {
+        throw new Error('Daemon did not confirm Plan mode.');
       }
     }
     if (reasoningEffort && !codex) {

@@ -12,6 +12,7 @@ import {
   registerWorkspaceSettingsRoutes,
 } from './workspace-settings.js';
 import { loadSettings, type SettingScope } from '../../config/settings.js';
+import { updateOutputLanguageFile } from '../../i18n/languageUtils.js';
 import { WorkspaceGenerationClosedError } from '../workspace-registry.js';
 
 vi.mock('../../config/settings.js', async (importOriginal) => {
@@ -20,7 +21,12 @@ vi.mock('../../config/settings.js', async (importOriginal) => {
   return { ...actual, loadSettings: vi.fn() };
 });
 
+vi.mock('../../i18n/languageUtils.js', () => ({
+  updateOutputLanguageFile: vi.fn(),
+}));
+
 beforeEach(() => {
+  vi.mocked(updateOutputLanguageFile).mockReset();
   vi.mocked(loadSettings).mockReturnValue({
     merged: {},
     user: { settings: {} },
@@ -606,7 +612,12 @@ describe('POST /workspace/settings', () => {
     expect(persistSetting).not.toHaveBeenCalled();
   });
 
-  it.each(['general.enableAutoUpdate', 'ui.mouseTracking', 'ui.showScrollbar'])(
+  it.each([
+    'general.enableAutoUpdate',
+    'ui.mouseTracking',
+    'ui.showScrollbar',
+    'ui.showToolCallArgs',
+  ])(
     'rejects a TUI-only key (%s) that has no effect in the web shell',
     async (key) => {
       // These keys are read only inside the ink TUI (mouseTracking also
@@ -899,5 +910,107 @@ describe('POST /workspaces/:workspace/settings', () => {
         },
       }),
     );
+  });
+});
+
+describe('HomeCode agent settings', () => {
+  it('exposes the native output language and agent limit', async () => {
+    const { app } = makeApp();
+    const response = await request(app).get('/workspace/settings');
+    expect(response.status).toBe(200);
+    expect(response.body.settings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'general.outputLanguage',
+          requiresRestart: true,
+        }),
+        expect.objectContaining({
+          key: 'agents.maxParallelAgents',
+          type: 'integer',
+          requiresRestart: true,
+          values: { effective: 10 },
+        }),
+      ]),
+    );
+  });
+
+  it.each([0, -1, 1.5, '2'])(
+    'rejects invalid agent limit %s',
+    async (value) => {
+      const { app, persistSetting } = makeApp();
+      const response = await request(app)
+        .post('/workspace/settings')
+        .send({ scope: 'user', key: 'agents.maxParallelAgents', value });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('invalid_value');
+      expect(persistSetting).not.toHaveBeenCalled();
+    },
+  );
+
+  it('persists a positive integer limit for the selected workspace', async () => {
+    const { app, persistSetting } = makeQualifiedApp();
+    const response = await request(app)
+      .post('/workspaces/primary/settings')
+      .send({ scope: 'workspace', key: 'agents.maxParallelAgents', value: 2 });
+    expect(response.status).toBe(200);
+    expect(response.body.requiresRestart).toBe(true);
+    expect(persistSetting).toHaveBeenCalledWith(
+      '/workspace',
+      'Workspace',
+      'agents.maxParallelAgents',
+      2,
+      expect.any(Function),
+    );
+  });
+
+  it.each(['user', 'workspace'])(
+    'writes the native language rule in %s scope',
+    async (scope) => {
+      const { app, persistSetting } = makeApp();
+      const response = await request(app)
+        .post('/workspace/settings')
+        .send({ scope, key: 'general.outputLanguage', value: 'Russian' });
+      expect(response.status).toBe(200);
+      expect(persistSetting).toHaveBeenCalled();
+      expect(updateOutputLanguageFile).toHaveBeenCalledWith(
+        'Russian',
+        scope === 'user' ? undefined : '/workspace/.qwen/output-language.md',
+      );
+    },
+  );
+
+  it('writes the selected runtime language rule without touching user scope', async () => {
+    const { app } = makeQualifiedApp();
+    const response = await request(app)
+      .post('/workspaces/primary/settings')
+      .send({
+        scope: 'workspace',
+        key: 'general.outputLanguage',
+        value: 'English',
+      });
+    expect(response.status).toBe(200);
+    expect(updateOutputLanguageFile).toHaveBeenCalledExactlyOnceWith(
+      'English',
+      '/workspace/.qwen/output-language.md',
+    );
+  });
+
+  it('does not write a rule after a runtime generation closes', async () => {
+    let closed = false;
+    const { app } = makeApp({
+      captureGenerationAssertion: () => () => {
+        if (closed) throw new WorkspaceGenerationClosedError();
+      },
+      afterPersist: () => {
+        closed = true;
+      },
+    });
+    const response = await request(app).post('/workspace/settings').send({
+      scope: 'workspace',
+      key: 'general.outputLanguage',
+      value: 'Russian',
+    });
+    expect(response.status).not.toBe(200);
+    expect(updateOutputLanguageFile).not.toHaveBeenCalled();
   });
 });

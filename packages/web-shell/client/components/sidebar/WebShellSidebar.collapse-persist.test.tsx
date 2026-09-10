@@ -243,6 +243,7 @@ function renderSidebar(
       projectFeaturesEnabled={props.projectFeaturesEnabled}
       onOpenDaemonStatus={() => {}}
       onOpenScheduledTasks={() => {}}
+      onOpenWorkflows={() => {}}
       onOpenGoals={() => {}}
       onOpenSessions={() => {}}
       onOpenSplitView={() => {}}

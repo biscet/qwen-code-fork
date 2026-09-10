@@ -14,7 +14,11 @@ import {
   type DaemonStatusReportSection,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
+import { DownloadIcon } from 'lucide-react';
+import { downloadDesktopLogs } from '../../utils/desktopLogs';
+import { isDesktopShell } from '../../utils/externalOpen';
 import { ErrorBoundary } from '../ErrorBoundary';
+import { Button } from '../ui/button';
 import { ContentSkeleton } from '../ui/content-skeleton';
 import { SvgLineChart, type ChartSeries } from './SvgLineChart';
 import { UsageDashboardTab } from './UsageDashboardTab';
@@ -605,6 +609,46 @@ function MetricsCharts({ series }: { series: DaemonMetricsSeriesBucket[] }) {
   );
 }
 
+function DownloadLogsButton() {
+  const { t } = useI18n();
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>(
+    'idle',
+  );
+  if (!isDesktopShell()) return null;
+  const download = async () => {
+    setStatus('saving');
+    try {
+      const destination = await downloadDesktopLogs();
+      setStatus(destination ? 'saved' : 'idle');
+    } catch {
+      setStatus('failed');
+    }
+  };
+  return (
+    <div className={styles.logDownload}>
+      {status === 'saved' && (
+        <span className={styles.updatedAt} role="status">
+          {t('daemon.logs.saved')}
+        </span>
+      )}
+      {status === 'failed' && (
+        <span className={styles.refreshError} role="alert">
+          {t('daemon.logs.failed')}
+        </span>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => void download()}
+        disabled={status === 'saving'}
+      >
+        <DownloadIcon aria-hidden="true" />
+        {t(status === 'saving' ? 'daemon.logs.saving' : 'daemon.logs.download')}
+      </Button>
+    </div>
+  );
+}
+
 function DaemonStatusDialogInner() {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<DaemonTab>('overview');
@@ -675,6 +719,7 @@ function DaemonStatusDialogInner() {
   if (!report) {
     return (
       <div className={styles.dialog}>
+        <DownloadLogsButton />
         {error ? (
           <div className={styles.empty}>
             {t('daemon.loadFailed')}: {error.message}
@@ -734,6 +779,7 @@ function DaemonStatusDialogInner() {
           <span className={styles.refreshError}>{t('daemon.loadFailed')}</span>
         )}
         <div className={styles.toolbarActions}>
+          <DownloadLogsButton />
           <button
             type="button"
             className={styles.refreshButton}
@@ -1129,6 +1175,7 @@ export function DaemonStatusDialog() {
       label="daemon-status"
       fallback={(error) => (
         <div className={styles.dialog}>
+          <DownloadLogsButton />
           <div className={styles.empty}>
             {t('daemon.loadFailed')}: {error.message}
           </div>

@@ -63,6 +63,7 @@ export interface HomeChatCodexChat {
 }
 
 interface HomeChatState {
+  backendApiKey?: string;
   chats: Record<string, HomeChatFlags>;
   options?: HomeChatOptions;
   codexChats?: Record<string, HomeChatCodexChat>;

@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, getByRole } from '@testing-library/dom';
+import { fireEvent, getByLabelText, getByRole } from '@testing-library/dom';
 import { I18nProvider } from '../../i18n';
 import type { HomeChatOptions } from '../homechat/homechat-api';
 import { VaneSettingsPanel } from './VaneSettingsPanel';
@@ -45,6 +45,16 @@ const models = [
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 
+function stubFetch(fetchMock: typeof fetch) {
+  vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) =>
+    String(url).endsWith('/connection')
+      ? Promise.resolve(
+          response({ apiKeyConfigured: false, requiresApiKey: true }),
+        )
+      : fetchMock(url, init),
+  );
+}
+
 async function render() {
   container = document.createElement('div');
   document.body.append(container);
@@ -65,7 +75,7 @@ describe('VaneSettingsPanel', () => {
       .mockImplementation(async (_url, init) =>
         init?.method === 'PUT' ? response({}) : response({ models, options }),
       );
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await render();
     await act(async () =>
       getByRole(container, 'switch', { name: 'Thinking' }).click(),
@@ -97,7 +107,7 @@ describe('VaneSettingsPanel', () => {
           ? response({ error: 'Save failed' }, 502)
           : response({ models, options }),
       );
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await render();
     await act(async () => getByRole(container, 'switch').click());
     expect(getByRole(container, 'alert').textContent).toContain('Save failed');
@@ -118,7 +128,7 @@ describe('VaneSettingsPanel', () => {
       .mockImplementation(async (_url, init) =>
         init?.method === 'PUT' ? response({}) : response({ models, options }),
       );
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await render();
     await act(async () =>
       fireEvent.keyDown(
@@ -147,7 +157,7 @@ describe('VaneSettingsPanel', () => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(response({ error: 'Vane offline' }, 502))
       .mockImplementation(async () => response({ models, options }));
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await render();
     expect(getByRole(container, 'alert').textContent).toContain('Vane offline');
     await act(async () =>
@@ -157,5 +167,94 @@ describe('VaneSettingsPanel', () => {
     expect(
       getByRole(container, 'combobox', { name: 'Chat model' }).textContent,
     ).toContain('Reasoner');
+  });
+
+  it('saves a key while the catalog is unavailable and reloads models without exposing it', async () => {
+    let saved = false;
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      if (String(url).endsWith('/connection')) {
+        if (init?.method === 'PUT') saved = true;
+        return response({ apiKeyConfigured: saved, requiresApiKey: true });
+      }
+      return saved
+        ? response({ models, options })
+        : response({ error: 'Missing gateway key' }, 502);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await render();
+    const input = getByLabelText(
+      container,
+      'Qwen 27B API key',
+    ) as HTMLInputElement;
+    expect(input.type).toBe('password');
+    await act(async () =>
+      fireEvent.change(input, { target: { value: '  new-test-key  ' } }),
+    );
+    await act(async () =>
+      getByRole(container, 'button', { name: 'Save key' }).click(),
+    );
+    const [url, init] = fetchMock.mock.calls.find(
+      ([, init]) => init?.method === 'PUT',
+    )!;
+    expect(url).toBe('http://localhost/homechat/connection');
+    expect(init?.headers).toMatchObject({ Authorization: 'Bearer test-token' });
+    expect(JSON.parse(String(init?.body))).toEqual({ apiKey: 'new-test-key' });
+    expect(input.value).toBe('');
+    expect(container.textContent).not.toContain('new-test-key');
+    expect(getByRole(container, 'status').textContent).toBe('Key saved');
+    expect(
+      getByRole(container, 'combobox', { name: 'Chat model' }).textContent,
+    ).toContain('Reasoner');
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('retains the entered key on save failure for retry', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (url, init) => {
+        if (String(url).endsWith('/connection'))
+          return init?.method === 'PUT'
+            ? response({ error: 'Could not save key' }, 500)
+            : response({ apiKeyConfigured: true, requiresApiKey: true });
+        return response({ models, options });
+      }),
+    );
+    await render();
+    const input = getByLabelText(
+      container,
+      'Qwen 27B API key',
+    ) as HTMLInputElement;
+    expect(input.value).toBe('');
+    await act(async () =>
+      fireEvent.change(input, { target: { value: 'retry-test-key' } }),
+    );
+    await act(async () =>
+      getByRole(container, 'button', { name: 'Save key' }).click(),
+    );
+    expect(getByRole(container, 'alert').textContent).toBe(
+      'Could not save key',
+    );
+    expect(input.value).toBe('retry-test-key');
+    expect(
+      getByRole(container, 'button', { name: 'Save key' }).hasAttribute(
+        'disabled',
+      ),
+    ).toBe(false);
+  });
+
+  it('omits gateway credentials for a local Vane connection that does not require them', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (url) =>
+        String(url).endsWith('/connection')
+          ? response({ apiKeyConfigured: false, requiresApiKey: false })
+          : response({ models, options }),
+      ),
+    );
+    await render();
+    expect(container.querySelector('input[type="password"]')).toBeNull();
+    expect(
+      getByRole(container, 'combobox', { name: 'Chat model' }),
+    ).toBeTruthy();
   });
 });

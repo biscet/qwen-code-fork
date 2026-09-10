@@ -252,6 +252,7 @@ function openDiagnostics(): void {
 }
 
 beforeEach(() => {
+  delete (window as { __TAURI__?: unknown }).__TAURI__;
   summaryState = { report: summaryReport, loading: false, error: undefined };
   fullState = { report: fullReport, loading: false, error: undefined };
   seenDetails.length = 0;
@@ -262,6 +263,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete (window as { __TAURI__?: unknown }).__TAURI__;
   act(() => root?.unmount());
   container?.remove();
   root = null;
@@ -270,6 +272,80 @@ afterEach(() => {
 });
 
 describe('DaemonStatusDialog', () => {
+  function mockDesktop(invoke: ReturnType<typeof vi.fn>) {
+    (window as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke } };
+  }
+
+  function downloadButton(): HTMLButtonElement | undefined {
+    return Array.from(container!.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Download logs',
+    );
+  }
+
+  it('does not show a native log download in a plain browser', () => {
+    mount();
+    expect(downloadButton()).toBeUndefined();
+  });
+
+  it('downloads desktop logs without caller-supplied paths and shows saving and success', async () => {
+    let resolveSave!: (path: string) => void;
+    const invoke = vi.fn().mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    mockDesktop(invoke);
+    mount();
+    act(() => downloadButton()!.click());
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('download_logs');
+    const pending = Array.from(container!.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Saving…',
+    );
+    expect(pending?.disabled).toBe(true);
+    await act(async () => resolveSave('/tmp/HomeCode-logs.txt'));
+    expect(container!.textContent).toContain('Logs saved');
+    expect(downloadButton()?.disabled).toBe(false);
+  });
+
+  it('silently resets the action after the native save dialog is cancelled', async () => {
+    mockDesktop(vi.fn().mockResolvedValue(null));
+    mount();
+    await act(async () => downloadButton()!.click());
+    expect(container!.textContent).not.toContain('Logs saved');
+    expect(container!.querySelector('[role="alert"]')).toBeNull();
+    expect(downloadButton()?.disabled).toBe(false);
+  });
+
+  it('shows a retryable save error', async () => {
+    mockDesktop(vi.fn().mockRejectedValue('Permission denied'));
+    mount();
+    await act(async () => downloadButton()!.click());
+    expect(container!.querySelector('[role="alert"]')?.textContent).toBe(
+      'Could not save logs. Try again.',
+    );
+    expect(downloadButton()?.disabled).toBe(false);
+  });
+
+  it('keeps log download available when status cannot load', async () => {
+    const invoke = vi.fn().mockResolvedValue('/tmp/logs.txt');
+    mockDesktop(invoke);
+    summaryState = {
+      report: undefined,
+      loading: false,
+      error: new Error('offline'),
+    };
+    fullState = {
+      report: undefined,
+      loading: false,
+      error: new Error('offline'),
+    };
+    mount();
+    expect(container!.textContent).toContain('Failed to load daemon status');
+    await act(async () => downloadButton()!.click());
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('download_logs');
+  });
+
   it('renders live summary counters with the full-detail rollup badge', () => {
     mount();
     const text = container!.textContent ?? '';
@@ -832,12 +908,14 @@ describe('DaemonStatusDialog', () => {
   });
 
   it('shows the pure loading state before any report arrives', () => {
+    mockDesktop(vi.fn());
     summaryState = { report: undefined, loading: true, error: undefined };
     fullState = { report: undefined, loading: true, error: undefined };
     mount();
     const text = container!.textContent ?? '';
     expect(text).toContain('Loading daemon status');
     expect(text).not.toContain('Failed to load daemon status');
+    expect(downloadButton()).toBeDefined();
   });
 
   it('renders the workspace empty-state when no sections are reported', () => {
@@ -854,6 +932,7 @@ describe('DaemonStatusDialog', () => {
   });
 
   it('contains a malformed daemon response and surfaces the render error', () => {
+    mockDesktop(vi.fn());
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     // channelWorker is required by the wire type, but an older daemon could
     // omit it; the inner render would throw on `.enabled` without the boundary.
@@ -872,6 +951,7 @@ describe('DaemonStatusDialog', () => {
     // the function-form fallback surfaces the actual render error.
     expect(text).toContain('Failed to load daemon status');
     expect(text).toContain('enabled'); // the TypeError message is included
+    expect(downloadButton()).toBeDefined();
     errorSpy.mockRestore();
   });
 

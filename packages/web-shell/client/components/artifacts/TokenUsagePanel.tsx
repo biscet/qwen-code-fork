@@ -8,7 +8,7 @@ import type {
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
 import { ContentSkeleton } from '../ui/content-skeleton';
-import { isSessionDisconnectedError } from '../../utils/sessionErrors';
+import { isTransientSessionReadError } from '../../utils/sessionErrors';
 import { formatDuration } from '../messages/StatsMessage';
 import {
   localizeAgentTypeName,
@@ -144,14 +144,7 @@ export function TokenUsagePanel({
         })
         .catch((loadError: unknown) => {
           if (!mountedRef.current) return;
-          if (
-            isSessionDisconnectedError(loadError) ||
-            (loadError instanceof Error &&
-              (loadError.name === 'DaemonTransportClosedError' ||
-                /(?:fetch failed|failed to fetch|networkerror|load failed)/i.test(
-                  loadError.message,
-                )))
-          ) {
+          if (isTransientSessionReadError(loadError)) {
             setError(null);
             return;
           }

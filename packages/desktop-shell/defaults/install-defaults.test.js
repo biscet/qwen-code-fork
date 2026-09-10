@@ -35,7 +35,11 @@ function fixture() {
   const defaults = path.join(runtimeRoot, 'defaults');
   fs.mkdirSync(path.join(defaults, 'skills', 'example'), { recursive: true });
   fs.mkdirSync(path.join(defaults, 'agents'));
-  for (const name of ['settings.json', 'home-ai-lan-ca.crt']) {
+  for (const name of [
+    'settings.json',
+    'home-ai-lan-ca.crt',
+    'output-language.md',
+  ]) {
     fs.copyFileSync(path.join(source, name), path.join(defaults, name));
   }
   fs.writeFileSync(
@@ -61,6 +65,11 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
     'utf8',
   );
   const settings = JSON.parse(text);
+  assert.equal(settings.general.outputLanguage, 'Russian');
+  assert.match(
+    fs.readFileSync(path.join(options.qwenHome, 'output-language.md'), 'utf8'),
+    /You MUST always respond in \*\*Russian\*\*/,
+  );
   assert.equal(settings.model.name, 'local-coder');
   assert.deepEqual(settings.tools.exclude, ['report_findings']);
   assert.equal(
@@ -79,6 +88,19 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
     assert.equal(model.apiKey, undefined);
   }
   assert.deepEqual(settings.env, { HOMECODE_LLM7_API_KEY: 'unused' });
+  assert.deepEqual(Object.keys(settings.mcpServers).sort(), [
+    'chrome-devtools',
+    'home-ai-research',
+    'node-repl',
+    'playwright',
+    'serena',
+  ]);
+  for (const name of ['playwright', 'chrome-devtools']) {
+    assert.equal(
+      settings.mcpServers[name].httpUrl,
+      `https://biscet-server.local:9454/${name}/mcp`,
+    );
+  }
   for (const config of Object.values(settings.mcpServers)) {
     assert.match(config.httpUrl, /^https:\/\/biscet-server\.local:9454\//);
     assert.equal(config.command, undefined);
@@ -96,6 +118,63 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
       'utf8',
     ),
     'test engineer',
+  );
+});
+
+test('v2 upgrade adds Russian without restoring deleted defaults, then preserves later changes', () => {
+  const options = fixture();
+  fs.mkdirSync(options.qwenHome);
+  for (const marker of ['.desktop-defaults-v1', '.desktop-defaults-v2']) {
+    fs.writeFileSync(path.join(options.qwenHome, marker), '1\n');
+  }
+  const settingsPath = path.join(options.qwenHome, 'settings.json');
+  const languagePath = path.join(options.qwenHome, 'output-language.md');
+  fs.writeFileSync(
+    settingsPath,
+    '{\n  // existing profile\n  "agents": { "maxParallelAgents": 2 }\n}\n',
+  );
+  fs.writeFileSync(languagePath, '# Output language preference: auto\n');
+  installDesktopDefaults(options);
+  const installed = parse(fs.readFileSync(settingsPath, 'utf8'));
+  assert.deepEqual(Object.keys(installed.mcpServers).sort(), [
+    'chrome-devtools',
+    'playwright',
+  ]);
+  delete installed.mcpServers;
+  assert.deepEqual(installed, {
+    agents: { maxParallelAgents: 2 },
+    general: { outputLanguage: 'Russian' },
+  });
+  assert.match(fs.readFileSync(languagePath, 'utf8'), /\*\*Russian\*\*/);
+  fs.writeFileSync(settingsPath, '{"general":{"outputLanguage":"English"}}');
+  fs.writeFileSync(languagePath, 'custom English rule');
+  installDesktopDefaults(options);
+  assert.equal(fs.readFileSync(languagePath, 'utf8'), 'custom English rule');
+  assert.equal(
+    JSON.parse(fs.readFileSync(settingsPath, 'utf8')).general.outputLanguage,
+    'English',
+  );
+});
+
+test('language migration preserves an explicit existing language and instruction', () => {
+  const options = fixture();
+  fs.mkdirSync(options.qwenHome);
+  const languagePath = path.join(options.qwenHome, 'output-language.md');
+  fs.writeFileSync(
+    path.join(options.qwenHome, 'settings.json'),
+    '{"general":{"outputLanguage":"auto"}}',
+  );
+  fs.writeFileSync(languagePath, 'my language instructions');
+  installDesktopDefaults(options);
+  assert.equal(
+    fs.readFileSync(languagePath, 'utf8'),
+    'my language instructions',
+  );
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(path.join(options.qwenHome, 'settings.json'), 'utf8'),
+    ).general.outputLanguage,
+    'auto',
   );
 });
 
@@ -263,7 +342,10 @@ test('v1 upgrade adds missing free models once and preserves existing choices an
     assert.deepEqual(models[0], customModel);
     assert.equal(installed.model.name, 'codestral-latest');
     assert.equal(installed.security, undefined);
-    assert.deepEqual(installed.mcpServers, {});
+    assert.deepEqual(Object.keys(installed.mcpServers).sort(), [
+      'chrome-devtools',
+      'playwright',
+    ]);
     assert.deepEqual(installed.tools.exclude, []);
     assert.equal(installed.env.HOMECODE_LLM7_API_KEY, 'my-existing-test-value');
     assert.equal(fs.existsSync(path.join(options.qwenHome, 'skills')), false);
@@ -277,6 +359,72 @@ test('v1 upgrade adds missing free models once and preserves existing choices an
     assert.equal(fs.readFileSync(settingsPath, 'utf8'), afterDeletion);
   }
 });
+
+for (const version of [1, 2, 3]) {
+  for (const customName of ['playwright', 'chrome-devtools']) {
+    test(`v${version} upgrade preserves custom ${customName} and adds only the missing browser MCP once`, () => {
+      const options = fixture();
+      fs.mkdirSync(options.qwenHome);
+      for (let marker = 1; marker <= version; marker++) {
+        fs.writeFileSync(
+          path.join(options.qwenHome, `.desktop-defaults-v${marker}`),
+          '1\n',
+        );
+      }
+      const customMcp = { command: `my-${customName}`, disabled: true };
+      const settingsPath = path.join(options.qwenHome, 'settings.json');
+      fs.writeFileSync(
+        settingsPath,
+        `{
+  // Keep the custom browser and deleted legacy defaults.
+  "model": { "name": "my-model" },
+  "mcpServers": ${JSON.stringify({ [customName]: customMcp })}
+}\n`,
+      );
+      installDesktopDefaults(options);
+      const text = fs.readFileSync(settingsPath, 'utf8');
+      assert.match(text, /Keep the custom browser and deleted legacy defaults/);
+      const installed = parse(text);
+      assert.deepEqual(installed.mcpServers[customName], customMcp);
+      assert.deepEqual(Object.keys(installed.mcpServers).sort(), [
+        'chrome-devtools',
+        'playwright',
+      ]);
+      const addedName =
+        customName === 'playwright' ? 'chrome-devtools' : 'playwright';
+      assert.equal(
+        installed.mcpServers[addedName].httpUrl,
+        `https://biscet-server.local:9454/${addedName}/mcp`,
+      );
+      assert.equal(
+        installed.mcpServers[addedName].headers.Authorization,
+        'Bearer ${LOCAL_QWEN_API_KEY}',
+      );
+      assert.deepEqual(installed.model, { name: 'my-model' });
+      assert.equal(fs.existsSync(path.join(options.qwenHome, 'skills')), false);
+      if (version >= 2) {
+        assert.equal(installed.modelProviders, undefined);
+        assert.equal(installed.env, undefined);
+      }
+      if (version === 3) {
+        assert.equal(installed.general, undefined);
+        assert.equal(
+          fs.existsSync(path.join(options.qwenHome, 'output-language.md')),
+          false,
+        );
+      }
+      assert.equal(
+        fs.existsSync(path.join(options.qwenHome, '.desktop-defaults-v4')),
+        true,
+      );
+      delete installed.mcpServers;
+      fs.writeFileSync(settingsPath, JSON.stringify(installed));
+      const afterDeletion = fs.readFileSync(settingsPath, 'utf8');
+      installDesktopDefaults(options);
+      assert.equal(fs.readFileSync(settingsPath, 'utf8'), afterDeletion);
+    });
+  }
+}
 
 test('extra CA certificates are preserved across restarts and app relocation', () => {
   const options = fixture();

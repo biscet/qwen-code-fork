@@ -381,6 +381,17 @@ function getStringArg(
   return typeof value === 'string' ? value.trim().replace(/\n/g, ' ') : '';
 }
 
+/**
+ * Like every other is*ToolName helper, normalizes case so callers can pass
+ * the raw wire name. One predicate on purpose: ToolGroup gates the detail
+ * view, the ToolLine route and the collapsed keep-mounted behaviour on
+ * this, and three hand-inlined copies could diverge on a rename with no
+ * compile error — routing would then disagree with mounting.
+ */
+export function isWorkflowToolName(name: string): boolean {
+  return name.toLowerCase() === 'workflow';
+}
+
 export function isShellToolName(name: string): boolean {
   const normalized = name.toLowerCase();
   return (
@@ -487,6 +498,33 @@ export function isAgentCancelled(agent: ACPToolCall): boolean {
     status === 'canceled' ||
     reason.toLowerCase().includes('cancel')
   );
+}
+
+export function getSubagentDetailsUnavailableReason(
+  agent: ACPToolCall,
+): string | undefined {
+  if (agent.subagentSessionReady !== false) return undefined;
+  const rawStatus =
+    agent.rawOutput && typeof agent.rawOutput === 'object'
+      ? (agent.rawOutput as Record<string, unknown>)['status']
+      : undefined;
+  // Safe projections can map cancellation to failed while retaining this flag.
+  if (
+    agent.wasCancelled ||
+    (typeof rawStatus === 'string' &&
+      ['cancelled', 'canceled'].includes(rawStatus.toLowerCase()))
+  )
+    return 'subagent.cancelled';
+  if (
+    agent.status === 'failed' ||
+    getTaskExecutionRecord(agent.rawOutput)?.['status'] === 'failed'
+  )
+    return 'subagent.failed';
+  if (isAgentCancelled(agent)) return 'subagent.cancelled';
+  // Successful teammate launches use a different session mechanism and may
+  // complete without publishing readiness.
+  if (agent.status === 'completed') return undefined;
+  return 'subagent.creating';
 }
 
 export function getAgentDisplayStatus(

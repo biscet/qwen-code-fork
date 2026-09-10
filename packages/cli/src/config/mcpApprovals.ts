@@ -213,7 +213,10 @@ export function resetMcpApprovalsForTesting(): void {
   loadedMcpApprovals = undefined;
 }
 
-export function loadMcpApprovals(): LoadedMcpApprovals {
+export function loadMcpApprovals(
+  options: { reload?: boolean } = {},
+): LoadedMcpApprovals {
+  if (options.reload) loadedMcpApprovals = undefined;
   if (loadedMcpApprovals) {
     return loadedMcpApprovals;
   }

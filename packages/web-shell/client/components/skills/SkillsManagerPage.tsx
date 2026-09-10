@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
@@ -10,6 +10,7 @@ import {
   SparklesIcon,
 } from 'lucide-react';
 import {
+  useConnection,
   useSkills,
   useWorkspace,
   type DaemonWorkspaceSkillDetail,
@@ -81,6 +82,8 @@ interface SkillsManagerPageProps {
   onClose: () => void;
   onUseSkill: (name: string) => void;
   embedded?: EmbeddedManagerPage;
+  workspaceCwd?: string;
+  workspaceControl?: ReactNode;
 }
 
 function skillLevelLabel(
@@ -158,8 +161,11 @@ export function SkillsManagerPage({
   onClose,
   onUseSkill,
   embedded,
+  workspaceCwd,
+  workspaceControl,
 }: SkillsManagerPageProps) {
   const { t } = useI18n();
+  const connection = useConnection();
   const workspace = useWorkspace();
   const {
     status,
@@ -168,10 +174,12 @@ export function SkillsManagerPage({
     error,
     reload,
     getDetail,
+    reloadConfig,
+    ensureRuntime,
     setEnabled,
     install,
     remove,
-  } = useSkills({ autoLoad: true });
+  } = useSkills({ autoLoad: true, workspaceCwd });
   const canToggleSkills =
     workspace.capabilities?.features.includes(
       'workspace_skill_settings_toggle',
@@ -216,6 +224,12 @@ export function SkillsManagerPage({
       ),
     [displayedSkills, selectedIdentity],
   );
+  const targetWorkspaceCwd = workspaceCwd ?? workspace.workspaceCwd;
+  const targetsActiveWorkspace =
+    connection.workspaceCwd !== undefined
+      ? targetWorkspaceCwd === connection.workspaceCwd
+      : connection.sessionId === undefined &&
+        targetWorkspaceCwd === workspace.workspaceCwd;
   const filteredSkills = useMemo(
     () => filterSkills(displayedSkills, query, levelFilter, statusFilter),
     [displayedSkills, levelFilter, query, statusFilter],
@@ -280,6 +294,10 @@ export function SkillsManagerPage({
   }, [getDetail, selectedSkill, t]);
 
   useEffect(() => {
+    void ensureRuntime();
+  }, [ensureRuntime]);
+
+  useEffect(() => {
     embedded?.onDetailChange(Boolean(selectedSkill));
   }, [embedded, selectedSkill]);
 
@@ -288,8 +306,10 @@ export function SkillsManagerPage({
     setBusySkill(skill.name);
     setNotice(null);
     try {
-      const result = await setEnabled(skill.name, enabled);
-      const refreshed = await reload();
+      const result = await setEnabled(skill.name, enabled, {
+        clientId: targetsActiveWorkspace ? connection.clientId : undefined,
+      });
+      const refreshed = await reloadConfig();
       const refreshedSkill = refreshed?.skills.find(
         (item) => item.name.toLowerCase() === skill.name.toLowerCase(),
       );
@@ -322,7 +342,7 @@ export function SkillsManagerPage({
     setListNotice(null);
     await install(request);
     setListNotice(t('skills.install.succeeded', { name: request.name.trim() }));
-    await reload().catch(() => undefined);
+    await reloadConfig().catch(() => undefined);
   }
 
   async function deleteSkill(): Promise<void> {
@@ -334,7 +354,7 @@ export function SkillsManagerPage({
       setDeleteOpen(false);
       setSelectedIdentity(null);
       setListNotice(t('skills.delete.succeeded', { name: selectedSkill.name }));
-      await reload().catch(() => undefined);
+      await reloadConfig().catch(() => undefined);
     } catch (deleteError) {
       setDeleteOpen(false);
       setNotice({
@@ -390,27 +410,30 @@ export function SkillsManagerPage({
   );
   const navigation = embedded ? (
     selectedSkill ? (
-      <Breadcrumb className="sticky -top-4 z-10 -mx-5 -mt-4 border-b bg-background px-5 py-3">
-        <BreadcrumbList className="h-8 text-sm">
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => {
-                  returnToList();
-                  embedded.onDetailChange(false);
-                }}
-              >
-                {t('skills.title')}
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{selectedSkill.name}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <div className="sticky -top-4 z-10 -mx-5 -mt-4 flex items-center gap-3 border-b bg-background px-5 py-3">
+        <Breadcrumb className="min-w-0 flex-1">
+          <BreadcrumbList className="h-8 text-sm">
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    returnToList();
+                    embedded.onDetailChange(false);
+                  }}
+                >
+                  {t('skills.title')}
+                </button>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{selectedSkill.name}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        {workspaceControl}
+      </div>
     ) : null
   ) : (
     standaloneNavigation
@@ -445,7 +468,9 @@ export function SkillsManagerPage({
               </div>
             </div>
             <Button
-              disabled={selectedSkill.status === 'disabled'}
+              disabled={
+                selectedSkill.status === 'disabled' || !targetsActiveWorkspace
+              }
               onClick={() => onUseSkill(selectedSkill.name)}
             >
               <PlayIcon data-icon="inline-start" />

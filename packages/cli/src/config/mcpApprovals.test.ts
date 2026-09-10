@@ -71,6 +71,29 @@ describe('mcpApprovals (hash-bound approval store)', () => {
     );
   });
 
+  it('reloads a changed approval from disk before recomputing MCP gating', async () => {
+    await loadMcpApprovals().setState(projectRoot, 'slack', server, 'approved');
+    const changed = {
+      ...server,
+      headers: { Authorization: 'Bearer rotated-test-key' },
+    };
+    fs.writeFileSync(
+      path.join(dir, MCP_APPROVALS_FILENAME),
+      JSON.stringify({
+        [expectedStoredKey(projectRoot)]: {
+          slack: { status: 'approved', hash: hashMcpServerConfig(changed) },
+        },
+      }),
+    );
+    expect(getPendingGatedMcpServers({ slack: changed }, projectRoot)).toEqual([
+      'slack',
+    ]);
+    loadMcpApprovals({ reload: true });
+    expect(getPendingGatedMcpServers({ slack: changed }, projectRoot)).toEqual(
+      [],
+    );
+  });
+
   it('writes the file with the documented shape', async () => {
     await loadMcpApprovals().setState(projectRoot, 'slack', server, 'approved');
     const onDisk = JSON.parse(

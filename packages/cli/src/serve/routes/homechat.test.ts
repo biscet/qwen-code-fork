@@ -7,7 +7,7 @@
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HomeChatStateStore } from './homechat-state.js';
@@ -156,8 +156,169 @@ describe('HomeChat routes', () => {
       stateStore: createStore(),
     });
     const response = await request(app).get('/homechat/models');
-    expect(response.body.models).toEqual([]);
+    expect(response.body.models).toEqual([
+      {
+        providerId: 'home-ai-openai-local',
+        key: 'windows-lmstudio/windows-qwen35-9b',
+        name: 'Qwen3.8-27B',
+        providerName: 'Qwen',
+        reasoning: true,
+      },
+    ]);
+    expect(response.body.options.chatModel).toEqual({
+      providerId: 'home-ai-openai-local',
+      key: 'windows-lmstudio/windows-qwen35-9b',
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('saves a private Vane key and uses it immediately and after reopening', async () => {
+    vi.stubEnv('QWEN_CODE_DESKTOP', '1');
+    vi.stubEnv('LOCAL_QWEN_API_KEY', undefined);
+    const store = createStore();
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(PROVIDERS));
+    const createApp = () => {
+      const app = express();
+      app.use(express.json());
+      registerHomeChatRoutes(app, {
+        mutate: () => (_req, _res, next) => next(),
+        fetchImpl,
+        stateStore: new HomeChatStateStore(store.directory),
+        getBackendApiKey: () => process.env['LOCAL_QWEN_API_KEY'],
+      });
+      return app;
+    };
+    const app = createApp();
+    expect((await request(app).get('/homechat/connection')).body).toEqual({
+      apiKeyConfigured: false,
+      requiresApiKey: true,
+    });
+    const catalog = await request(app).get('/homechat/models');
+    expect(
+      (await request(app).put('/homechat/options').send(catalog.body.options))
+        .status,
+    ).toBe(200);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const saved = await request(app).put('/homechat/connection').send({
+      apiKey: ' vane-private-test-key ',
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({
+      apiKeyConfigured: true,
+      requiresApiKey: true,
+    });
+    expect(saved.text).not.toContain('vane-private-test-key');
+    expect(statSync(join(store.directory, 'state.json')).mode & 0o777).toBe(
+      0o600,
+    );
+    vi.stubEnv('LOCAL_QWEN_API_KEY', 'other-harness-test-key');
+    await request(app).get('/homechat/models');
+    const reopened = createApp();
+    expect((await request(reopened).get('/homechat/connection')).body).toEqual({
+      apiKeyConfigured: true,
+      requiresApiKey: true,
+    });
+    await request(reopened).get('/homechat/models');
+    expect(fetchImpl.mock.calls).toHaveLength(2);
+    for (const [, init] of fetchImpl.mock.calls) {
+      expect(new Headers(init?.headers).get('Authorization')).toBe(
+        'Bearer vane-private-test-key',
+      );
+    }
+  });
+
+  it('keeps saved model choices when desktop credentials are not configured', async () => {
+    vi.stubEnv('QWEN_CODE_DESKTOP', '1');
+    vi.stubEnv('LOCAL_QWEN_API_KEY', undefined);
+    const store = createStore();
+    store.update((state) => {
+      state.options = { ...OPTIONS, optimizationMode: 'balanced' };
+    });
+    const app = express();
+    registerHomeChatRoutes(app, {
+      mutate: () => (_req, _res, next) => next(),
+      fetchImpl: vi.fn<typeof fetch>(),
+      stateStore: store,
+    });
+    expect((await request(app).get('/homechat/models')).body.options).toEqual(
+      OPTIONS,
+    );
+  });
+
+  it.each([true, false])(
+    'refreshes MCP after a durable desktop key save (desktop=%s)',
+    async (desktop) => {
+      vi.stubEnv('QWEN_CODE_DESKTOP', desktop ? '1' : undefined);
+      const store = createStore();
+      const onConnectionChanged = vi.fn(async () => {
+        expect(store.read().backendApiKey).toBe('replacement-test-key');
+      });
+      const app = express();
+      app.use(express.json());
+      registerHomeChatRoutes(app, {
+        mutate: () => (_req, _res, next) => next(),
+        stateStore: store,
+        onConnectionChanged,
+      });
+      expect(
+        (await request(app).put('/homechat/connection').send({ apiKey: '' }))
+          .status,
+      ).toBe(400);
+      expect(onConnectionChanged).not.toHaveBeenCalled();
+      expect(
+        (
+          await request(app)
+            .put('/homechat/connection')
+            .send({ apiKey: 'replacement-test-key' })
+        ).status,
+      ).toBe(200);
+      expect(onConnectionChanged).toHaveBeenCalledTimes(desktop ? 1 : 0);
+    },
+  );
+
+  it('rejects invalid keys without overwriting the existing connection', async () => {
+    const store = createStore();
+    store.update((state) => {
+      state.backendApiKey = 'existing-test-key';
+    });
+    const app = mount(vi.fn<typeof fetch>(), store);
+    for (const body of [
+      { apiKey: '' },
+      { apiKey: 'key\r\nInjected: value' },
+      { apiKey: 'key', url: 'http://other.test' },
+    ]) {
+      expect(
+        (await request(app).put('/homechat/connection').send(body)).status,
+      ).toBe(400);
+    }
+    expect(store.read().backendApiKey).toBe('existing-test-key');
+    expect((await request(app).get('/homechat/connection')).body).toEqual({
+      apiKeyConfigured: true,
+      requiresApiKey: false,
+    });
+  });
+
+  it('protects Vane key changes with the mutation guard', async () => {
+    const store = createStore();
+    const app = express();
+    const onConnectionChanged = vi.fn();
+    app.use(express.json());
+    registerHomeChatRoutes(app, {
+      mutate: () => (_req, res) => {
+        res.sendStatus(403);
+      },
+      stateStore: store,
+      onConnectionChanged,
+    });
+    expect(
+      (
+        await request(app)
+          .put('/homechat/connection')
+          .send({ apiKey: 'new-test-key' })
+      ).status,
+    ).toBe(403);
+    expect(store.read().backendApiKey).toBeUndefined();
+    expect(onConnectionChanged).not.toHaveBeenCalled();
   });
 
   it('uses a newly saved server key without restarting the desktop daemon', async () => {
@@ -461,6 +622,40 @@ describe('HomeChat models and organization', () => {
       ]);
     },
   );
+
+  it('prefers an advertised Qwen 27B alias without replacing a saved valid choice', async () => {
+    const providers = {
+      providers: [
+        {
+          id: 'home-ai-openai-local',
+          chatModels: [
+            { key: 'other-model', name: 'Other' },
+            { key: 'advertised-qwen-route', name: 'Qwen3.8-27B' },
+          ],
+          embeddingModels: [{ key: 'embedding' }],
+        },
+      ],
+    };
+    const store = createStore();
+    const app = mount(
+      vi.fn<typeof fetch>(async () => jsonResponse(providers)),
+      store,
+    );
+    expect(
+      (await request(app).get('/homechat/models')).body.options.chatModel.key,
+    ).toBe('advertised-qwen-route');
+    store.update((state) => {
+      state.options = {
+        chatModel: { providerId: 'home-ai-openai-local', key: 'other-model' },
+        thinking: false,
+        effort: 'medium',
+        optimizationMode: 'speed',
+      };
+    });
+    expect(
+      (await request(app).get('/homechat/models')).body.options.chatModel.key,
+    ).toBe('other-model');
+  });
 
   it('returns public model identities and restores saved Chat-only options', async () => {
     const store = createStore();

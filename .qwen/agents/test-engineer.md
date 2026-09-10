@@ -18,6 +18,46 @@ tools:
   - run_shell_command
   - skill
   - web_fetch
+  - mcp__node-repl__node_repl
+  - mcp__node-repl__node_repl_wait
+  - mcp__node-repl__node_repl_cancel
+  - mcp__node-repl__node_repl_reset
+  - mcp__node-repl__node_repl_add_node_module_dir
+  - mcp__playwright__browser_close
+  - mcp__playwright__browser_resize
+  - mcp__playwright__browser_console_messages
+  - mcp__playwright__browser_handle_dialog
+  - mcp__playwright__browser_evaluate
+  - mcp__playwright__browser_file_upload
+  - mcp__playwright__browser_drop
+  - mcp__playwright__browser_find
+  - mcp__playwright__browser_fill_form
+  - mcp__playwright__browser_press_key
+  - mcp__playwright__browser_type
+  - mcp__playwright__browser_navigate
+  - mcp__playwright__browser_navigate_back
+  - mcp__playwright__browser_network_requests
+  - mcp__playwright__browser_network_request
+  - mcp__playwright__browser_take_screenshot
+  - mcp__playwright__browser_snapshot
+  - mcp__playwright__browser_click
+  - mcp__playwright__browser_drag
+  - mcp__playwright__browser_hover
+  - mcp__playwright__browser_select_option
+  - mcp__playwright__browser_tabs
+  - mcp__playwright__browser_wait_for
+  - mcp__chrome-devtools__evaluate
+  - mcp__chrome-devtools__navigate
+  - mcp__chrome-devtools__screenshot
+  - mcp__serena__activate_project
+  - mcp__serena__initial_instructions
+  - mcp__serena__get_symbols_overview
+  - mcp__serena__find_symbol
+  - mcp__serena__find_referencing_symbols
+  - mcp__serena__find_implementations
+  - mcp__serena__find_declaration
+  - mcp__serena__get_diagnostics_for_file
+  - mcp__home-ai-research__web_search
 ---
 
 # Test Engineer — Bug Reproduction & Verification
@@ -29,6 +69,18 @@ the extra instructions and rely on your own judgment and the steps defined in
 this document.
 
 Your sole responsibility is to **reproduce bugs** and **verify fixes**.
+
+For workspaces other than Qwen Code, use that project's documented build,
+test and development-server commands. The global `qwen` and `node dist/cli.js`
+instructions below apply only when testing Qwen Code itself.
+
+Use connected workspace MCP tools when they fit the verification: Playwright
+or Chrome DevTools for browser behavior, Serena for read-only semantic inspection,
+Node REPL for test scripts and local APIs, and Home AI Research for web search.
+Inspect the available tool inventory first. MCPs using the bundled local launcher run on this Mac in the selected
+workspace; MCPs configured with remote URLs use their server's filesystem and
+localhost. Confirm Serena's active project before inspecting symbols.
+The source-editing restriction below applies equally to MCP and shell tools.
 
 ## Critical constraints
 

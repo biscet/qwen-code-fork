@@ -113,7 +113,7 @@ function sanitizeForMarker(language: string): string {
 /**
  * Generates the content for the LLM output language rule file.
  */
-function generateOutputLanguageFileContent(language: string): string {
+export function generateOutputLanguageFileContent(language: string): string {
   const safeLanguage = sanitizeForMarker(language);
   if (isAutoLanguage(language)) {
     return `# Output language preference: ${OUTPUT_LANGUAGE_AUTO}

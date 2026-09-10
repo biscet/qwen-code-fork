@@ -9,6 +9,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveLogRoot, sliceNewLog } from './resolve-log-root.js';
+import { bundleMacLocal } from './bundle-mac-local.js';
 
 const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -53,6 +54,7 @@ try {
   testElectronBridgeManifest(path.join(root, 'electron-bridge'));
   testVersionSynchronization(path.join(root, 'version'));
   testRuntimePreparation(path.join(root, 'runtime'));
+  testLocalMacBundle(path.join(root, 'local-mac'));
   console.log('Desktop release helper checks passed.');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
@@ -514,6 +516,126 @@ function testDesktopReleaseHardening() {
       prepareRuntime.indexOf('writeChecksums();'),
     'runtime replacement must happen only after assembly and checksums finish',
   );
+  assert.match(
+    prepareRuntime,
+    /if \(target === 'darwin-arm64'\) \{\s+prepareMcpRuntime\(/,
+    'local MCP packaging must preserve existing bundles for other targets',
+  );
+}
+
+function testLocalMacBundle(directory) {
+  if (process.platform === 'win32') return;
+  const target = path.join(directory, 'src-tauri/target');
+  const runtime = path.join(directory, 'runtime/qwen-code');
+  const asset = 'framework/Versions/A/asset';
+  fs.mkdirSync(path.join(runtime, 'framework/Versions/A'), { recursive: true });
+  fs.writeFileSync(path.join(runtime, asset), 'native resource');
+  fs.symlinkSync('A', path.join(runtime, 'framework/Versions/Current'));
+  fs.symlinkSync('Versions/Current', path.join(runtime, 'framework/Resources'));
+  const expected = crypto
+    .createHash('sha256')
+    .update('native resource')
+    .digest('hex');
+  fs.writeFileSync(
+    path.join(runtime, 'checksums.json'),
+    JSON.stringify({
+      [asset]: expected,
+      'framework/Versions/Current/asset': expected,
+      'framework/Resources/asset': expected,
+    }),
+  );
+  fs.mkdirSync(path.join(target, 'release/bundle/macos/HomeCode.app'), {
+    recursive: true,
+  });
+  const runningApp = path.join(
+    target,
+    'release/bundle/macos/HomeCode.app/running',
+  );
+  fs.writeFileSync(runningApp, 'existing running app');
+  fs.writeFileSync(
+    path.join(target, 'release/HomeCode'),
+    'compiled executable',
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(directory, 'src-tauri/tauri.conf.json'),
+    JSON.stringify({ productName: 'HomeCode', version: '1.2.3' }),
+  );
+  let corrupt = false;
+  let imageCreated = false;
+  const run = (command, args, options) => {
+    if (command === process.execPath) {
+      const isolatedTarget = options.env.CARGO_TARGET_DIR;
+      assert.notEqual(isolatedTarget, target);
+      assert.equal(
+        fs.readFileSync(path.join(isolatedTarget, 'release/HomeCode'), 'utf8'),
+        'compiled executable',
+      );
+      assert.equal(
+        fs.statSync(path.join(isolatedTarget, 'release/HomeCode')).mode & 0o777,
+        0o755,
+      );
+      const copied = path.join(
+        isolatedTarget,
+        'release/bundle/macos/HomeCode.app/Contents/Resources/runtime/qwen-code',
+      );
+      fs.mkdirSync(copied, { recursive: true });
+      fs.writeFileSync(
+        path.join(copied, 'tauri-dropped-links'),
+        'incomplete resources',
+      );
+    } else if (command === 'codesign' && args.includes('--force')) {
+      const restored = path.join(
+        args.at(-1),
+        'Contents/Resources/runtime/qwen-code',
+      );
+      assert.ok(
+        fs
+          .lstatSync(path.join(restored, 'framework/Resources'))
+          .isSymbolicLink(),
+      );
+      assert.equal(
+        fs.readlinkSync(path.join(restored, 'framework/Versions/Current')),
+        'A',
+      );
+      assert.equal(
+        fs.existsSync(path.join(restored, 'tauri-dropped-links')),
+        false,
+      );
+      if (corrupt)
+        fs.writeFileSync(path.join(restored, asset), 'changed after signing');
+    } else if (command === 'hdiutil' && args[0] === 'create') {
+      const image = args[args.indexOf('-srcfolder') + 1];
+      assert.deepEqual(fs.readdirSync(image).sort(), [
+        'Applications',
+        'HomeCode.app',
+      ]);
+      assert.equal(
+        fs.readlinkSync(path.join(image, 'Applications')),
+        '/Applications',
+      );
+      assert.ok(args.includes('UDZO'));
+      fs.writeFileSync(args.at(-1), 'verified installer');
+      imageCreated = true;
+    }
+  };
+  const destination = bundleMacLocal(directory, run);
+  assert.ok(imageCreated);
+  assert.equal(fs.readFileSync(destination, 'utf8'), 'verified installer');
+  assert.equal(fs.readFileSync(runningApp, 'utf8'), 'existing running app');
+  corrupt = true;
+  imageCreated = false;
+  assert.throws(
+    () => bundleMacLocal(directory, run),
+    /Packaged runtime checksum mismatch/,
+  );
+  assert.equal(imageCreated, false);
+  assert.equal(fs.readFileSync(destination, 'utf8'), 'verified installer');
+  assert.equal(fs.readFileSync(runningApp, 'utf8'), 'existing running app');
+  assert.equal(
+    fs.readdirSync(target).some((name) => name.startsWith('.local-bundle-')),
+    false,
+  );
 }
 
 function testRuntimePreparation(directory) {
@@ -569,6 +691,22 @@ function testRuntimePreparation(directory) {
   fs.copyFileSync(
     path.join(packageDir, 'scripts', 'prepare-runtime.js'),
     testScript,
+  );
+  fs.writeFileSync(
+    path.join(path.dirname(testScript), 'prepare-mcp-runtime.js'),
+    `import fs from 'node:fs';
+import path from 'node:path';
+export function prepareMcpRuntime({ packageRoot, target }) {
+  if (target !== 'darwin-arm64') throw new Error('Unexpected local MCP target');
+  fs.mkdirSync(path.join(packageRoot, 'mcp'), { recursive: true });
+  fs.writeFileSync(path.join(packageRoot, 'mcp', 'launch.mjs'), 'MCP fixture');
+  if (process.platform !== 'win32') {
+    fs.mkdirSync(path.join(packageRoot, 'mcp', 'assets'));
+    fs.writeFileSync(path.join(packageRoot, 'mcp', 'assets', 'fixture'), 'asset');
+    fs.symlinkSync('assets', path.join(packageRoot, 'mcp', 'linked-assets'));
+  }
+}
+`,
   );
   fs.cpSync(
     path.join(packageDir, 'defaults'),
@@ -659,6 +797,25 @@ globalThis.fetch = async (url) => {
     env,
   });
   assert.equal(first.status, 0, first.stderr);
+  assert.equal(
+    fs.readFileSync(
+      path.join(runtimeDir, 'qwen-code', 'mcp', 'launch.mjs'),
+      'utf8',
+    ),
+    'MCP fixture',
+  );
+  if (process.platform !== 'win32') {
+    const checksums = JSON.parse(
+      fs.readFileSync(
+        path.join(runtimeDir, 'qwen-code', 'checksums.json'),
+        'utf8',
+      ),
+    );
+    assert.equal(
+      checksums['mcp/linked-assets/fixture'],
+      checksums['mcp/assets/fixture'],
+    );
+  }
   assert.doesNotMatch(first.stdout, /Using cached Node\.js runtime/);
   assert.ok(fs.existsSync(cachedArchivePath));
   assert.ok(

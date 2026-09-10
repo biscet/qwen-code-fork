@@ -180,16 +180,18 @@ function DetailRow({
   name,
   tokens,
   tokenLabel,
+  detailNameMaxLen,
 }: {
   name: string;
   tokens: number;
   tokenLabel: string;
+  detailNameMaxLen: number;
 }) {
   return (
     <div className={styles.detailRow}>
       <span className={styles.secondary}>{'\u2514'} </span>
       <span className={styles.detailName} title={name}>
-        {truncateName(name, DETAIL_NAME_MAX_LEN)}
+        {truncateName(name, detailNameMaxLen)}
       </span>
       <span className={styles.value}>
         {formatTokens(tokens)} {tokenLabel}
@@ -203,6 +205,7 @@ function DetailSection({
   items,
   getName,
   tokenLabel,
+  detailNameMaxLen,
 }: {
   title: string;
   items: readonly (DaemonContextToolDetail | DaemonContextMemoryDetail)[];
@@ -210,6 +213,7 @@ function DetailSection({
     item: DaemonContextToolDetail | DaemonContextMemoryDetail,
   ) => string;
   tokenLabel: string;
+  detailNameMaxLen: number;
 }) {
   const sorted = sortByTokens(items);
   if (sorted.length === 0) return null;
@@ -222,6 +226,7 @@ function DetailSection({
           name={getName(item)}
           tokens={item.tokens}
           tokenLabel={tokenLabel}
+          detailNameMaxLen={detailNameMaxLen}
         />
       ))}
     </section>
@@ -231,6 +236,7 @@ function DetailSection({
 function SkillsSection({
   skills,
   labels,
+  detailNameMaxLen,
 }: {
   skills: readonly DaemonContextSkillDetail[];
   labels: {
@@ -239,6 +245,7 @@ function SkillsSection({
     skills: string;
     tokens: string;
   };
+  detailNameMaxLen: number;
 }) {
   const sorted = [...skills].sort((a, b) => {
     if (a.loaded !== b.loaded) return a.loaded ? -1 : 1;
@@ -254,7 +261,7 @@ function SkillsSection({
           <div className={styles.detailRow}>
             <span className={styles.secondary}>{'\u2514'} </span>
             <span className={styles.detailName} title={skill.name}>
-              {truncateName(skill.name, DETAIL_NAME_MAX_LEN)}
+              {truncateName(skill.name, detailNameMaxLen)}
               {skill.loaded && (
                 <span className={styles.success}> {labels.active}</span>
               )}
@@ -282,12 +289,16 @@ export function ContextUsageMessage({
   status,
   onShowDetail,
   compact = false,
+  detailNameMaxLen = DETAIL_NAME_MAX_LEN,
 }: {
   status: DaemonSessionContextUsageStatus;
   /** Load the detailed context breakdown. */
   onShowDetail?: () => void;
   /** Use the compact composer-popover presentation. */
   compact?: boolean;
+  /** Compact's wrapping column fits full names; the transcript's fixed
+   * name column keeps the default cap. */
+  detailNameMaxLen?: number;
 }) {
   const { t } = useI18n();
   const { usage } = status;
@@ -301,7 +312,7 @@ export function ContextUsageMessage({
       ? (breakdown.autocompactBuffer / contextWindowSize) * 100
       : 0;
 
-  if (compact) {
+  if (compact && !usage.showDetails) {
     const estimatedTokens =
       breakdown.systemPrompt +
       breakdown.builtinTools +
@@ -405,8 +416,10 @@ export function ContextUsageMessage({
   }
 
   return (
-    <div className={styles.panel}>
-      <div className={styles.title}>{t('contextUsage.title')}</div>
+    <div className={`${styles.panel}${compact ? ` ${styles.compact}` : ''}`}>
+      {!compact && (
+        <div className={styles.title}>{t('contextUsage.title')}</div>
+      )}
 
       {!hasTokenCount ? (
         <>
@@ -450,7 +463,7 @@ export function ContextUsageMessage({
             usedPercentage={Math.min(percentage, 100)}
             bufferPercentage={bufferPercentage}
             label={t('contextUsage.used')}
-            compact={false}
+            compact={compact}
           />
           <div className={styles.spacer} />
           <CategoryRow
@@ -544,18 +557,21 @@ export function ContextUsageMessage({
             items={usage.builtinTools}
             getName={(item) => ('name' in item ? item.name : item.path)}
             tokenLabel={t('contextUsage.tokens')}
+            detailNameMaxLen={detailNameMaxLen}
           />
           <DetailSection
             title={t('contextUsage.mcpTools')}
             items={usage.mcpTools}
             getName={(item) => ('name' in item ? item.name : item.path)}
             tokenLabel={t('contextUsage.tokens')}
+            detailNameMaxLen={detailNameMaxLen}
           />
           <DetailSection
             title={t('contextUsage.memoryFiles')}
             items={usage.memoryFiles}
             getName={(item) => ('path' in item ? item.path : item.name)}
             tokenLabel={t('contextUsage.tokens')}
+            detailNameMaxLen={detailNameMaxLen}
           />
           <SkillsSection
             skills={usage.skills}
@@ -565,6 +581,7 @@ export function ContextUsageMessage({
               skills: t('contextUsage.skills'),
               tokens: t('contextUsage.tokens'),
             }}
+            detailNameMaxLen={detailNameMaxLen}
           />
         </>
       ) : (

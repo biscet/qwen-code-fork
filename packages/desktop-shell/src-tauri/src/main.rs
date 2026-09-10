@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod desktop_state;
+mod logs;
 mod runtime;
 
 use command_group::GroupChild;
@@ -95,6 +96,7 @@ fn main() {
             bootstrap_state,
             choose_workspace,
             open_logs,
+            download_logs,
             restart_runtime,
             install_update,
         ])
@@ -182,10 +184,9 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let settings = SettingsStore::load(&handle).map_err(std::io::Error::other)?;
     let window_state = settings.window();
     let log_path = desktop_log_path(&handle).map_err(std::io::Error::other)?;
-    if let Some(parent) = log_path.parent() {
-        let _ = fs::create_dir_all(parent);
+    if let Err(error) = logs::prepare_log(&log_path) {
+        eprintln!("Failed to preserve previous desktop log: {error}");
     }
-    let _ = fs::write(&log_path, b"");
     let origin = Arc::new(Mutex::new(None));
     let navigation_origin = Arc::clone(&origin);
     let navigation_dev_url = handle.config().build.dev_url.clone();
@@ -362,6 +363,43 @@ fn open_logs(
     }
     open::that_detached(&state.log_path)
         .map_err(|error| format!("Failed to open desktop logs: {error}"))
+}
+
+#[tauri::command]
+async fn download_logs(webview: WebviewWindow, app: AppHandle) -> Result<Option<String>, String> {
+    let current = webview
+        .url()
+        .map_err(|error| format!("Failed to read desktop URL: {error}"))?;
+    let state = app.state::<ApplicationState>();
+    if webview.label() != "main"
+        || !is_allowed_navigation(&current, app.config().build.dev_url.as_ref(), &state.origin)
+    {
+        return Err("Log download is only available from the active desktop shell.".to_string());
+    }
+    let log_path = state.log_path.clone();
+    let version = app.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(destination) = app
+            .dialog()
+            .file()
+            .set_title("Save HomeCode logs")
+            .set_file_name(format!("HomeCode-{version}-logs.txt"))
+            .add_filter("Text log", &["txt"])
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let destination = destination
+            .into_path()
+            .map_err(|error| format!("Failed to read log destination: {error}"))?;
+        let contents = logs::export_logs(&log_path, &version)
+            .map_err(|error| format!("Failed to read desktop logs: {error}"))?;
+        fs::write(&destination, contents)
+            .map_err(|error| format!("Failed to save desktop logs: {error}"))?;
+        Ok(Some(destination.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|error| format!("Failed to export desktop logs: {error}"))?
 }
 
 #[tauri::command]

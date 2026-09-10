@@ -11,6 +11,7 @@ import type {
 
 const mock = vi.hoisted(() => ({
   homeDir: '',
+  outputLanguage: 'Russian',
   request: vi.fn(),
   execute: vi.fn<CodexTools['execute']>(),
   notify: undefined as
@@ -20,6 +21,11 @@ const mock = vi.hoisted(() => ({
   toolRequest: undefined as
     | ((method: string, params: Record<string, unknown>) => unknown)
     | undefined,
+}));
+vi.mock('../../config/settings.js', () => ({
+  loadSettings: vi.fn(() => ({
+    merged: { general: { outputLanguage: mock.outputLanguage } },
+  })),
 }));
 vi.mock('./codex-service.js', () => ({
   getCodexService: () => ({
@@ -72,6 +78,7 @@ vi.mock('./codex-tools.js', () => ({
 
 import { CodexSessionManager } from './codex-session-manager.js';
 import { createWorkspaceGenerationGuard } from '../workspace-registry.js';
+import { loadSettings } from '../../config/settings.js';
 
 describe('Codex Harness session ownership and persistence', () => {
   let manager: CodexSessionManager;
@@ -80,6 +87,7 @@ describe('Codex Harness session ownership and persistence', () => {
   beforeEach(() => {
     mock.homeDir = mkdtempSync(path.join(os.tmpdir(), 'homecode-codex-test-'));
     mock.request.mockReset();
+    mock.outputLanguage = 'Russian';
     mock.execute
       .mockReset()
       .mockResolvedValue({ success: true, contentItems: [] });
@@ -113,6 +121,32 @@ describe('Codex Harness session ownership and persistence', () => {
     const created = await manager.create(runtime, {
       modelServiceId: 'test-codex',
     });
+    expect(loadSettings).toHaveBeenCalledWith(runtime.workspaceCwd, {
+      skipLoadEnvironment: true,
+      workspaceTrusted: true,
+    });
+    expect(mock.request).toHaveBeenCalledWith(
+      'thread/start',
+      expect.objectContaining({
+        developerInstructions: expect.stringContaining(
+          'You MUST always respond in **Russian**',
+        ),
+      }),
+    );
+    for (const instruction of [
+      'connected tool inventory',
+      'Chrome DevTools (--slim)',
+      'localhost refers to this Mac',
+      "Serena's active project matches",
+      'requires LOCAL_QWEN_API_KEY',
+    ]) {
+      expect(mock.request).toHaveBeenCalledWith(
+        'thread/start',
+        expect.objectContaining({
+          developerInstructions: expect.stringContaining(instruction),
+        }),
+      );
+    }
     const admitted = await manager.prompt(created.sessionId, [
       { type: 'text', text: 'Hello' },
     ]);
@@ -277,12 +311,29 @@ describe('Codex Harness session ownership and persistence', () => {
     expect(
       mock.request.mock.calls.filter(([method]) => method === 'turn/start'),
     ).toHaveLength(1);
+    mock.outputLanguage = 'English';
     await manager.prompt(created.sessionId, [
       { type: 'text', text: 'Continue' },
     ]);
     expect(
       mock.request.mock.calls.filter(([method]) => method === 'thread/resume'),
     ).toHaveLength(1);
+    expect(mock.request).toHaveBeenCalledWith(
+      'thread/resume',
+      expect.objectContaining({
+        developerInstructions: expect.stringContaining(
+          'You MUST always respond in **English**',
+        ),
+      }),
+    );
+    expect(mock.request).toHaveBeenCalledWith(
+      'thread/resume',
+      expect.objectContaining({
+        developerInstructions: expect.stringContaining(
+          '## Workspace MCPs and agents',
+        ),
+      }),
+    );
   });
 
   it('rejects unavailable owner before sending any new turn', async () => {

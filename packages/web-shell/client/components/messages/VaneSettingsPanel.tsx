@@ -1,15 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GlobeIcon } from 'lucide-react';
 import { useWorkspace } from '@qwen-code/web-shell/daemon-react-sdk';
 import { useI18n } from '../../i18n';
 import {
   loadHomeChatModels,
+  loadHomeChatConnection,
+  saveHomeChatConnection,
   saveHomeChatOptions,
+  type HomeChatConnection,
   type HomeChatModelCatalog,
   type HomeChatOptions,
 } from '../homechat/homechat-api';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import {
   Card,
   CardContent,
@@ -42,6 +46,59 @@ export function VaneSettingsPanel() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [connection, setConnection] = useState<HomeChatConnection>();
+  const [apiKey, setApiKey] = useState('');
+  const [keyError, setKeyError] = useState('');
+  const [keySaved, setKeySaved] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const connectionScope = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    connectionScope.current += 1;
+    setConnection(undefined);
+    setApiKey('');
+    setKeyError('');
+    setKeySaved(false);
+    setSavingKey(false);
+    void loadHomeChatConnection(baseUrl, token).then(
+      (next) => {
+        if (active) setConnection(next);
+      },
+      (failure: unknown) => {
+        if (active)
+          setKeyError(
+            failure instanceof Error ? failure.message : String(failure),
+          );
+      },
+    );
+    return () => {
+      active = false;
+      connectionScope.current += 1;
+    };
+  }, [baseUrl, token]);
+
+  const saveKey = async () => {
+    const scope = connectionScope.current;
+    setSavingKey(true);
+    setKeyError('');
+    setKeySaved(false);
+    try {
+      const next = await saveHomeChatConnection(baseUrl, token, apiKey.trim());
+      if (scope !== connectionScope.current) return;
+      setConnection(next);
+      setApiKey('');
+      setKeySaved(true);
+      setRevision((value) => value + 1);
+    } catch (failure) {
+      if (scope === connectionScope.current)
+        setKeyError(
+          failure instanceof Error ? failure.message : String(failure),
+        );
+    } finally {
+      if (scope === connectionScope.current) setSavingKey(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -123,6 +180,70 @@ export function VaneSettingsPanel() {
         className="-mb-(--card-spacing) p-0"
         aria-busy={busy || (!catalog && !error) || undefined}
       >
+        {connection?.requiresApiKey !== false && (
+          <div className="px-5 pb-4 max-md:px-4">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (apiKey.trim() && !savingKey) void saveKey();
+              }}
+            >
+              <Field className="gap-2">
+                <label htmlFor="vane-api-key" className="text-sm font-medium">
+                  {t('settings.vane.apiKey')}
+                </label>
+                <FieldDescription>
+                  {t('settings.vane.apiKeyHint')}
+                </FieldDescription>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="vane-api-key"
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={apiKey}
+                    disabled={savingKey}
+                    placeholder={t(
+                      connection?.apiKeyConfigured
+                        ? 'settings.vane.replaceKey'
+                        : 'settings.vane.enterKey',
+                    )}
+                    onChange={(event) => {
+                      setApiKey(event.target.value);
+                      setKeySaved(false);
+                    }}
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={!apiKey.trim() || savingKey}
+                  >
+                    {t(
+                      savingKey
+                        ? 'settings.vane.savingKey'
+                        : 'settings.vane.saveKey',
+                    )}
+                  </Button>
+                </div>
+                {(keySaved || connection?.apiKeyConfigured) && !keyError && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    {t(
+                      keySaved
+                        ? 'settings.vane.keySaved'
+                        : 'settings.vane.keyConfigured',
+                    )}
+                  </p>
+                )}
+                {keyError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {keyError}
+                  </p>
+                )}
+              </Field>
+            </form>
+          </div>
+        )}
         {error && (
           <Alert className="mx-5 mb-4 w-auto">
             <AlertDescription>{error}</AlertDescription>

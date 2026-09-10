@@ -964,3 +964,71 @@ describe('SettingsMessage user-scope editing', () => {
     expect(onSubDialog).toHaveBeenCalledWith('fastModel', 'user');
   });
 });
+
+describe('HomeCode native agent settings', () => {
+  it('renders Russian response language as a selector', () => {
+    const container = renderPanel(
+      makeState(
+        [
+          {
+            key: 'general.outputLanguage',
+            type: 'string',
+            label: 'Language: Model',
+            category: 'General',
+            requiresRestart: true,
+            default: 'auto',
+            values: { effective: 'Russian' },
+          },
+        ],
+        vi.fn(),
+      ),
+    );
+    const select = container.querySelector(
+      'button[role="combobox"][aria-label="Response language"]',
+    );
+    expect(select?.textContent).toContain('Russian');
+    expect(container.querySelector('input')).toBeNull();
+  });
+
+  it('persists a chosen agent limit as a number in user scope', async () => {
+    const setValue = vi.fn().mockResolvedValue({ requiresRestart: true });
+    const container = renderPanel(
+      makeState(
+        [
+          {
+            key: 'agents.maxParallelAgents',
+            type: 'integer',
+            label: 'Max Parallel Agents',
+            category: 'Advanced',
+            requiresRestart: true,
+            default: 10,
+            values: { effective: 10 },
+          },
+        ],
+        setValue,
+      ),
+      { workspaceScopeAvailable: false },
+    );
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Parallel subagent limit"]',
+    )!;
+    expect(input.type).toBe('number');
+    expect(input.value).toBe('10');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )!.set!.call(input, '2');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(setValue).toHaveBeenCalledWith(
+      'user',
+      'agents.maxParallelAgents',
+      2,
+    );
+    expect(container.textContent).toContain('restart');
+  });
+});

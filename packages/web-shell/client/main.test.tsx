@@ -138,7 +138,7 @@ describe('StandaloneApp', () => {
       footer: {
         items: ['settings', 'daemonStatus', 'models', 'version'],
         layout: 'stacked',
-        versionLabel: '2.1.16',
+        versionLabel: '2.1.17',
       },
     });
   });

@@ -37,7 +37,7 @@ const STANDALONE_COMPOSER_TOOLBAR_ADDITIONS = ['addMenu'] as const;
 const LANGUAGE_STORAGE_KEY = 'qwen-code-web-shell-language';
 const THEME_STORAGE_KEY = 'qwen-code-web-shell-theme';
 const PRODUCT_STORAGE_KEY = 'homecode-product';
-const DESKTOP_VERSION = '2.1.16';
+const DESKTOP_VERSION = '2.1.17';
 
 function readStoredProduct(): HomeProduct {
   try {

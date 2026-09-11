@@ -72,6 +72,11 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
   );
   assert.equal(settings.model.name, 'local-coder');
   assert.equal(
+    settings.modelProviders.openai[0].generationConfig.samplingParams
+      .max_tokens,
+    16384,
+  );
+  assert.equal(
     settings.modelProviders.openai[0].generationConfig.thinkingMandatory,
     true,
   );
@@ -128,6 +133,175 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
     ),
     'test engineer',
   );
+});
+
+test('output budget migration upgrades exact managed routes once while preserving JSONC and other settings', () => {
+  for (const [id, baseUrl, wireModel] of [
+    ['local-coder', 'https://biscet-server.local:9454/v1'],
+    ['local-coder', 'http://127.0.0.1:1235/v1'],
+    ['windows-lmstudio/windows-qwen35-9b', 'https://192.168.31.79:9447/v1'],
+    [
+      'windows-lmstudio/windows-qwen35-9b',
+      'https://biscet-server.local:9447/v1',
+    ],
+    [
+      'windows-lmstudio/windows-qwen35-9b',
+      'https://mac-mini.tail897f4b.ts.net:9447/v1',
+    ],
+    [
+      'windows-lmstudio/windows-qwen35-9b',
+      'https://biscet-server.local:9455/openai/v1',
+    ],
+    [
+      'local-coder',
+      'https://biscet-server.local:9455/openai/v1',
+      'windows-lmstudio/windows-qwen35-9b',
+    ],
+  ]) {
+    for (const wrapped of [false, true]) {
+      const options = fixture();
+      fs.mkdirSync(options.qwenHome);
+      fs.writeFileSync(
+        path.join(options.qwenHome, '.desktop-defaults-v4'),
+        '1\n',
+      );
+      const file = path.join(options.qwenHome, 'settings.json');
+      const model = {
+        id,
+        baseUrl,
+        envKey: 'CUSTOM_KEY',
+        generationConfig: {
+          thinkingMandatory: true,
+          samplingParams: { max_tokens: 8192, temperature: 0.42 },
+          extra_body: {
+            reasoning_format: 'qwen',
+            reasoning_budget_tokens: 8192,
+            ...(wireModel ? { model: wireModel } : {}),
+          },
+        },
+      };
+      const settings = {
+        model: { name: 'other', reasoningEffort: 'xhigh' },
+        modelProviders: {
+          openai: wrapped ? { protocol: 'openai', models: [model] } : [model],
+        },
+        mcpServers: { custom: { command: 'custom-server' } },
+      };
+      fs.writeFileSync(
+        file,
+        `// Keep this comment\n${JSON.stringify(settings, null, 2)}\n`,
+      );
+      installDesktopDefaults(options);
+      model.generationConfig.samplingParams.max_tokens = 16384;
+      assert.deepEqual(parse(fs.readFileSync(file, 'utf8')), settings);
+      assert.match(fs.readFileSync(file, 'utf8'), /Keep this comment/);
+      const stat = fs.statSync(file);
+      installDesktopDefaults(options);
+      assert.equal(fs.statSync(file).ino, stat.ino);
+      assert.equal(fs.statSync(file).mtimeMs, stat.mtimeMs);
+      model.generationConfig.samplingParams.max_tokens = 8192;
+      const intentional = JSON.stringify(settings);
+      fs.writeFileSync(file, intentional);
+      installDesktopDefaults(options);
+      assert.equal(fs.readFileSync(file, 'utf8'), intentional);
+    }
+  }
+});
+
+test('output budget migration preserves custom routes, limits, protocols and disabled thinking', () => {
+  const base = {
+    id: 'windows-lmstudio/windows-qwen35-9b',
+    baseUrl: 'https://192.168.31.79:9447/v1',
+    generationConfig: {
+      samplingParams: { max_tokens: 8192 },
+      extra_body: { reasoning_format: 'qwen' },
+    },
+  };
+  const cases = [
+    { model: { id: 'other' } },
+    { model: { id: 'local-coder' } },
+    { model: { baseUrl: 'https://custom.example/v1' } },
+    { model: { baseUrl: `${base.baseUrl}?other=1` } },
+    { model: { baseUrl: 'https://biscet-server.local:9455/v1' } },
+    { protocol: 'anthropic' },
+    { providerProtocol: 'anthropic' },
+    { generation: { samplingParams: {} } },
+    ...[4096, 12000, 16384, null].map((max_tokens) => ({
+      sampling: { max_tokens },
+    })),
+    ...['max_completion_tokens', 'max_new_tokens', 'n_predict'].flatMap(
+      (key) => [{ sampling: { [key]: 4096 } }, { extra: { [key]: 4096 } }],
+    ),
+    { extra: { max_tokens: 8192 } },
+    { extra: { extra_params: { max_tokens: 8192 } } },
+    { extra: { reasoning_format: 'custom' } },
+    { extra: { extra_params: { reasoning_format: 'custom' } } },
+    { extra: { model: 'custom-model' } },
+    { generation: { reasoning: false } },
+    { generation: { reasoning: { budget_tokens: 2048 } } },
+    { effort: 'none' },
+    ...[0, 2048, -1, 16384].flatMap((budget) => [
+      { sampling: { reasoning_budget_tokens: budget } },
+      { extra: { reasoning_budget_tokens: budget } },
+      { extra: { extra_params: { reasoning_budget_tokens: budget } } },
+      { sampling: { thinking_budget_tokens: budget } },
+      { extra: { thinking_budget_tokens: budget } },
+      { extra: { extra_params: { thinking_budget_tokens: budget } } },
+    ]),
+    { extra: { enable_thinking: false } },
+    { sampling: { reasoning_effort: 'none' } },
+    { extra: { chat_template_kwargs: { enable_thinking: false } } },
+    {
+      extra: {
+        extra_params: { chat_template_kwargs: { reasoning_effort: 'none' } },
+      },
+    },
+  ];
+  for (const choice of cases) {
+    const options = fixture();
+    fs.mkdirSync(options.qwenHome);
+    fs.writeFileSync(
+      path.join(options.qwenHome, '.desktop-defaults-v4'),
+      '1\n',
+    );
+    const model = JSON.parse(JSON.stringify(base));
+    Object.assign(model, choice.model);
+    Object.assign(model.generationConfig.samplingParams, choice.sampling);
+    Object.assign(model.generationConfig.extra_body, choice.extra);
+    Object.assign(model.generationConfig, choice.generation);
+    const settings = {
+      model: { reasoningEffort: choice.effort },
+      providerProtocol: choice.providerProtocol
+        ? { openai: choice.providerProtocol }
+        : undefined,
+      modelProviders: {
+        openai: choice.protocol
+          ? { protocol: choice.protocol, models: [model] }
+          : [model],
+      },
+    };
+    const file = path.join(options.qwenHome, 'settings.json');
+    const original = `// Preserve explicit choices\n${JSON.stringify(settings)}\n`;
+    fs.writeFileSync(file, original);
+    installDesktopDefaults(options);
+    assert.equal(
+      fs.readFileSync(file, 'utf8'),
+      original,
+      JSON.stringify(choice),
+    );
+  }
+});
+
+test('a new installation preserves a later intentional legacy output cap', () => {
+  const options = fixture();
+  installDesktopDefaults(options);
+  const file = path.join(options.qwenHome, 'settings.json');
+  const settings = parse(fs.readFileSync(file, 'utf8'));
+  settings.modelProviders.openai[0].generationConfig.samplingParams.max_tokens = 8192;
+  const intentional = JSON.stringify(settings);
+  fs.writeFileSync(file, intentional);
+  installDesktopDefaults(options);
+  assert.equal(fs.readFileSync(file, 'utf8'), intentional);
 });
 
 test('native reasoning migration preserves JSONC and custom values on both managed routes and provider shapes', () => {

@@ -161,6 +161,90 @@ test('repeat launch preserves deletions and refuses ownership of edited definiti
   );
 });
 
+test('output budget migration upgrades an existing workspace receipt once without changing user or MCP settings', () => {
+  for (const wrapped of [false, true]) {
+    const options = fixture();
+    installDesktopWorkspaceDefaults(options);
+    const projectHome = path.join(options.workspaceDir, '.qwen');
+    const file = path.join(projectHome, 'settings.json');
+    fs.rmSync(path.join(projectHome, '.desktop-output-budget-v1'));
+    const receiptDir = path.join(options.qwenHome, 'desktop-workspaces');
+    const receiptFile = path.join(receiptDir, fs.readdirSync(receiptDir)[0]);
+    const receipt = fs.readFileSync(receiptFile, 'utf8');
+    const userFile = path.join(options.qwenHome, 'settings.json');
+    const user = fs.readFileSync(userFile, 'utf8');
+    const current = settings(options);
+    delete current.mcpServers.playwright;
+    current.mcpServers.serena.command = 'custom-serena';
+    const model = {
+      id: 'windows-lmstudio/windows-qwen35-9b',
+      baseUrl: 'https://192.168.31.79:9447/v1',
+      generationConfig: {
+        samplingParams: { max_tokens: 8192 },
+        extra_body: { reasoning_format: 'qwen', reasoning_budget_tokens: 8192 },
+      },
+    };
+    current.model = { name: model.id, reasoningEffort: 'xhigh' };
+    current.modelProviders = {
+      openai: wrapped ? { protocol: 'openai', models: [model] } : [model],
+    };
+    fs.writeFileSync(
+      file,
+      `{\n// Keep workspace comment\n${JSON.stringify(current).slice(1, -1)},\n}\n`,
+    );
+    const managed = installDesktopWorkspaceDefaults(options);
+    model.generationConfig.samplingParams.max_tokens = 16384;
+    assert.deepEqual(settings(options), current);
+    assert.equal(model.generationConfig.thinkingMandatory, undefined);
+    assert.equal(managed.playwright, undefined);
+    assert.equal(managed.serena, undefined);
+    assert.equal(fs.readFileSync(userFile, 'utf8'), user);
+    assert.equal(fs.readFileSync(receiptFile, 'utf8'), receipt);
+    assert.match(fs.readFileSync(file, 'utf8'), /Keep workspace comment/);
+    const stat = fs.statSync(file);
+    installDesktopWorkspaceDefaults(options);
+    assert.equal(fs.statSync(file).ino, stat.ino);
+    assert.equal(fs.statSync(file).mtimeMs, stat.mtimeMs);
+    model.generationConfig.samplingParams.max_tokens = 8192;
+    const intentional = JSON.stringify(current);
+    fs.writeFileSync(file, intentional);
+    installDesktopWorkspaceDefaults(options);
+    assert.equal(fs.readFileSync(file, 'utf8'), intentional);
+    assert.equal(fs.readFileSync(receiptFile, 'utf8'), receipt);
+    fs.rmSync(file);
+    installDesktopWorkspaceDefaults(options);
+    assert.equal(fs.existsSync(file), false);
+  }
+});
+
+test('output budget migration preserves inherited disabled thinking and deleted workspace models', () => {
+  for (const hasModel of [false, true]) {
+    const options = fixture();
+    const userFile = path.join(options.qwenHome, 'settings.json');
+    const user = parse(fs.readFileSync(userFile, 'utf8'));
+    user.model.reasoningEffort = 'none';
+    fs.writeFileSync(userFile, JSON.stringify(user));
+    const projectHome = path.join(options.workspaceDir, '.qwen');
+    fs.mkdirSync(projectHome);
+    const file = path.join(projectHome, 'settings.json');
+    const models = hasModel
+      ? [
+          {
+            id: 'windows-lmstudio/windows-qwen35-9b',
+            baseUrl: 'https://192.168.31.79:9447/v1',
+            generationConfig: { samplingParams: { max_tokens: 8192 } },
+          },
+        ]
+      : [];
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ modelProviders: { openai: models } }),
+    );
+    installDesktopWorkspaceDefaults(options);
+    assert.deepEqual(settings(options).modelProviders.openai, models);
+  }
+});
+
 test('native reasoning migration updates owned workspace routes without changing MCP receipts or overrides', () => {
   for (const baseUrl of [
     'https://biscet-server.local:9454/v1',
@@ -458,6 +542,18 @@ test('invalid JSONC and symlinked settings fail without replacing user files', (
   assert.throws(() => installDesktopWorkspaceDefaults(options), /invalid/);
   assert.equal(fs.readFileSync(file, 'utf8'), '{bad');
   fs.rmSync(file);
+  const userFile = path.join(options.qwenHome, 'settings.json');
+  const user = parse(fs.readFileSync(userFile, 'utf8'));
+  user.modelProviders.openai[0].generationConfig.samplingParams.max_tokens = 8192;
+  const userText = JSON.stringify(user);
+  fs.writeFileSync(userFile, userText);
   fs.symlinkSync(path.join(options.qwenHome, 'settings.json'), file);
   assert.throws(() => installDesktopWorkspaceDefaults(options), /symlink/);
+  assert.equal(fs.readFileSync(userFile, 'utf8'), userText);
+  assert.equal(
+    fs.existsSync(
+      path.join(options.workspaceDir, '.qwen/.desktop-output-budget-v1'),
+    ),
+    false,
+  );
 });

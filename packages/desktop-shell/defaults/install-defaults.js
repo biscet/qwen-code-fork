@@ -11,6 +11,7 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
   configureServerTrust(runtimeRoot, qwenHome);
   const defaultsRoot = path.join(runtimeRoot, 'defaults');
   refreshDesktopSkillReferences({ defaultsRoot, qwenHome });
+  migrateDesktopOutputBudget(path.join(qwenHome, 'settings.json'));
   migrateNativeReasoning(path.join(qwenHome, 'settings.json'));
   const initialMarker = path.join(qwenHome, '.desktop-defaults-v1');
   const previouslyInstalled = fs.existsSync(initialMarker);
@@ -138,6 +139,7 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
   } finally {
     fs.rmSync(temporary, { force: true });
   }
+  migrateDesktopOutputBudget(settingsPath);
 }
 
 export function installDesktopWorkspaceDefaults({
@@ -166,6 +168,7 @@ export function installDesktopWorkspaceDefaults({
     }
   }
   const userSettings = readSettings(path.join(qwenHome, 'settings.json'));
+  migrateDesktopOutputBudget(settingsPath, userSettings.model?.reasoningEffort);
   migrateNativeReasoning(settingsPath, userSettings.model?.reasoningEffort);
   const definitions = Object.fromEntries(
     Object.entries(defaults.mcpServers).map(([name, server]) => [
@@ -309,6 +312,7 @@ export function installDesktopWorkspaceDefaults({
     writeJsonText(receiptPath, `${JSON.stringify(receipt)}\n`);
   }
   refreshDesktopSkillReferences({ defaultsRoot, qwenHome: projectHome });
+  migrateDesktopOutputBudget(settingsPath, userSettings.model?.reasoningEffort);
   return Object.fromEntries(
     Object.entries(definitions).filter(
       ([name, definition]) =>
@@ -318,6 +322,112 @@ export function installDesktopWorkspaceDefaults({
         isDeepStrictEqual(currentSettings.mcpServers?.[name], definition),
     ),
   );
+}
+
+function migrateDesktopOutputBudget(settingsPath, inheritedReasoningEffort) {
+  const marker = path.join(
+    path.dirname(settingsPath),
+    '.desktop-output-budget-v1',
+  );
+  if (
+    fs.lstatSync(marker, { throwIfNoEntry: false }) ||
+    !fs.existsSync(settingsPath)
+  )
+    return;
+  const settings = readSettings(settingsPath);
+  const provider = settings.modelProviders?.openai;
+  const wrapped =
+    provider && !Array.isArray(provider) && typeof provider === 'object';
+  const models = wrapped ? provider.models : provider;
+  const original = fs.readFileSync(settingsPath, 'utf8');
+  let text = original;
+  const windowsModel = 'windows-lmstudio/windows-qwen35-9b';
+  if (
+    Array.isArray(models) &&
+    [undefined, 'openai'].includes(settings.providerProtocol?.openai) &&
+    (!wrapped ||
+      provider.protocol === undefined ||
+      provider.protocol === 'openai')
+  ) {
+    for (const [index, model] of models.entries()) {
+      const generation = model?.generationConfig;
+      const sampling = generation?.samplingParams;
+      const extra = generation?.extra_body;
+      const managedRoute =
+        (model?.id === 'local-coder' &&
+          [
+            'https://biscet-server.local:9454/v1',
+            'http://127.0.0.1:1235/v1',
+          ].includes(model.baseUrl)) ||
+        ([
+          'https://192.168.31.79:9447/v1',
+          'https://biscet-server.local:9447/v1',
+          'https://mac-mini.tail897f4b.ts.net:9447/v1',
+          'https://biscet-server.local:9455/openai/v1',
+        ].includes(model?.baseUrl) &&
+          (model.id === windowsModel ||
+            (model.id === 'local-coder' && extra?.model === windowsModel)));
+      const parameters = [
+        sampling,
+        extra,
+        sampling?.extra_params,
+        extra?.extra_params,
+      ];
+      if (
+        !managedRoute ||
+        sampling?.max_tokens !== 8192 ||
+        generation?.reasoning === false ||
+        (settings.model?.reasoningEffort ?? inheritedReasoningEffort) ===
+          'none' ||
+        (generation?.reasoning?.budget_tokens !== undefined &&
+          generation.reasoning.budget_tokens !== 8192) ||
+        parameters.some(
+          (options) =>
+            options !== undefined &&
+            (!options ||
+              typeof options !== 'object' ||
+              Array.isArray(options) ||
+              (options !== sampling && options.max_tokens !== undefined) ||
+              ['max_completion_tokens', 'max_new_tokens', 'n_predict'].some(
+                (key) => options[key] !== undefined,
+              ) ||
+              ['reasoning_budget_tokens', 'thinking_budget_tokens'].some(
+                (key) => options[key] !== undefined && options[key] !== 8192,
+              ) ||
+              ![undefined, 'none', 'auto', 'deepseek', 'qwen'].includes(
+                options.reasoning_format,
+              ) ||
+              (options.model !== undefined &&
+                options.model !== model.id &&
+                options.model !== windowsModel) ||
+              options.enable_thinking === false ||
+              options.reasoning_effort === 'none' ||
+              options.chat_template_kwargs?.enable_thinking === false ||
+              options.chat_template_kwargs?.reasoning_effort === 'none'),
+        )
+      )
+        continue;
+      text = applyEdits(
+        text,
+        modify(
+          text,
+          [
+            'modelProviders',
+            'openai',
+            ...(wrapped ? ['models'] : []),
+            index,
+            'generationConfig',
+            'samplingParams',
+            'max_tokens',
+          ],
+          16384,
+          { formattingOptions: { insertSpaces: true, tabSize: 2 } },
+        ),
+      );
+    }
+  }
+  if (text !== original) writeJsonText(settingsPath, text);
+  writeJsonText(marker, '1\n');
 }
 
 function migrateNativeReasoning(settingsPath, inheritedReasoningEffort) {

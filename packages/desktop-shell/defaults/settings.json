@@ -37,7 +37,7 @@
             "min_p": 0,
             "presence_penalty": 0,
             "repeat_penalty": 1,
-            "max_tokens": 8192,
+            "max_tokens": 16384,
             "reasoning_effort": "medium",
             "cache_prompt": true,
             "chat_template_kwargs": {

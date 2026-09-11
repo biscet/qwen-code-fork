@@ -331,6 +331,34 @@ describe('model configuration manifest', () => {
     ).toMatchObject([{ value: 'high' }, { value: 'max' }]);
   });
 
+  it.each([null, 'https://configured.example/v1'])(
+    'reads reasoning from the selected registry endpoint: %s',
+    (registryBaseUrl) => {
+      const reasoning = {
+        thinking: true,
+        efforts: ['medium', 'high'],
+        defaultEffort: 'medium',
+        disableField: 'reasoning_effort',
+      } as const;
+      const getResolvedModelConfig = vi.fn(
+        (_auth: string, _model: string, endpoint?: string) =>
+          endpoint === (registryBaseUrl ?? undefined)
+            ? { capabilities: { reasoning } }
+            : undefined,
+      );
+      const config = {
+        getModel: () => 'local-coder',
+        getAuthType: () => 'openai',
+        getCurrentModelRegistryBaseUrl: () => registryBaseUrl,
+        getContentGeneratorConfig: () => ({
+          baseUrl: 'https://effective.example/v1',
+        }),
+        getResolvedModelConfig,
+      } as unknown as Config;
+      expect(getConfiguredModelReasoning(config)).toBe(reasoning);
+    },
+  );
+
   it('ignores an incomplete user-provided reasoning capability', () => {
     const config = {
       getModel: () => 'custom-model',

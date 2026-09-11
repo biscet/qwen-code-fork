@@ -428,13 +428,23 @@ function applyDaemonTranscriptEvent(
         event,
       );
       break;
-    case 'tool.update':
+    case 'tool.update': {
+      if (event.preparationDiscarded) {
+        const blockId = next.toolBlockByCallId[event.toolCallId];
+        const index = blockId ? next.blockIndexById[blockId] : undefined;
+        const block = index === undefined ? undefined : next.blocks[index];
+        if (block?.kind === 'tool' && block.status === 'pending') {
+          discardToolBlock(next, event.toolCallId);
+        }
+        break;
+      }
       if (event.parentToolCallId && !next.retainSubagentBlocks) {
         discardToolBlock(next, event.toolCallId);
         break;
       }
       upsertToolBlock(next, event);
       break;
+    }
     case 'shell.output':
       appendShellBlock(next, event);
       break;
@@ -1237,7 +1247,7 @@ function discardToolBlock(
   delete state.toolBlockByCallId[toolCallId];
   delete state.toolProgress[toolCallId];
   if (state.currentToolCallId === toolCallId) {
-    state.currentToolCallId = undefined;
+    state.currentToolCallId = findLatestInFlightToolCallId(state);
   }
 }
 

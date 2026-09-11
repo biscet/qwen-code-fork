@@ -93,6 +93,9 @@ export function mapProviderStatus(
           ? { modalities: model.modalities }
           : {}),
         ...(model.baseUrl !== undefined ? { baseUrl: model.baseUrl } : {}),
+        ...(model.registryBaseUrl !== undefined
+          ? { registryBaseUrl: model.registryBaseUrl }
+          : {}),
         ...(model.envKey !== undefined ? { envKey: model.envKey } : {}),
         ...(model.isRuntime ? { isRuntime: true } : {}),
         ...(reasoningPreview ? { reasoningPreview } : {}),

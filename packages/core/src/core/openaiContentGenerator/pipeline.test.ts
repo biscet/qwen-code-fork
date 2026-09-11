@@ -1675,17 +1675,41 @@ describe('ContentGenerationPipeline', () => {
         initialChatTemplateKwargs: { enable_thinking: false },
         retryChatTemplateKwargs: undefined,
       },
+      {
+        name: 'honoring required thinking on the Windows Qwen route',
+        model: 'windows-lmstudio/windows-qwen35-9b',
+        errorMessage:
+          'Qwen route requires enable_thinking and preserve_thinking to be true',
+        extraBody: {
+          chat_template_kwargs: {
+            enable_thinking: true,
+            preserve_thinking: true,
+            reasoning_effort: 'xhigh',
+          },
+        },
+        initialChatTemplateKwargs: {
+          enable_thinking: false,
+          preserve_thinking: true,
+        },
+        retryChatTemplateKwargs: {
+          enable_thinking: true,
+          preserve_thinking: true,
+          reasoning_effort: 'xhigh',
+        },
+      },
     ])(
       'retries without provider-configured thinking opt-outs on non-DashScope endpoints: $name',
       async ({
         extraBody,
         initialChatTemplateKwargs,
         retryChatTemplateKwargs,
+        model = 'Qwen3.6-27B',
+        errorMessage = 'enable_thinking must be true for this model',
       }) => {
         mockContentGeneratorConfig = {
           ...mockContentGeneratorConfig,
           baseUrl: 'https://llm.example.com/v1',
-          model: 'Qwen3.6-27B',
+          model,
           extra_body: extraBody,
         } as ContentGeneratorConfig;
         const provider = new DefaultOpenAICompatibleProvider(
@@ -1706,10 +1730,9 @@ describe('ContentGenerationPipeline', () => {
           new GenerateContentResponse(),
         );
 
-        const requiredThinkingError = Object.assign(
-          new Error('enable_thinking must be true for this model'),
-          { status: 400 },
-        );
+        const requiredThinkingError = Object.assign(new Error(errorMessage), {
+          status: 400,
+        });
         (mockClient.chat.completions.create as Mock)
           .mockRejectedValueOnce(requiredThinkingError)
           .mockResolvedValue({
@@ -1719,7 +1742,7 @@ describe('ContentGenerationPipeline', () => {
 
         await pipeline.execute(
           {
-            model: 'Qwen3.6-27B',
+            model,
             contents: [{ parts: [{ text: 'What is 2+2?' }], role: 'user' }],
             config: { thinkingConfig: { includeThoughts: false } },
           },

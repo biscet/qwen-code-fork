@@ -117,6 +117,31 @@ describe('DefaultOpenAICompatibleProvider', () => {
   });
 
   describe('getResponseParsingOptions', () => {
+    it('uses authoritative channels only for the explicit qwen format', () => {
+      mockContentGeneratorConfig.extra_body = { reasoning_format: 'qwen' };
+
+      expect(provider.getResponseParsingOptions('local-coder')).toEqual({
+        structuredReasoning: true,
+      });
+      expect(provider.getResponseParsingOptions('qwen3.8-max')).toEqual({
+        structuredReasoning: true,
+      });
+      expect(
+        provider.buildRequest({ model: 'local-coder', messages: [] }, 'test'),
+      ).toMatchObject({ reasoning_format: 'qwen' });
+    });
+
+    it.each(['auto', 'deepseek', 'none'])(
+      'keeps compatibility parsing for reasoning_format=%s',
+      (reasoning_format) => {
+        mockContentGeneratorConfig.extra_body = { reasoning_format };
+
+        expect(provider.getResponseParsingOptions('local-coder')).toEqual({
+          contentOnlyThinkingTagLeaks: true,
+        });
+      },
+    );
+
     it('keeps balanced tags visible for generic models', () => {
       expect(provider.getResponseParsingOptions('gpt-4o')).toEqual({
         contentOnlyThinkingTagLeaks: true,

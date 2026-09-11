@@ -24,6 +24,7 @@ import {
   useTranscriptHistory,
   useTranscriptStore,
   useWorkspace,
+  useProviders,
   type DaemonSessionActions,
 } from '@qwen-code/web-shell/daemon-react-sdk';
 import {
@@ -60,6 +61,7 @@ import { useQueuedPrompts } from '../hooks/useQueuedPrompts';
 import { isAskUserPermission } from '../utils/askUserPermission';
 import { isDaemonApprovalMode } from '../utils/sessionPreparation';
 import { isVisibleComposerModel } from '../utils/composerModels';
+import { useConfiguredComposerModels } from '../hooks/useConfiguredComposerModels';
 import { shouldBlockComposerSubmit } from '../utils/composerInputState';
 import { base64ToBlob } from '../utils/base64';
 import { isDefinitelyRejectedPromptAdmission } from '../utils/promptAdmission';
@@ -286,6 +288,10 @@ export function ChatPane({
   const workspace = useWorkspace();
   const codexAccount = useCodexAccount(workspace.client, false);
   const codexActive = connection.engine === 'codex';
+  const providersState = useProviders({
+    autoLoad: !codexActive && Boolean(connection.workspaceCwd),
+    enabled: !codexActive && Boolean(connection.workspaceCwd),
+  });
   const attachmentWorkspaceTarget = useArtifactWorkspaceTarget(
     connection.workspaceCwd,
   );
@@ -1368,6 +1374,12 @@ export function ChatPane({
       sessionOwnerGuard,
     ],
   );
+  const configuredComposerModels = useConfiguredComposerModels({
+    connection,
+    currentModel: connection.currentModel,
+    status: providersState.status,
+    workspaceCwd: codexActive ? undefined : connection.workspaceCwd,
+  });
   const availableModels = useMemo(
     () =>
       codexActive
@@ -1378,13 +1390,13 @@ export function ChatPane({
               label: model.displayName,
               group: 'Codex',
             }))
-        : (connection.models ?? [])
+        : configuredComposerModels.models
             .filter(isVisibleComposerModel)
             .map((model) => ({
               id: model.id,
               label: getModelDisplayName(model.label || model.id),
             })),
-    [connection.models, codexActive, codexAccount.state?.models],
+    [configuredComposerModels.models, codexActive, codexAccount.state?.models],
   );
   const handleSelectMode = useCallback(
     (modeId: string) => {
@@ -1787,7 +1799,9 @@ export function ChatPane({
             currentModel={
               connection.currentModel && codexActive
                 ? codexModelValue(connection.currentModel)
-                : (connection.currentModel ?? '')
+                : (configuredComposerModels.selected?.id ??
+                  connection.currentModel ??
+                  '')
             }
             availableModels={availableModels}
             onSelectMode={handleSelectMode}

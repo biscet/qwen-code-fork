@@ -24,6 +24,7 @@ import {
   type DaemonSkillToggleMutation,
   type DaemonWorkspaceMcpServerStatus,
   type DaemonWorkspaceGitStatus,
+  type DaemonWorkspaceProvidersStatus,
   type GoalSnapshotV2,
 } from '@qwen-code/sdk/daemon';
 import type { WebShellApi } from './App';
@@ -46,6 +47,7 @@ import { loadSplitSessions, saveSplitSessions } from './utils/splitUrl';
 type StreamingState = 'idle' | 'responding';
 
 type MockConnection = {
+  providers?: DaemonWorkspaceProvidersStatus;
   engine?: 'qwen' | 'codex';
   status: 'connected' | 'connecting' | 'disconnected' | 'error';
   sessionId: string | undefined;
@@ -118,6 +120,8 @@ function activeGoalSnapshot(
 }
 
 type ChatEditorTestProps = {
+  currentModel?: string;
+  availableModels?: Array<{ id: string; label: string }>;
   currentMode?: string;
   planMode?: boolean;
   modeControlsDisabled?: boolean;
@@ -642,6 +646,7 @@ const {
         onOpenMonitor?: (task: DaemonSessionMonitorTaskStatus) => void;
       } | null,
       settings: [] as DaemonSettingDescriptor[],
+      providersStatus: undefined as DaemonWorkspaceProvidersStatus | undefined,
       settingsLoading: false,
       // A background revalidation: the real resource sets loading:true while
       // keeping the last-known-good data and status.
@@ -782,6 +787,7 @@ vi.mock('@qwen-code/web-shell/daemon-react-sdk', () => {
     useProviders: (options?: { autoLoad?: boolean; enabled?: boolean }) => {
       testState.latestProvidersHookOptions = options;
       return {
+        status: testState.providersStatus,
         providers: [],
         current: undefined,
         loading: false,
@@ -9623,6 +9629,7 @@ beforeEach(() => {
   });
   mockConnection.sessionId = 'session-1';
   mockConnection.sessionContext = undefined;
+  mockConnection.providers = undefined;
   mockConnection.context = undefined;
   mockConnection.workspaceCwd = '/tmp/project';
   mockConnection.status = 'connected';
@@ -9816,6 +9823,7 @@ beforeEach(() => {
   testState.latestMonitorDetailsOnOpen = null;
   testState.settings = [];
   testState.settingsLoading = false;
+  testState.providersStatus = undefined;
   testState.settingsReloading = false;
   testState.settingsError = undefined;
   testState.latestSettingsHookOptions = undefined;
@@ -22148,6 +22156,140 @@ describe('App session callbacks', () => {
     ).not.toBeNull();
   });
 
+  it('refreshes renamed composer models from settings without changing the live session route', async () => {
+    mockConnection.currentModel = 'qwen(openai)';
+    mockConnection.models = [{ id: 'qwen(openai)', label: 'Old name' }];
+    const { rerender } = renderApp();
+    await flush();
+    expect(testState.latestChatEditorProps?.availableModels).toContainEqual(
+      expect.objectContaining({ id: 'qwen(openai)', label: 'Old name' }),
+    );
+    act(() => {
+      testState.providersStatus = {
+        v: 1,
+        workspaceCwd: '/tmp/project',
+        initialized: true,
+        acpChannelLive: true,
+        providers: [
+          {
+            kind: 'model_provider',
+            status: 'ok',
+            authType: 'openai',
+            current: true,
+            models: [
+              {
+                modelId: 'qwen(openai)',
+                name: 'Renamed model',
+                isCurrent: true,
+              },
+            ],
+          },
+        ],
+      };
+      rerender();
+    });
+    expect(testState.latestChatEditorProps?.availableModels).toContainEqual(
+      expect.objectContaining({ id: 'qwen(openai)', label: 'Renamed model' }),
+    );
+    expect(mockSessionActions.setModel).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])(
+    'refreshes a renamed endpoint selector without switching the underlying model: session=%s',
+    async (live) => {
+      mockConnection.sessionId = live ? 'session-1' : undefined;
+      mockConnection.currentModel = 'qwen-route:v1:old';
+      mockConnection.models = [
+        { id: 'qwen-route:v1:old', label: 'Old endpoint' },
+      ];
+      const status: DaemonWorkspaceProvidersStatus = {
+        v: 1,
+        workspaceCwd: live ? '/tmp/project' : '/workspace',
+        initialized: true,
+        acpChannelLive: live,
+        providers: [
+          {
+            kind: 'model_provider',
+            status: 'ok',
+            authType: 'openai',
+            current: true,
+            models: [
+              {
+                modelId: 'qwen-route:v1:old',
+                baseModelId: 'qwen',
+                baseUrl: 'https://one.example/v1',
+                registryBaseUrl: 'https://one.example/v1',
+                name: 'Old endpoint',
+                isCurrent: true,
+              },
+            ],
+          },
+        ],
+      };
+      mockConnection.providers = status;
+      const { rerender } = renderApp();
+      await flush();
+      act(() => {
+        testState.providersStatus = {
+          ...status,
+          providers: [
+            {
+              ...status.providers[0]!,
+              models: [
+                {
+                  ...status.providers[0]!.models[0]!,
+                  modelId: 'qwen-route:v1:renamed',
+                  name: 'Renamed endpoint',
+                },
+              ],
+            },
+          ],
+        };
+        rerender();
+      });
+      await flush();
+      const expectedId = 'qwen-route:v1:renamed';
+      expect(testState.latestChatEditorProps?.availableModels).toContainEqual(
+        expect.objectContaining({ id: expectedId, label: 'Renamed endpoint' }),
+      );
+      expect(testState.latestChatEditorProps?.currentModel).toBe(expectedId);
+      expect(mockSessionActions.setModel).not.toHaveBeenCalled();
+      act(() => {
+        if (live) {
+          mockConnection.currentModel = expectedId;
+          mockConnection.models = [
+            { id: expectedId, label: 'Renamed endpoint' },
+          ];
+        }
+        testState.providersStatus = {
+          ...status,
+          providers: [
+            {
+              ...status.providers[0]!,
+              models: [
+                {
+                  ...status.providers[0]!.models[0]!,
+                  modelId: 'qwen-route:v1:renamed-again',
+                  name: 'Renamed again',
+                },
+              ],
+            },
+          ],
+        };
+        rerender();
+      });
+      await flush();
+      expect(testState.latestChatEditorProps?.currentModel).toBe(
+        'qwen-route:v1:renamed-again',
+      );
+      expect(testState.latestChatEditorProps?.availableModels).toContainEqual(
+        expect.objectContaining({
+          id: 'qwen-route:v1:renamed-again',
+          label: 'Renamed again',
+        }),
+      );
+    },
+  );
   it('clears a stale welcome disable after reasoning becomes mandatory', async () => {
     const reasoningPreview = (canDisable: boolean) => ({
       enabled: true,

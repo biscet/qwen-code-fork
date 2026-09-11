@@ -158,7 +158,7 @@ export class CodexAppServer {
     });
     try {
       await this.send('initialize', {
-        clientInfo: { name: 'homecode', title: 'HomeCode', version: '2.1.12' },
+        clientInfo: { name: 'homecode', title: 'HomeCode', version: '2.1.16' },
         capabilities: { experimentalApi: true },
       });
       this.write({ method: 'initialized', params: {} });

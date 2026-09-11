@@ -1,3 +1,4 @@
+import { useConfiguredComposerModels } from './hooks/useConfiguredComposerModels';
 import { mapProviderStatus } from './daemon/session/mappers';
 import { useCodexAccount } from './hooks/useCodexAccount';
 import {
@@ -8952,6 +8953,16 @@ export function App({
   const codexActive = connection.sessionId
     ? connection.engine === 'codex'
     : parseEngineModel(currentModel).engine === 'codex';
+  const configuredComposerModels = useConfiguredComposerModels({
+    connection,
+    currentModel,
+    status: providersState.status,
+    workspaceCwd: workspaceContextActive
+      ? connection.sessionId
+        ? connection.workspaceCwd
+        : activeWorkspaceCwd
+      : undefined,
+  });
   const allComposerModels = useMemo(
     () => [
       ...(connection.engine === 'codex'
@@ -8959,7 +8970,7 @@ export function App({
           providersState.status?.workspaceCwd === connection.workspaceCwd
           ? mapProviderStatus(providersState.status).models
           : []
-        : (connection.models ?? [])
+        : configuredComposerModels.models
       )
         .filter(isVisibleComposerModel)
         .map((model) => ({ ...model, group: 'Qwen' })),
@@ -8973,7 +8984,7 @@ export function App({
         })),
     ],
     [
-      connection.models,
+      configuredComposerModels.models,
       connection.engine,
       connection.workspaceCwd,
       codexAccount.state,
@@ -9001,6 +9012,20 @@ export function App({
   );
   const connectionRef = useRef(connection);
   connectionRef.current = connection;
+  useEffect(() => {
+    const updated = configuredComposerModels.selected;
+    if (!updated || updated.id === currentModel) return;
+    setPendingModel(updated.id);
+    const reasoning = pendingReasoningIntentRef.current;
+    if (reasoning?.modelId === currentModel) {
+      setPendingReasoningIntent({ ...reasoning, modelId: updated.id });
+    }
+  }, [
+    configuredComposerModels.selected,
+    currentModel,
+    setPendingModel,
+    setPendingReasoningIntent,
+  ]);
   const selectWelcomeModel = useCallback(
     (modelId: string) => {
       const models = composerModelsRef.current;

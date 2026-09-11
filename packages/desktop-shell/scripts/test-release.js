@@ -942,6 +942,8 @@ function testBootstrapBridgeConfiguration() {
     'The bootstrap capability must not grant remote IPC access.',
   );
   assert.deepEqual(capability.permissions, [
+    'allow-bootstrap-commands',
+    'allow-download-logs',
     'core:event:allow-listen',
     'core:event:allow-unlisten',
     'core:window:allow-start-dragging',
@@ -965,6 +967,7 @@ function testBootstrapBridgeConfiguration() {
   });
   assert.deepEqual(webShellCapability.windows, ['main']);
   assert.deepEqual(webShellCapability.permissions, [
+    'allow-download-logs',
     'core:window:allow-start-dragging',
     'core:window:allow-internal-toggle-maximize',
     {

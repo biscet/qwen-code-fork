@@ -1439,6 +1439,10 @@ class LeadingProtocolTagLeakDetector {
   private state: 'detecting' | 'json' | 'clean' | 'leaked' = 'detecting';
   private buffer = '';
 
+  constructor(enabled = true) {
+    if (!enabled) this.state = 'clean';
+  }
+
   accept(text: string): string {
     if (this.state === 'clean') return text;
     if (this.state === 'leaked') return '';
@@ -3185,6 +3189,8 @@ export class LlmChat {
               contentGenerator: exactRoute.contentGenerator,
               retryAuthType: exactRoute.retryAuthType,
               retryErrorCodes: exactRoute.retryErrorCodes,
+              structuredReasoning:
+                cgConfig?.extra_body?.['reasoning_format'] === 'qwen',
             }
           : undefined;
         const maxRateLimitRetries =
@@ -3847,6 +3853,8 @@ export class LlmChat {
             if (
               error instanceof InvalidStreamError &&
               (error.type === 'NO_TOOL_RESULT_PROGRESS_MAX_TOKENS' ||
+                error.type === 'MALFORMED_TOOL_CALL_MAX_TOKENS' ||
+                error.type === 'NO_RESPONSE_TEXT_MAX_TOKENS' ||
                 (error.type === 'NO_RESPONSE_TEXT' &&
                   lastFinishReason === FinishReason.MAX_TOKENS)) &&
               !maxTokensEscalated &&
@@ -4344,6 +4352,7 @@ export class LlmChat {
                 let fallbackRetryErrorCodes: readonly number[] | undefined;
                 let resolvedFallbackModel: string;
                 let fallbackModalities: InputModalities | undefined;
+                let fallbackStructuredReasoning = false;
                 try {
                   const resolved = await self.config
                     .getBaseLlmClient()
@@ -4354,6 +4363,10 @@ export class LlmChat {
                   resolvedFallbackModel = resolved.model;
                   fallbackModalities =
                     resolved.contentGeneratorConfig?.modalities;
+                  fallbackStructuredReasoning =
+                    resolved.contentGeneratorConfig?.extra_body?.[
+                      'reasoning_format'
+                    ] === 'qwen';
                 } catch (resolveError) {
                   if (isAbortError(resolveError)) throw resolveError;
                   const resolveErrorMessage =
@@ -4428,6 +4441,7 @@ export class LlmChat {
                     fallbackRetryErrorCodes,
                     requestRouteKey,
                     turnGoalContext,
+                    fallbackStructuredReasoning,
                   )) {
                     const emittedUserVisibleOutput =
                       event.type !== StreamEventType.CHUNK ||
@@ -4580,6 +4594,7 @@ export class LlmChat {
       contentGenerator: ContentGenerator;
       retryAuthType?: string;
       retryErrorCodes?: readonly number[];
+      structuredReasoning?: boolean;
     },
     routeKey = this.currentRouteKey(),
     goalContext?: GoalTurnPermit,
@@ -4598,6 +4613,9 @@ export class LlmChat {
         prompt_id,
       );
     const cgConfig = this.config.getContentGeneratorConfig();
+    const structuredReasoning = overrides
+      ? overrides.structuredReasoning === true
+      : cgConfig?.extra_body?.['reasoning_format'] === 'qwen';
     const authType = overrides?.retryAuthType ?? cgConfig?.authType;
     const extraRetryErrorCodes =
       overrides?.retryErrorCodes ?? cgConfig?.retryErrorCodes;
@@ -4668,6 +4686,7 @@ export class LlmChat {
       goalContext,
       transportContinuationPrefix,
       acceptQuietToolResultCompletion,
+      structuredReasoning,
     );
   }
 
@@ -4681,13 +4700,14 @@ export class LlmChat {
     retryErrorCodes?: readonly number[],
     routeKey?: string,
     goalContext?: GoalTurnPermit,
+    structuredReasoning = false,
   ): AsyncGenerator<StreamEvent> {
     const stream = await this.makeApiCallAndProcessStream(
       model,
       requestContents,
       params,
       prompt_id,
-      { contentGenerator, retryAuthType, retryErrorCodes },
+      { contentGenerator, retryAuthType, retryErrorCodes, structuredReasoning },
       routeKey,
       goalContext,
     );
@@ -5213,6 +5233,7 @@ export class LlmChat {
     goalContext?: GoalTurnPermit,
     transportContinuationPrefix?: string,
     acceptQuietToolResultCompletion = false,
+    structuredReasoning = false,
   ): AsyncGenerator<GenerateContentResponse> {
     // Collect ALL parts from the model response (including thoughts for recording)
     const allModelParts: Part[] = [];
@@ -5232,7 +5253,9 @@ export class LlmChat {
 
     let hasToolCall = false;
     let hasFinishReason = false;
-    const protocolTagDetector = new LeadingProtocolTagLeakDetector();
+    const protocolTagDetector = new LeadingProtocolTagLeakDetector(
+      !structuredReasoning,
+    );
     let pendingProtocolParts: Part[] = [];
     const takePendingProtocolParts = (): Part[] => {
       const parts = pendingProtocolParts;
@@ -5562,6 +5585,7 @@ export class LlmChat {
     // recover these so the agent loop is not broken. See #8003.
     if (
       streamError === null &&
+      !structuredReasoning &&
       !hasToolCall &&
       hasFinishReason &&
       contentText &&

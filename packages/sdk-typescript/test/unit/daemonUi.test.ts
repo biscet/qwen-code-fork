@@ -323,6 +323,146 @@ describe('daemon UI normalizer and transcript reducer', () => {
     ]);
   });
 
+  it('removes a discarded tool preparation without showing a failed execution', () => {
+    const store = createDaemonTranscriptStore();
+    store.dispatch(
+      normalizeDaemonEvent({
+        v: 1,
+        type: 'session_update',
+        data: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'preparing-1',
+          status: 'pending',
+          rawInput: {},
+          _meta: { toolName: 'run_shell_command', phase: 'preparing' },
+        },
+      }),
+    );
+    expect(store.getSnapshot().blocks).toHaveLength(1);
+    store.dispatch(
+      normalizeDaemonEvent({
+        v: 1,
+        type: 'session_update',
+        data: {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'preparing-1',
+          status: 'failed',
+          content: [],
+          _meta: {
+            toolName: 'run_shell_command',
+            phase: 'preparing',
+            preparationDiscarded: true,
+          },
+        },
+      }),
+    );
+    expect(store.getSnapshot().blocks).toEqual([]);
+    expect(
+      store.getSnapshot().toolBlockByCallId['preparing-1'],
+    ).toBeUndefined();
+    expect(store.getSnapshot().currentToolCallId).toBeUndefined();
+    expect(store.getSnapshot().retainedBytes).toBe(0);
+  });
+
+  it.each(['tool_call', 'tool_call_update'])(
+    'does not create a ghost tool for a replayed discarded %s',
+    (sessionUpdate) => {
+      const state = reduceDaemonTranscriptEvents(
+        createDaemonTranscriptState(),
+        normalizeDaemonEvent({
+          v: 1,
+          type: 'session_update',
+          data: {
+            sessionUpdate,
+            toolCallId: 'discarded-1',
+            status: 'failed',
+            rawInput: {},
+            content: [],
+            _meta: { phase: 'preparing', preparationDiscarded: true },
+          },
+        }),
+      );
+      expect(state.blocks).toEqual([]);
+    },
+  );
+
+  it('restores the running tool after discarding a later preparation', () => {
+    let state = reduceDaemonTranscriptEvents(createDaemonTranscriptState(), [
+      { type: 'tool.update', toolCallId: 'running-1', status: 'in_progress' },
+      { type: 'tool.update', toolCallId: 'preparing-1', status: 'pending' },
+    ]);
+    expect(state.currentToolCallId).toBe('preparing-1');
+    state = reduceDaemonTranscriptEvents(state, [
+      {
+        type: 'tool.update',
+        toolCallId: 'preparing-1',
+        preparationDiscarded: true,
+        status: 'failed',
+      },
+      { type: 'shell.output', text: 'continued output', stream: 'stdout' },
+    ]);
+    expect(state.currentToolCallId).toBe('running-1');
+    expect(state.blocks).toMatchObject([
+      { kind: 'tool', toolCallId: 'running-1', status: 'in_progress' },
+      { kind: 'shell', text: 'continued output', stream: 'stdout' },
+    ]);
+  });
+
+  it.each(['in_progress', 'completed', 'failed'])(
+    'preserves an executed %s tool when a stale preparation is discarded',
+    (status) => {
+      const state = reduceDaemonTranscriptEvents(
+        createDaemonTranscriptState(),
+        [
+          {
+            type: 'tool.update',
+            toolCallId: 'call-1',
+            status,
+            rawInput: { command: 'pwd' },
+          },
+          ...normalizeDaemonEvent({
+            v: 1,
+            type: 'session_update',
+            data: {
+              sessionUpdate: 'tool_call_update',
+              toolCallId: 'call-1',
+              status: 'failed',
+              content: [],
+              _meta: { phase: 'preparing', preparationDiscarded: true },
+            },
+          }),
+        ],
+      );
+      expect(state.blocks).toMatchObject([
+        { kind: 'tool', status, rawInput: { command: 'pwd' } },
+      ]);
+    },
+  );
+
+  it.each([undefined, false, 'true'])(
+    'retains real tool failures when preparationDiscarded is %s',
+    (preparationDiscarded) => {
+      const state = reduceDaemonTranscriptEvents(
+        createDaemonTranscriptState(),
+        normalizeDaemonEvent({
+          v: 1,
+          type: 'session_update',
+          data: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'failed-1',
+            status: 'failed',
+            rawInput: {},
+            content: [],
+            _meta: { preparationDiscarded },
+          },
+        }),
+      );
+      expect(state.blocks).toMatchObject([
+        { kind: 'tool', status: 'failed', rawInput: {} },
+      ]);
+    },
+  );
+
   it('normalizes an in_progress frame that carries a kind (the drop is scoped to kind-less heartbeats)', () => {
     // The `kind === undefined` condition is load-bearing: an in_progress
     // frame WITH a kind is not a bare heartbeat and must pass through to a

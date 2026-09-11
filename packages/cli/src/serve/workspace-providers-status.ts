@@ -27,7 +27,6 @@ import {
 } from '../utils/modelConfigUtils.js';
 import type { CliGenerationConfigInputs } from '../utils/modelConfigUtils.js';
 import {
-  ACP_ROUTE_ID_PREFIX,
   buildAcpModelOptions,
   getCurrentAcpModelId,
   parseAcpBaseModelId,
@@ -166,33 +165,29 @@ function buildWorkspaceProvidersStatus(
 
       const isCurrent =
         currentAuth === model.authType && currentAcpModelId === modelId;
-      const resolved = modelId.startsWith(ACP_ROUTE_ID_PREFIX)
-        ? undefined
-        : modelsConfig.getResolvedModel(
-            model.authType,
-            model.id,
-            model.registryBaseUrl ?? model.baseUrl,
-          );
-      const configOptions = modelId.startsWith(ACP_ROUTE_ID_PREFIX)
-        ? undefined
-        : buildModelReasoningConfigPreview(
-            model.id,
-            resolvePersistedReasoningConfigState(
-              model.id,
-              settings.model?.reasoningEffort,
-              resolved?.generationConfig.thinkingMandatory === true,
-              model.capabilities?.reasoning,
-              resolved?.generationConfig,
-            ),
-            model.capabilities?.reasoning,
-            resolved
-              ? {
-                  ...resolved.generationConfig,
-                  model: model.id,
-                  baseUrl: resolved.baseUrl,
-                }
-              : undefined,
-          );
+      const resolved = modelsConfig.getResolvedModel(
+        model.authType,
+        model.id,
+        model.registryBaseUrl,
+      );
+      const configOptions = buildModelReasoningConfigPreview(
+        model.id,
+        resolvePersistedReasoningConfigState(
+          model.id,
+          settings.model?.reasoningEffort,
+          resolved?.generationConfig.thinkingMandatory === true,
+          model.capabilities?.reasoning,
+          resolved?.generationConfig,
+        ),
+        model.capabilities?.reasoning,
+        resolved
+          ? {
+              ...resolved.generationConfig,
+              model: model.id,
+              baseUrl: resolved.baseUrl,
+            }
+          : undefined,
+      );
       const providerModel: ServeWorkspaceProviderModel = {
         modelId,
         baseModelId: parseAcpBaseModelId(effectiveModelId),

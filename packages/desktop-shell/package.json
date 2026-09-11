@@ -1,6 +1,6 @@
 {
   "name": "@qwen-code/desktop-shell",
-  "version": "2.1.12",
+  "version": "2.1.16",
   "private": true,
   "type": "module",
   "scripts": {

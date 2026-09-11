@@ -361,10 +361,11 @@ export function getConfiguredModelReasoning(
   }
   const generation = config.getContentGeneratorConfig?.();
   const authType = generation?.authType ?? config.getAuthType?.();
+  const registryBaseUrl = config.getCurrentModelRegistryBaseUrl?.();
   const baseUrl =
-    generation?.baseUrl ??
-    config.getCurrentModelRegistryBaseUrl?.() ??
-    undefined;
+    registryBaseUrl === null
+      ? undefined
+      : (registryBaseUrl ?? generation?.baseUrl);
   const configured = authType
     ? config.getResolvedModelConfig?.(authType, modelId, baseUrl)
     : undefined;
@@ -591,7 +592,29 @@ export function buildModelReasoningConfigPreview(
     configuredReasoning,
     state.generationConfig ?? generation,
   )?.reasoning;
-  if (!reasoning?.thinking) return undefined;
+  if (!reasoning?.thinking) {
+    if (
+      !generation ||
+      modelId?.startsWith('$runtime|') ||
+      !isReasoningSelectionSupported(
+        modelId,
+        REASONING_EFFORT_DEFAULT,
+        state.thinkingMandatory,
+        configuredReasoning,
+        state.generationConfig ?? generation,
+      )
+    ) {
+      return undefined;
+    }
+    // Configured aliases use the same generic choices as a live ACP session.
+    // A display name or provider-specific model ID does not identify a family.
+    const genericReasoning = {
+      thinking: true as const,
+      efforts: REASONING_EFFORT_TIERS,
+      disableField: 'reasoning_effort' as const,
+    };
+    configuredReasoning = genericReasoning;
+  }
   const effectiveReasoning =
     state.enabled === false
       ? false

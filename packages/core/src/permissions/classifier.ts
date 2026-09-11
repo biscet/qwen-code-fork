@@ -6,8 +6,8 @@
  * AUTO approval mode LLM classifier.
  *
  * Two-stage flow:
- *   Stage 1 (fast):  shouldBlock-only output, max_tokens=32, thinking off.
- *                    Allow path returns immediately (~300ms).
+ *   Stage 1 (fast):  shouldBlock-only output, max_tokens=256 (2048 when the
+ *                    model requires thinking). Allow returns immediately.
  *   Stage 2 (review): full output { thinking, shouldBlock, reason },
  *                     max_tokens=4096. API thinking is off by default but can
  *                     be enabled via settings. Reviews stage-1 blocks to
@@ -22,6 +22,7 @@ import type { Content } from '@google/genai';
 import type { Config } from '../config/config.js';
 import { isContextLengthExceededError } from '../utils/contextLengthError.js';
 import { createDebugLogger } from '../utils/debugLogger.js';
+import { DEFAULT_QWEN_MODEL } from '../utils/default-qwen-model.js';
 import { runSideQuery } from '../utils/sideQuery.js';
 import {
   buildClassifierSystemPrompt,
@@ -42,6 +43,8 @@ const debugLogger = createDebugLogger('CLASSIFIER');
 // generous.
 /** Stage-1 timeout: generous headroom over the fast model's p99 (~1.5s). */
 export const STAGE1_TIMEOUT_MS = 10_000;
+/** Mandatory reasoning can take tens of seconds before emitting a verdict. */
+export const STAGE1_THINKING_TIMEOUT_MS = 60_000;
 /** Stage-2 timeout: review stage runs a larger prompt; cap infra failure. */
 export const STAGE2_TIMEOUT_MS = 30_000;
 
@@ -168,17 +171,35 @@ export async function classifyAction(
     );
   }
   const stage1SystemPrompt = baseSystemPrompt + STAGE1_SUFFIX;
-  const classifierSettings = resolveClassifierSettings(input.config);
 
   // Stage 1 ──────────────────────────────────────────────────────────────
-  const stage1Signal = AbortSignal.any([
-    input.signal,
-    AbortSignal.timeout(classifierSettings.stage1TimeoutMs),
-  ]);
-
+  const stage1Start = Date.now();
+  let classifierSettings: ClassifierSettings;
   let stage1: Stage1Response;
   try {
+    const model =
+      input.config.getFastModel?.() ??
+      input.config.getModel() ??
+      DEFAULT_QWEN_MODEL;
+    const { contentGeneratorConfig } = await input.config
+      .getBaseLlmClient()
+      .resolveForModel(model);
+    const thinkingMandatory = contentGeneratorConfig.thinkingMandatory === true;
+    classifierSettings = resolveClassifierSettings(
+      input.config,
+      thinkingMandatory,
+    );
+    const remainingMs =
+      classifierSettings.stage1TimeoutMs - (Date.now() - stage1Start);
+    if (remainingMs <= 0) {
+      throw new DOMException('Classifier stage 1 timed out', 'TimeoutError');
+    }
+    const stage1Signal = AbortSignal.any([
+      input.signal,
+      AbortSignal.timeout(remainingMs),
+    ]);
     stage1 = (await runSideQuery<Stage1Response>(input.config, {
+      model,
       contents,
       schema: STAGE1_SCHEMA,
       systemInstruction: stage1SystemPrompt,
@@ -188,11 +209,8 @@ export async function classifyAction(
       maxAttempts: 2,
       config: {
         temperature: 0,
-        // 32 tokens is insufficient for adaptive-thinking models (Claude
-        // 4.6+) which emit server-driven thinking that consumes output
-        // budget before any tool_use. 256 gives enough headroom for
-        // thinking + the respond_in_schema tool call without being wasteful.
-        maxOutputTokens: 256,
+        // Mandatory reasoning consumes the same budget as the schema response.
+        maxOutputTokens: thinkingMandatory ? 2048 : 256,
         thinkingConfig: { includeThoughts: false },
       },
     })) as Stage1Response;
@@ -289,12 +307,15 @@ export async function classifyAction(
   };
 }
 
-function resolveClassifierSettings(config: Config): ClassifierSettings {
+function resolveClassifierSettings(
+  config: Config,
+  thinkingMandatory: boolean,
+): ClassifierSettings {
   const classifier = config.getAutoModeSettings().classifier;
   return {
     stage1TimeoutMs: resolveTimeoutMs(
       classifier?.timeouts?.stage1Ms,
-      STAGE1_TIMEOUT_MS,
+      thinkingMandatory ? STAGE1_THINKING_TIMEOUT_MS : STAGE1_TIMEOUT_MS,
     ),
     stage2TimeoutMs: resolveTimeoutMs(
       classifier?.timeouts?.stage2Ms,

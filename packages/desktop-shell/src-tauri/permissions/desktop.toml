@@ -1,0 +1,15 @@
+[[permission]]
+identifier = "allow-bootstrap-commands"
+description = "Allows the local recovery page to manage the desktop runtime."
+commands.allow = [
+  "bootstrap_state",
+  "choose_workspace",
+  "open_logs",
+  "restart_runtime",
+  "install_update",
+]
+
+[[permission]]
+identifier = "allow-download-logs"
+description = "Allows exporting desktop logs through the native save dialog."
+commands.allow = ["download_logs"]

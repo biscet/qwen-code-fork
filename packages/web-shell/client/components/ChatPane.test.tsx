@@ -11,6 +11,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import {
   DaemonHttpError,
   GOAL_PAUSE_REASON_COMMAND,
+  type DaemonWorkspaceProvidersStatus,
 } from '@qwen-code/sdk/daemon';
 import { I18nProvider } from '../i18n';
 import { formatDateTime } from '../utils/formatDateTime';
@@ -33,6 +34,7 @@ const catalogController = vi.hoisted(() => ({
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let connectionState: any;
+let providersStatus: DaemonWorkspaceProvidersStatus | undefined;
 let streamingStateValue: string;
 let pendingPermission: any;
 let sessionHasActivePromptValue: boolean;
@@ -112,6 +114,7 @@ const latestComposerCoreOptions = vi.hoisted(() => ({
 vi.mock('@qwen-code/web-shell/daemon-react-sdk', () => ({
   DAEMON_APPROVAL_MODES: ['default', 'plan', 'auto-edit', 'auto', 'yolo'],
   useActions: () => daemonActions,
+  useProviders: () => ({ status: providersStatus }),
   useConnection: () => connectionState,
   useDaemonFollowupSuggestion: (options: any) => {
     latestFollowupAccept = options?.onAccept;
@@ -415,6 +418,7 @@ let container: HTMLDivElement | null = null;
 const EMPTY_CUSTOMIZATION: WebShellCustomization = {};
 
 beforeEach(() => {
+  providersStatus = undefined;
   connectionState = {
     status: 'connected',
     sessionId: 'sess-1',
@@ -540,6 +544,64 @@ function deferred<T>() {
 }
 
 describe('ChatPane', () => {
+  it('keeps repeated endpoint renames selected after the session adopts the previous selector', () => {
+    const original = {
+      modelId: 'qwen-route:v1:old',
+      baseModelId: 'qwen',
+      baseUrl: 'https://one.example/v1',
+      registryBaseUrl: 'https://one.example/v1',
+      name: 'Original',
+      isCurrent: true,
+    };
+    const status: DaemonWorkspaceProvidersStatus = {
+      v: 1,
+      workspaceCwd: '/w',
+      initialized: true,
+      acpChannelLive: true,
+      providers: [
+        {
+          kind: 'model_provider',
+          status: 'ok',
+          authType: 'openai',
+          current: true,
+          models: [original],
+        },
+      ],
+    };
+    connectionState.currentModel = original.modelId;
+    connectionState.models = [{ id: original.modelId, label: original.name }];
+    connectionState.providers = status;
+    render();
+    const rename = (id: string, label: string) => {
+      providersStatus = {
+        ...status,
+        providers: [
+          {
+            ...status.providers[0]!,
+            models: [{ ...original, modelId: id, name: label }],
+          },
+        ],
+      };
+      rerender();
+    };
+    rename('qwen-route:v1:first', 'First rename');
+    expect(latestChatEditorProps.currentModel).toBe('qwen-route:v1:first');
+    connectionState.currentModel = 'qwen-route:v1:first';
+    connectionState.models = [
+      { id: 'qwen-route:v1:first', label: 'First rename' },
+    ];
+    rerender();
+    rename('qwen-route:v1:second', 'Second rename');
+    expect(latestChatEditorProps.currentModel).toBe('qwen-route:v1:second');
+    rerender();
+    expect(latestChatEditorProps.currentModel).toBe('qwen-route:v1:second');
+    expect(latestChatEditorProps.availableModels).toContainEqual({
+      id: 'qwen-route:v1:second',
+      label: 'Second rename',
+    });
+    expect(setModel).not.toHaveBeenCalled();
+  });
+
   it('exposes the selected pane without confusing it with a running session', () => {
     const props = { isActive: true };
     render(props);

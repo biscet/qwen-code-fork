@@ -317,6 +317,7 @@ export interface DaemonModelInfo {
     video?: boolean;
   };
   baseUrl?: string;
+  registryBaseUrl?: string | null;
   envKey?: string;
   isRuntime?: boolean;
   reasoningPreview?: DaemonReasoningControls;

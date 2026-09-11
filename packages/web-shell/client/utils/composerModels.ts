@@ -4,6 +4,33 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { DaemonModelInfo } from '../daemon/session/types';
+
+export function findConfiguredComposerModel(
+  model: DaemonModelInfo,
+  previousModels: readonly DaemonModelInfo[],
+  configuredModels: readonly DaemonModelInfo[],
+): DaemonModelInfo | undefined {
+  const exact = configuredModels.find((entry) => entry.id === model.id);
+  if (exact) return exact;
+  const previous = previousModels.find((entry) => entry.id === model.id);
+  if (
+    !previous?.authType ||
+    !previous.baseModelId ||
+    previous.registryBaseUrl === undefined
+  )
+    return undefined;
+  const matches = configuredModels.filter(
+    (entry) =>
+      entry.authType === previous.authType &&
+      entry.baseModelId === previous.baseModelId &&
+      entry.registryBaseUrl === previous.registryBaseUrl &&
+      entry.baseUrl === previous.baseUrl &&
+      entry.envKey === previous.envKey,
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 /**
  * Model IDs hidden from the composer's model picker — internal / duplicate
  * entries that must not be user-selectable. Shared by the main chat composer

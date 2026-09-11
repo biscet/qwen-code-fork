@@ -348,7 +348,7 @@ export class StreamingToolCallParser {
 
   hasInvalidToolCallArguments(): boolean {
     for (const [index, buffer] of this.buffers.entries()) {
-      if (!this.toolCallMeta.get(index)?.name || buffer.length === 0) continue;
+      if (!this.toolCallMeta.get(index)?.name || !buffer.trim()) continue;
       if (!parseToolCallArguments(buffer).ok) return true;
     }
     return false;

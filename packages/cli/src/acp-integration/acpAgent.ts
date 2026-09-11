@@ -294,7 +294,6 @@ import {
   REASONING_EFFORT_DEFAULT,
   REASONING_EFFORT_NAMES,
   REASONING_EFFORT_NONE,
-  type ModelReasoningConfiguration,
   type ReasoningSelection,
 } from './model-configuration.js';
 import {
@@ -5959,7 +5958,7 @@ class QwenAgent implements Agent {
           const option = this.buildConfigOptions(config, defaultReasoning).find(
             (candidate) => candidate.id === 'reasoning_effort',
           );
-          const modelReasoning = this.getModelReasoningConfiguration(config);
+          const modelReasoning = getConfiguredModelReasoning(config);
           const selected = parseReasoningSelection(value);
           const choices =
             option?.options.flatMap((choice) =>
@@ -14751,15 +14750,11 @@ class QwenAgent implements Agent {
       options: configModelOptions,
     };
 
-    const modelReasoning = this.getModelReasoningConfiguration(
-      config,
-      currentModelId,
-    );
+    const modelReasoning = getConfiguredModelReasoning(config);
     const generation = config.getContentGeneratorConfig?.();
 
     if (
       activeRuntimeSnapshot ||
-      currentModelId.startsWith(ACP_ROUTE_ID_PREFIX) ||
       !isReasoningSelectionSupported(
         rawCurrentModelId,
         REASONING_EFFORT_DEFAULT,
@@ -14893,27 +14888,6 @@ class QwenAgent implements Agent {
     };
 
     return [modeConfigOption, modelConfigOption, reasoningEffortConfigOption];
-  }
-
-  private getModelReasoningConfiguration(
-    config: Config,
-    currentAcpModelId?: string,
-  ): ModelReasoningConfiguration | undefined {
-    if (config.getActiveRuntimeModelSnapshot?.()) {
-      return undefined;
-    }
-    const completeModelId =
-      currentAcpModelId ??
-      getCurrentAcpModelId(
-        this.buildSelectableModelOptions(config),
-        (config.getModel() || '').trim(),
-        config.getAuthType?.(),
-        config.getCurrentModelRegistryBaseUrl?.(),
-      );
-    if (completeModelId.startsWith(ACP_ROUTE_ID_PREFIX)) {
-      return undefined;
-    }
-    return getConfiguredModelReasoning(config);
   }
 
   private buildSelectableModelOptions(config: Config) {

@@ -1169,6 +1169,9 @@ function normalizeToolUpdate(
     ...base,
     type: 'tool.update',
     toolCallId,
+    ...(metadata?.['preparationDiscarded'] === true
+      ? { preparationDiscarded: true }
+      : {}),
     ...(status ? { status } : {}),
     ...(title ? { title } : {}),
     ...(toolName ? { toolName } : {}),

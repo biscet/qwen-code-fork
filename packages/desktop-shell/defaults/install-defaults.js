@@ -5,9 +5,13 @@ import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual, parseEnv } from 'node:util';
 import { applyEdits, modify, parse } from 'jsonc-parser';
+import { refreshDesktopSkillReferences } from './skill-references.js';
 
 export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
   configureServerTrust(runtimeRoot, qwenHome);
+  const defaultsRoot = path.join(runtimeRoot, 'defaults');
+  refreshDesktopSkillReferences({ defaultsRoot, qwenHome });
+  migrateNativeReasoning(path.join(qwenHome, 'settings.json'));
   const initialMarker = path.join(qwenHome, '.desktop-defaults-v1');
   const previouslyInstalled = fs.existsSync(initialMarker);
   const previousMarker = path.join(qwenHome, '.desktop-defaults-v2');
@@ -15,7 +19,6 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
   const marker = path.join(qwenHome, '.desktop-defaults-v4');
   if (fs.existsSync(marker)) return;
 
-  const defaultsRoot = path.join(runtimeRoot, 'defaults');
   const defaults = JSON.parse(
     fs.readFileSync(path.join(defaultsRoot, 'settings.json'), 'utf8'),
   );
@@ -57,8 +60,7 @@ export function installDesktopDefaults({ runtimeRoot, qwenHome }) {
     provider && !Array.isArray(provider) && typeof provider === 'object';
   const models = (wrapped ? provider.models : provider) ?? [];
   for (const model of defaults.modelProviders.openai) {
-    if (fs.existsSync(previousMarker)) break;
-    if (previouslyInstalled && model.id === 'local-coder') continue;
+    if (previouslyInstalled || fs.existsSync(previousMarker)) break;
     if (!models.some((existing) => existing.id === model.id)) {
       models.push(model);
       set(
@@ -142,6 +144,7 @@ export function installDesktopWorkspaceDefaults({
   runtimeRoot,
   qwenHome,
   workspaceDir,
+  rejectedMcpNames = [],
 }) {
   const workspace = fs.realpathSync(workspaceDir);
   const projectHome = path.join(workspace, '.qwen');
@@ -162,6 +165,8 @@ export function installDesktopWorkspaceDefaults({
       );
     }
   }
+  const userSettings = readSettings(path.join(qwenHome, 'settings.json'));
+  migrateNativeReasoning(settingsPath, userSettings.model?.reasoningEffort);
   const definitions = Object.fromEntries(
     Object.entries(defaults.mcpServers).map(([name, server]) => [
       name,
@@ -188,26 +193,29 @@ export function installDesktopWorkspaceDefaults({
     ]),
   );
   const settings = readSettings(settingsPath);
+  const projectMcp = readSettings(path.join(workspace, '.mcp.json'));
+  const canInherit = (name) => {
+    const inherited = userSettings.mcpServers?.[name];
+    if (inherited === undefined) {
+      return !fs.existsSync(path.join(qwenHome, '.desktop-defaults-v1'));
+    }
+    return isDeepStrictEqual(
+      { ...inherited, description: undefined },
+      { ...defaults.mcpServers[name], description: undefined },
+    );
+  };
   let receipt;
   if (fs.existsSync(receiptPath)) {
     receipt = readSettings(receiptPath);
   } else {
-    const projectMcp = readSettings(path.join(workspace, '.mcp.json'));
-    const userSettings = readSettings(path.join(qwenHome, 'settings.json'));
     const names = Object.keys(definitions).filter((name) => {
       if (
         Object.hasOwn(settings.mcpServers ?? {}, name) ||
-        Object.hasOwn(projectMcp.mcpServers ?? {}, name)
+        Object.hasOwn(projectMcp.mcpServers ?? {}, name) ||
+        rejectedMcpNames.includes(name)
       )
         return false;
-      const inherited = userSettings.mcpServers?.[name];
-      if (inherited === undefined) {
-        return !fs.existsSync(path.join(qwenHome, '.desktop-defaults-v1'));
-      }
-      return isDeepStrictEqual(
-        { ...inherited, description: undefined },
-        { ...defaults.mcpServers[name], description: undefined },
-      );
+      return canInherit(name);
     });
     let text = fs.existsSync(settingsPath)
       ? fs.readFileSync(settingsPath, 'utf8')
@@ -265,13 +273,130 @@ export function installDesktopWorkspaceDefaults({
     writeJsonText(receiptPath, `${JSON.stringify(receipt)}\n`);
   }
   const currentSettings = readSettings(settingsPath);
+  const managedNames = new Set(receipt.installedMcpNames ?? []);
+  let text = fs.existsSync(settingsPath)
+    ? fs.readFileSync(settingsPath, 'utf8')
+    : '{}\n';
+  let migrated = false;
+  for (const [name, definition] of Object.entries(definitions)) {
+    if (
+      rejectedMcpNames.includes(name) ||
+      Object.hasOwn(projectMcp.mcpServers ?? {}, name) ||
+      (!managedNames.has(name) && !canInherit(name))
+    )
+      continue;
+    const current = currentSettings.mcpServers?.[name];
+    if (isDeepStrictEqual(current, definition)) {
+      managedNames.add(name);
+    } else if (
+      name !== 'home-ai-research' &&
+      isDeepStrictEqual(current, defaults.mcpServers[name])
+    ) {
+      text = applyEdits(
+        text,
+        modify(text, ['mcpServers', name], definition, {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+      currentSettings.mcpServers[name] = definition;
+      managedNames.add(name);
+      migrated = true;
+    }
+  }
+  if (migrated) writeJsonText(settingsPath, text);
+  if (managedNames.size !== (receipt.installedMcpNames?.length ?? 0)) {
+    receipt.installedMcpNames = [...managedNames];
+    writeJsonText(receiptPath, `${JSON.stringify(receipt)}\n`);
+  }
+  refreshDesktopSkillReferences({ defaultsRoot, qwenHome: projectHome });
   return Object.fromEntries(
     Object.entries(definitions).filter(
       ([name, definition]) =>
-        receipt.installedMcpNames?.includes(name) &&
+        managedNames.has(name) &&
+        !rejectedMcpNames.includes(name) &&
+        !Object.hasOwn(projectMcp.mcpServers ?? {}, name) &&
         isDeepStrictEqual(currentSettings.mcpServers?.[name], definition),
     ),
   );
+}
+
+function migrateNativeReasoning(settingsPath, inheritedReasoningEffort) {
+  const settings = readSettings(settingsPath);
+  const provider = settings.modelProviders?.openai;
+  const wrapped =
+    provider && !Array.isArray(provider) && typeof provider === 'object';
+  if (
+    wrapped &&
+    provider.protocol !== undefined &&
+    provider.protocol !== 'openai'
+  )
+    return;
+  const models = wrapped ? provider.models : provider;
+  if (!Array.isArray(models)) return;
+  const original = fs.readFileSync(settingsPath, 'utf8');
+  let text = original;
+  for (const [index, model] of models.entries()) {
+    if (
+      model?.id !== 'local-coder' ||
+      ![
+        'https://biscet-server.local:9454/v1',
+        'http://127.0.0.1:1235/v1',
+      ].includes(model.baseUrl)
+    )
+      continue;
+    const generation = model.generationConfig;
+    const extra = generation?.extra_body;
+    if (
+      (generation !== undefined &&
+        (!generation ||
+          typeof generation !== 'object' ||
+          Array.isArray(generation))) ||
+      (extra !== undefined &&
+        (!extra || typeof extra !== 'object' || Array.isArray(extra))) ||
+      ![undefined, 'none', 'auto', 'deepseek', 'qwen'].includes(
+        extra?.reasoning_format,
+      )
+    )
+      continue;
+    const keys = [
+      'modelProviders',
+      'openai',
+      ...(wrapped ? ['models'] : []),
+      index,
+      'generationConfig',
+    ];
+    if (extra?.reasoning_format !== 'qwen') {
+      text = applyEdits(
+        text,
+        modify(text, [...keys, 'extra_body', 'reasoning_format'], 'qwen', {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+    }
+    const disablesThinking =
+      (settings.model?.reasoningEffort ?? inheritedReasoningEffort) ===
+        'none' ||
+      generation?.reasoning === false ||
+      [
+        extra,
+        generation?.samplingParams,
+        extra?.chat_template_kwargs,
+        generation?.samplingParams?.chat_template_kwargs,
+      ].some(
+        (options) =>
+          options?.enable_thinking === false ||
+          options?.reasoning_effort === 'none',
+      );
+    if (generation?.thinkingMandatory === undefined && !disablesThinking) {
+      text = applyEdits(
+        text,
+        modify(text, [...keys, 'thinkingMandatory'], true, {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+    }
+  }
+  if (text !== original) writeJsonText(settingsPath, text);
 }
 
 function readSettings(file) {

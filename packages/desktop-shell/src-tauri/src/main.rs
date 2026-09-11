@@ -807,6 +807,54 @@ mod tests {
     use url::Url;
 
     #[test]
+    fn desktop_log_export_is_allowed_from_the_daemon_webview() {
+        let mut context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+        let authority = context.runtime_authority_mut();
+        let daemon = tauri::ipc::Origin::Remote {
+            url: Url::parse("http://127.0.0.1:49152/session/123").unwrap(),
+        };
+        assert!(authority
+            .resolve_access("download_logs", "main", "main", &daemon)
+            .is_some());
+        assert!(authority
+            .resolve_access("download_logs", "main", "main", &tauri::ipc::Origin::Local)
+            .is_some());
+        assert!(authority
+            .resolve_access("download_logs", "other", "other", &daemon)
+            .is_none());
+        assert!(authority
+            .resolve_access(
+                "download_logs",
+                "main",
+                "main",
+                &tauri::ipc::Origin::Remote {
+                    url: Url::parse("https://example.com/").unwrap(),
+                },
+            )
+            .is_none());
+        for command in [
+            "bootstrap_state",
+            "choose_workspace",
+            "open_logs",
+            "restart_runtime",
+            "install_update",
+        ] {
+            assert!(
+                authority
+                    .resolve_access(command, "main", "main", &tauri::ipc::Origin::Local)
+                    .is_some(),
+                "local bootstrap command {command}"
+            );
+            assert!(
+                authority
+                    .resolve_access(command, "main", "main", &daemon)
+                    .is_none(),
+                "remote bootstrap command {command}"
+            );
+        }
+    }
+
+    #[test]
     fn bootstrap_prefers_the_workspace_being_started() {
         let attempted = PathBuf::from("/tmp/attempted");
         let persisted = PathBuf::from("/tmp/persisted");

@@ -118,6 +118,234 @@ describe('OpenAIContentConverter', () => {
     );
   }
 
+  describe('authoritative structured reasoning', () => {
+    const structuredContext = (): RequestContext => ({
+      ...withStreamParser(),
+      responseParsingOptions: { structuredReasoning: true },
+    });
+    const literalAnswers = [
+      '<think>literal</think>',
+      '</think>',
+      '<think>',
+      'Example:\n```xml\n</think>\n```',
+    ];
+
+    it('preserves repeated and prefix-overlapping incremental deltas', () => {
+      const context = structuredContext();
+      const deltas = ['a', 'abc', 'x'.repeat(64), 'x'.repeat(64)];
+      const parts = deltas.flatMap(
+        (text) =>
+          converter.convertOpenAIChunkToLlm(
+            openAIStreamChunk({ reasoning_content: text, content: text }),
+            context,
+          ).candidates?.[0]?.content?.parts ?? [],
+      );
+      converter.convertOpenAIChunkToLlm(openAIStreamChunk({}, 'stop'), context);
+      for (const thought of [true, false]) {
+        expect(
+          parts
+            .filter((part) => Boolean(part.thought) === thought)
+            .map((part) => part.text)
+            .join(''),
+        ).toBe(deltas.join(''));
+      }
+    });
+
+    it.each(literalAnswers)(
+      'preserves literal final content %j across every split',
+      (content) => {
+        for (let split = 0; split <= content.length; split++) {
+          const context = structuredContext();
+          const deltas = [
+            { reasoning_content: 'Explain <think> XML.' },
+            { content: content.slice(0, split) },
+            { content: content.slice(split) },
+          ];
+          const parts = deltas.flatMap(
+            (delta) =>
+              converter.convertOpenAIChunkToLlm(
+                openAIStreamChunk(delta),
+                context,
+              ).candidates?.[0]?.content?.parts ?? [],
+          );
+          parts.push(
+            ...(converter.convertOpenAIChunkToLlm(
+              openAIStreamChunk({}, 'stop'),
+              context,
+            ).candidates?.[0]?.content?.parts ?? []),
+          );
+
+          expect(
+            parts
+              .filter((part) => part.thought)
+              .map((part) => part.text)
+              .join(''),
+          ).toBe('Explain <think> XML.');
+          expect(
+            parts
+              .filter((part) => !part.thought)
+              .map((part) => part.text)
+              .join(''),
+          ).toBe(content);
+        }
+      },
+    );
+
+    it('preserves character-by-character content without a reasoning field', () => {
+      const context = structuredContext();
+      const content = '<think>literal</think>';
+      const parts = [...content].flatMap(
+        (character) =>
+          converter.convertOpenAIChunkToLlm(
+            openAIStreamChunk({ content: character }),
+            context,
+          ).candidates?.[0]?.content?.parts ?? [],
+      );
+      converter.convertOpenAIChunkToLlm(openAIStreamChunk({}, 'stop'), context);
+
+      expect(parts).not.toContainEqual(
+        expect.objectContaining({ thought: true }),
+      );
+      expect(parts.map((part) => part.text).join('')).toBe(content);
+    });
+
+    it.each(literalAnswers)(
+      'preserves unary channels for final content %j',
+      (content) => {
+        const response = converter.convertOpenAIResponseToLlm(
+          {
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content,
+                  reasoning_content: 'Explain <think> XML.',
+                },
+                finish_reason: 'stop',
+              },
+            ],
+          } as unknown as OpenAI.Chat.ChatCompletion,
+          structuredContext(),
+        );
+
+        expect(response.candidates?.[0]?.content?.parts).toEqual([
+          { thought: true, text: 'Explain <think> XML.' },
+          { text: content },
+        ]);
+        const history = converter.convertLlmRequestToOpenAI(
+          {
+            model: 'local-coder',
+            contents: [
+              {
+                role: 'model',
+                parts: response.candidates?.[0]?.content?.parts,
+              },
+            ],
+          },
+          structuredContext(),
+        );
+        expect(history).toEqual([
+          {
+            role: 'assistant',
+            content,
+            reasoning_content: 'Explain <think> XML.',
+          },
+        ]);
+      },
+    );
+
+    it.each(['stop', 'length'])(
+      'does not complete reasoning-only %s responses',
+      (finishReason) => {
+        const type =
+          finishReason === 'length'
+            ? 'NO_RESPONSE_TEXT_MAX_TOKENS'
+            : 'NO_RESPONSE_TEXT';
+        const context = structuredContext();
+        const response = converter.convertOpenAIChunkToLlm(
+          openAIStreamChunk({
+            reasoning_content: 'Unfinished </think> reasoning.',
+          }),
+          context,
+        );
+        expect(response.candidates?.[0]?.content?.parts).toEqual([
+          { thought: true, text: 'Unfinished </think> reasoning.' },
+        ]);
+        expect(response.candidates?.[0]?.finishReason).toBeUndefined();
+        expect(() =>
+          converter.convertOpenAIChunkToLlm(
+            openAIStreamChunk({}, finishReason),
+            context,
+          ),
+        ).toThrowError(expect.objectContaining({ type }));
+        expect(() =>
+          converter.convertOpenAIResponseToLlm(
+            {
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: null,
+                    reasoning_content: 'unfinished',
+                  },
+                  finish_reason: finishReason,
+                },
+              ],
+            } as unknown as OpenAI.Chat.ChatCompletion,
+            structuredContext(),
+          ),
+        ).toThrowError(expect.objectContaining({ type }));
+      },
+    );
+
+    it('keeps valid tool-only completion and rejects incomplete arguments', () => {
+      for (const argumentsText of [
+        '{"path":"<think>example</think>"}',
+        '{"path":',
+      ]) {
+        const context = structuredContext();
+        const first = converter.convertOpenAIChunkToLlm(
+          openAIStreamChunk({
+            reasoning: 'Read <think>example</think>.',
+            tool_calls: [
+              {
+                index: 0,
+                id: 'read',
+                function: { name: 'read_file', arguments: argumentsText },
+              },
+            ],
+          }),
+          context,
+        );
+        expect(first.candidates?.[0]?.content?.parts).not.toContainEqual(
+          expect.objectContaining({ functionCall: expect.anything() }),
+        );
+        const finish = () =>
+          converter.convertOpenAIChunkToLlm(
+            openAIStreamChunk({}, 'tool_calls'),
+            context,
+          );
+        if (argumentsText.endsWith('}')) {
+          expect(finish().candidates?.[0]?.content?.parts).toEqual([
+            {
+              functionCall: {
+                id: 'read',
+                name: 'read_file',
+                args: { path: '<think>example</think>' },
+              },
+            },
+          ]);
+        } else {
+          expect(finish).toThrowError(
+            expect.objectContaining({ type: 'MALFORMED_TOOL_CALL_MAX_TOKENS' }),
+          );
+        }
+      }
+    });
+  });
+
   describe('stream-local parser state', () => {
     const streamChunk = (
       id: string,
@@ -1221,7 +1449,7 @@ describe('OpenAIContentConverter', () => {
       expect(stream.protocolTagSanitized).toBeUndefined();
     });
 
-    it.each(['{"path":', '{bad}', 'null', '[]', '42', '   '])(
+    it.each(['{"path":', '{bad}', 'null', '[]', '42'])(
       'rejects a standalone closing thinking tag with unsafe tool arguments %s',
       (toolArguments) => {
         const stream = withStreamParser();
@@ -7823,99 +8051,110 @@ describe('Truncated tool call detection in streaming', () => {
     expect(getToolCallPreparations(response)).toEqual([]);
   });
 
-  it('should override finishReason to MAX_TOKENS when tool call JSON is truncated and provider reports "stop"', () => {
-    // Simulate: write_file call truncated mid-JSON, provider says "stop"
+  it.each(['stop', 'tool_calls', 'length'] as const)(
+    'rejects truncated tool arguments before dispatch when finish_reason is %s',
+    (finishReason) => {
+      for (const args of [
+        '{"command": "echo partial',
+        '{"file_path": "/tmp/test.cpp"',
+      ]) {
+        expect(() =>
+          feedToolCallChunks(
+            converter,
+            [
+              {
+                index: 0,
+                id: 'call_1',
+                name: 'run_shell_command',
+                arguments: args,
+              },
+            ],
+            finishReason,
+          ),
+        ).toThrowError(
+          expect.objectContaining({ type: 'MALFORMED_TOOL_CALL_MAX_TOKENS' }),
+        );
+      }
+    },
+  );
+
+  it.each(['{bad}', '"garbled"', 'null', '[]'])(
+    'rejects malformed tool arguments instead of emitting an empty command: %s',
+    (args) => {
+      expect(() =>
+        feedToolCallChunks(
+          converter,
+          [
+            {
+              index: 0,
+              id: 'call_1',
+              name: 'run_shell_command',
+              arguments: args,
+            },
+          ],
+          'tool_calls',
+        ),
+      ).toThrowError(expect.objectContaining({ type: 'MALFORMED_TOOL_CALL' }));
+    },
+  );
+
+  it.each(['', '{}', '{"command":"echo complete"}'])(
+    'rejects tool calls on a length finish even with parseable arguments: %s',
+    (args) => {
+      expect(() =>
+        feedToolCallChunks(
+          converter,
+          [
+            {
+              index: 0,
+              id: 'call_1',
+              name: 'run_shell_command',
+              arguments: args,
+            },
+          ],
+          'length',
+        ),
+      ).toThrowError(
+        expect.objectContaining({ type: 'MALFORMED_TOOL_CALL_MAX_TOKENS' }),
+      );
+    },
+  );
+
+  it.each(['', '  \n', '{}'])(
+    'preserves complete no-argument tools: %j',
+    (args) => {
+      const result = feedToolCallChunks(
+        converter,
+        [{ index: 0, id: 'call_1', name: 'list_sessions', arguments: args }],
+        'tool_calls',
+      );
+      expect(result.functionCalls).toEqual([
+        { id: 'call_1', name: 'list_sessions', args: {} },
+      ]);
+    },
+  );
+
+  it('preserves complete command arguments without repair', () => {
     const result = feedToolCallChunks(
       converter,
       [
         {
           index: 0,
           id: 'call_1',
-          name: 'write_file',
-          arguments: '{"file_path": "/tmp/test.cpp"',
-          // Missing closing brace and content field — truncated
+          name: 'run_shell_command',
+          arguments: '{"command":"echo complete"}',
         },
       ],
       'stop',
     );
-
-    expect(result.candidates?.[0]?.finishReason).toBe(FinishReason.MAX_TOKENS);
-  });
-
-  it('should override finishReason to MAX_TOKENS when provider reports "tool_calls" but JSON is truncated', () => {
-    const result = feedToolCallChunks(
-      converter,
-      [
-        {
-          index: 0,
-          id: 'call_1',
-          name: 'write_file',
-          arguments:
-            '{"file_path": "/tmp/test.cpp", "content": "partial content',
-          // Truncated mid-string
-        },
-      ],
-      'tool_calls',
-    );
-
-    expect(result.candidates?.[0]?.finishReason).toBe(FinishReason.MAX_TOKENS);
-  });
-
-  it('should preserve finishReason STOP when tool call JSON is complete', () => {
-    const result = feedToolCallChunks(
-      converter,
-      [
-        {
-          index: 0,
-          id: 'call_1',
-          name: 'write_file',
-          arguments: '{"file_path": "/tmp/test.cpp", "content": "hello"}',
-        },
-      ],
-      'stop',
-    );
-
     expect(result.candidates?.[0]?.finishReason).toBe(FinishReason.STOP);
-  });
-
-  it('should preserve finishReason MAX_TOKENS when provider already reports "length"', () => {
-    const result = feedToolCallChunks(
-      converter,
-      [
-        {
-          index: 0,
-          id: 'call_1',
-          name: 'write_file',
-          arguments: '{"file_path": "/tmp/test.cpp"',
-        },
-      ],
-      'length',
-    );
-
-    expect(result.candidates?.[0]?.finishReason).toBe(FinishReason.MAX_TOKENS);
-  });
-
-  it('should still emit the (repaired) function call even when truncated', () => {
-    const result = feedToolCallChunks(
-      converter,
-      [
-        {
-          index: 0,
-          id: 'call_1',
-          name: 'write_file',
-          arguments: '{"file_path": "/tmp/test.cpp"',
-        },
-      ],
-      'stop',
-    );
-
-    const parts = result.candidates?.[0]?.content?.parts ?? [];
-    const fnCall = parts.find((p: Part) => p.functionCall);
-    expect(fnCall).toBeDefined();
-    expect(fnCall?.functionCall?.name).toBe('write_file');
-    expect(fnCall?.functionCall?.args).toEqual({
-      file_path: '/tmp/test.cpp',
-    });
+    expect(result.functionCalls).toEqual([
+      {
+        id: 'call_1',
+        name: 'run_shell_command',
+        args: { command: 'echo complete' },
+      },
+    ]);
   });
 
   it('should detect truncation with multi-chunk streaming arguments', () => {
@@ -7978,25 +8217,27 @@ describe('Truncated tool call detection in streaming', () => {
     );
 
     // Final chunk: finish_reason "stop" but JSON is still incomplete
-    const result = conv.convertOpenAIChunkToLlm(
-      {
-        object: 'chat.completion.chunk',
-        id: 'c3',
-        created: 101,
-        model: 'test-model',
-        choices: [
-          {
-            index: 0,
-            delta: {},
-            finish_reason: 'stop',
-            logprobs: null,
-          },
-        ],
-      } as unknown as OpenAI.Chat.ChatCompletionChunk,
-      ctx,
+    expect(() =>
+      conv.convertOpenAIChunkToLlm(
+        {
+          object: 'chat.completion.chunk',
+          id: 'c3',
+          created: 101,
+          model: 'test-model',
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: 'stop',
+              logprobs: null,
+            },
+          ],
+        } as unknown as OpenAI.Chat.ChatCompletionChunk,
+        ctx,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ type: 'MALFORMED_TOOL_CALL_MAX_TOKENS' }),
     );
-
-    expect(result.candidates?.[0]?.finishReason).toBe(FinishReason.MAX_TOKENS);
   });
 });
 

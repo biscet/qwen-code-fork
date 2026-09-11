@@ -207,6 +207,7 @@ export type DaemonUiToolProvenance = 'builtin' | 'mcp' | 'subagent' | 'unknown';
 export interface DaemonUiToolUpdateEvent extends DaemonUiEventBase {
   type: 'tool.update';
   subagentSessionReady?: boolean;
+  preparationDiscarded?: boolean;
   toolCallId: string;
   title?: string;
   status?: string;

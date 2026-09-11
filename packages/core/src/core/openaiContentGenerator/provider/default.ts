@@ -259,6 +259,11 @@ export class DefaultOpenAICompatibleProvider
   }
 
   getResponseParsingOptions(model?: string): OpenAIResponseParsingOptions {
+    if (
+      this.contentGeneratorConfig.extra_body?.['reasoning_format'] === 'qwen'
+    ) {
+      return { structuredReasoning: true };
+    }
     // Hybrid-thinking models occasionally bypass the reasoning channel and
     // emit their thinking as literal <think>/<thinking> tags inside content
     // (observed in production on qwen3-class models, issue #6666).

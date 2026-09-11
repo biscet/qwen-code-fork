@@ -71,6 +71,15 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
     /You MUST always respond in \*\*Russian\*\*/,
   );
   assert.equal(settings.model.name, 'local-coder');
+  assert.equal(
+    settings.modelProviders.openai[0].generationConfig.thinkingMandatory,
+    true,
+  );
+  assert.equal(
+    settings.modelProviders.openai[0].generationConfig.extra_body
+      .reasoning_format,
+    'qwen',
+  );
   assert.deepEqual(settings.tools.exclude, ['report_findings']);
   assert.equal(
     settings.modelProviders.openai[0].generationConfig.contextWindowSize,
@@ -119,6 +128,216 @@ test('clean installation adds remote MCPs, model, skills and agent without crede
     ),
     'test engineer',
   );
+});
+
+test('native reasoning migration preserves JSONC and custom values on both managed routes and provider shapes', () => {
+  for (const baseUrl of [
+    'https://biscet-server.local:9454/v1',
+    'http://127.0.0.1:1235/v1',
+  ]) {
+    for (const wrapped of [false, true]) {
+      for (const reasoningFormat of [
+        undefined,
+        'none',
+        'auto',
+        'deepseek',
+        'qwen',
+      ]) {
+        const options = fixture();
+        fs.mkdirSync(options.qwenHome);
+        fs.writeFileSync(
+          path.join(options.qwenHome, '.desktop-defaults-v4'),
+          '1\n',
+        );
+        const model = {
+          id: 'local-coder',
+          baseUrl,
+          envKey: 'MY_QWEN_KEY',
+          generationConfig: {
+            contextWindowSize: 98304,
+            samplingParams: { reasoning_budget_tokens: 2048 },
+            extra_body: {
+              custom: true,
+              ...(reasoningFormat === undefined
+                ? {}
+                : { reasoning_format: reasoningFormat }),
+            },
+          },
+        };
+        const settings = {
+          $version: wrapped ? 5 : 4,
+          model: { name: 'other-model' },
+          modelProviders: {
+            openai: wrapped ? { protocol: 'openai', models: [model] } : [model],
+          },
+          mcpServers: { custom: { command: 'my-server' } },
+        };
+        const text = JSON.stringify(settings, null, 2)
+          .replace(
+            '"custom": true',
+            '// Preserve this option.\n          "custom": true',
+          )
+          .replace(/\n}$/, ',\n}\n');
+        const settingsPath = path.join(options.qwenHome, 'settings.json');
+        fs.writeFileSync(settingsPath, text);
+        installDesktopDefaults(options);
+
+        model.generationConfig.extra_body.reasoning_format = 'qwen';
+        model.generationConfig.thinkingMandatory = true;
+        const updated = fs.readFileSync(settingsPath, 'utf8');
+        assert.match(updated, /\/\/ Preserve this option\./);
+        assert.deepEqual(parse(updated), settings);
+        assert.equal(
+          fs.existsSync(path.join(options.qwenHome, '.desktop-defaults-v1')),
+          false,
+        );
+        const stat = fs.statSync(settingsPath);
+        installDesktopDefaults(options);
+        assert.equal(fs.readFileSync(settingsPath, 'utf8'), updated);
+        assert.equal(fs.statSync(settingsPath).ino, stat.ino);
+        assert.equal(fs.statSync(settingsPath).mtimeMs, stat.mtimeMs);
+      }
+    }
+  }
+});
+
+test('native reasoning migration adds missing generation settings only to a managed model', () => {
+  const options = fixture();
+  fs.mkdirSync(options.qwenHome);
+  fs.writeFileSync(path.join(options.qwenHome, '.desktop-defaults-v4'), '1\n');
+  const settingsPath = path.join(options.qwenHome, 'settings.json');
+  const model = { id: 'local-coder', baseUrl: 'http://127.0.0.1:1235/v1' };
+  fs.writeFileSync(
+    settingsPath,
+    JSON.stringify({ modelProviders: { openai: [model] } }),
+  );
+  installDesktopDefaults(options);
+  assert.deepEqual(parse(fs.readFileSync(settingsPath, 'utf8')), {
+    modelProviders: {
+      openai: [
+        {
+          ...model,
+          generationConfig: {
+            extra_body: { reasoning_format: 'qwen' },
+            thinkingMandatory: true,
+          },
+        },
+      ],
+    },
+  });
+});
+
+test('native reasoning migration does not touch other endpoints, model IDs, or custom formats', () => {
+  const managedUrl = 'https://biscet-server.local:9454/v1';
+  for (const model of [
+    { id: 'local-coder', baseUrl: 'https://custom.example/v1' },
+    { id: 'local-coder', baseUrl: `${managedUrl}/other` },
+    { id: 'local-coder', baseUrl: `${managedUrl}?other=1` },
+    { id: 'other-model', baseUrl: managedUrl },
+    { id: 'local-coder' },
+    ...['my-custom-format', null, false].map((reasoning_format) => ({
+      id: 'local-coder',
+      baseUrl: managedUrl,
+      generationConfig: { extra_body: { reasoning_format } },
+    })),
+  ]) {
+    const options = fixture();
+    fs.mkdirSync(options.qwenHome);
+    fs.writeFileSync(
+      path.join(options.qwenHome, '.desktop-defaults-v4'),
+      '1\n',
+    );
+    const settingsPath = path.join(options.qwenHome, 'settings.json');
+    const text = `// Custom profile\n${JSON.stringify({ modelProviders: { openai: [model] } })}\n`;
+    fs.writeFileSync(settingsPath, text);
+    const stat = fs.statSync(settingsPath);
+    installDesktopDefaults(options);
+    assert.equal(fs.readFileSync(settingsPath, 'utf8'), text);
+    assert.equal(fs.statSync(settingsPath).ino, stat.ino);
+    assert.equal(fs.statSync(settingsPath).mtimeMs, stat.mtimeMs);
+  }
+});
+
+test('native reasoning migration does not recreate settings or a deleted model after v4 installation', () => {
+  const options = fixture();
+  fs.mkdirSync(options.qwenHome);
+  fs.writeFileSync(path.join(options.qwenHome, '.desktop-defaults-v4'), '1\n');
+  const settingsPath = path.join(options.qwenHome, 'settings.json');
+  installDesktopDefaults(options);
+  assert.equal(fs.existsSync(settingsPath), false);
+  const text =
+    '{\n  // No managed model.\n  "modelProviders": { "openai": [] }\n}\n';
+  fs.writeFileSync(settingsPath, text);
+  installDesktopDefaults(options);
+  assert.equal(fs.readFileSync(settingsPath, 'utf8'), text);
+});
+
+test('mandatory thinking migration preserves explicit capability and reasoning overrides', () => {
+  for (const generation of [
+    { thinkingMandatory: false },
+    { thinkingMandatory: true },
+    { reasoning: false },
+    { extra_body: { enable_thinking: false } },
+    { extra_body: { reasoning_effort: 'none' } },
+    { extra_body: { chat_template_kwargs: { enable_thinking: false } } },
+    { samplingParams: { enable_thinking: false } },
+    { samplingParams: { reasoning_effort: 'none' } },
+    { samplingParams: { chat_template_kwargs: { enable_thinking: false } } },
+  ]) {
+    const options = fixture();
+    fs.mkdirSync(options.qwenHome);
+    fs.writeFileSync(
+      path.join(options.qwenHome, '.desktop-defaults-v4'),
+      '1\n',
+    );
+    const settingsPath = path.join(options.qwenHome, 'settings.json');
+    const settings = {
+      modelProviders: {
+        openai: [
+          {
+            id: 'local-coder',
+            baseUrl: 'https://biscet-server.local:9454/v1',
+            generationConfig: {
+              ...generation,
+              extra_body: {
+                reasoning_format: 'qwen',
+                ...generation.extra_body,
+              },
+            },
+          },
+        ],
+      },
+    };
+    const text = `// Keep user choices\n${JSON.stringify(settings)}\n`;
+    fs.writeFileSync(settingsPath, text);
+    const stat = fs.statSync(settingsPath);
+    installDesktopDefaults(options);
+    assert.equal(fs.readFileSync(settingsPath, 'utf8'), text);
+    assert.equal(fs.statSync(settingsPath).ino, stat.ino);
+  }
+});
+
+test('mandatory thinking migration preserves the global none effort selection', () => {
+  const options = fixture();
+  fs.mkdirSync(options.qwenHome);
+  fs.writeFileSync(path.join(options.qwenHome, '.desktop-defaults-v4'), '1\n');
+  const settingsPath = path.join(options.qwenHome, 'settings.json');
+  const settings = {
+    model: { name: 'local-coder', reasoningEffort: 'none' },
+    modelProviders: {
+      openai: [
+        {
+          id: 'local-coder',
+          baseUrl: 'https://biscet-server.local:9454/v1',
+          generationConfig: { extra_body: { reasoning_format: 'qwen' } },
+        },
+      ],
+    },
+  };
+  const text = `${JSON.stringify(settings)}\n`;
+  fs.writeFileSync(settingsPath, text);
+  installDesktopDefaults(options);
+  assert.equal(fs.readFileSync(settingsPath, 'utf8'), text);
 });
 
 test('v2 upgrade adds Russian without restoring deleted defaults, then preserves later changes', () => {
@@ -300,7 +519,7 @@ test('v5 wrapped providers retain their model entries and migration version', ()
   );
 });
 
-test('v1 upgrade adds missing free models once and preserves existing choices and deletions', () => {
+test('v1 upgrade preserves configured models and deletions', () => {
   for (const wrapped of [false, true]) {
     const options = fixture();
     fs.mkdirSync(options.qwenHome);
@@ -337,7 +556,7 @@ test('v1 upgrade adds missing free models once and preserves existing choices an
       : installed.modelProviders.openai;
     assert.deepEqual(
       models.map(({ id }) => id),
-      ['codestral-latest', 'gpt-oss'],
+      ['codestral-latest'],
     );
     assert.deepEqual(models[0], customModel);
     assert.equal(installed.model.name, 'codestral-latest');
@@ -357,6 +576,39 @@ test('v1 upgrade adds missing free models once and preserves existing choices an
     const afterDeletion = fs.readFileSync(settingsPath, 'utf8');
     installDesktopDefaults(options);
     assert.equal(fs.readFileSync(settingsPath, 'utf8'), afterDeletion);
+  }
+});
+
+test('v1 upgrade does not restore deleted free models', () => {
+  for (const wrapped of [false, true]) {
+    for (const deletedId of ['codestral-latest', 'gpt-oss']) {
+      const options = fixture();
+      fs.mkdirSync(options.qwenHome);
+      fs.writeFileSync(
+        path.join(options.qwenHome, '.desktop-defaults-v1'),
+        '1\n',
+      );
+      const defaults = JSON.parse(
+        fs.readFileSync(path.join(source, 'settings.json'), 'utf8'),
+      );
+      const models = defaults.modelProviders.openai.filter(
+        ({ id }) => id !== deletedId,
+      );
+      const provider = wrapped ? { protocol: 'openai', models } : models;
+      const settingsPath = path.join(options.qwenHome, 'settings.json');
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ modelProviders: { openai: provider } }),
+      );
+
+      installDesktopDefaults(options);
+
+      const installed = parse(fs.readFileSync(settingsPath, 'utf8'));
+      assert.deepEqual(installed.modelProviders.openai, provider);
+      const afterUpgrade = fs.readFileSync(settingsPath, 'utf8');
+      installDesktopDefaults(options);
+      assert.equal(fs.readFileSync(settingsPath, 'utf8'), afterUpgrade);
+    }
   }
 });
 

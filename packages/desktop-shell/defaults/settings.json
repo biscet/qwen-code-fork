@@ -15,6 +15,10 @@
         "envKey": "LOCAL_QWEN_API_KEY",
         "baseUrl": "https://biscet-server.local:9454/v1",
         "generationConfig": {
+          "thinkingMandatory": true,
+          "extra_body": {
+            "reasoning_format": "qwen"
+          },
           "contextWindowSize": 131072,
           "timeout": 1200000,
           "streamIdleTimeoutMs": 600000,

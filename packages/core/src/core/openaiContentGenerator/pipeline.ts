@@ -196,7 +196,10 @@ function isRequiredThinkingError(error: unknown): boolean {
   const message = `${getErrorMessage(error)} ${providerMessage ?? ''}`;
   return (
     message.includes('enable_thinking') &&
-    /(?:restricted to|must be) true\b/i.test(message)
+    (/(?:restricted to|must be) true\b/i.test(message) ||
+      /requires enable_thinking and preserve_thinking to be true\b/i.test(
+        message,
+      ))
   );
 }
 

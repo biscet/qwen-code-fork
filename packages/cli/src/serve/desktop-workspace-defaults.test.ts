@@ -17,6 +17,7 @@ import {
 } from '../config/mcpApprovals.js';
 import { initializeDesktopWorkspaceDefaults } from './desktop-workspace-defaults.js';
 import { HomeChatStateStore } from './routes/homechat-state.js';
+import { buildRuntimeEnvironment } from '../config/environment.js';
 
 describe('desktop workspace MCP initialization', () => {
   let root: string;
@@ -49,12 +50,13 @@ describe('desktop workspace MCP initialization', () => {
     runtimeRoot = path.join(root, 'App With Spaces');
     workspace = path.join(root, 'project-a');
     qwenHome = path.join(root, 'profile');
-    for (const directory of ['lib', 'mcp']) {
+    for (const directory of ['lib', 'mcp', 'node/bin']) {
       mkdirSync(path.join(runtimeRoot, directory), { recursive: true });
     }
     mkdirSync(qwenHome);
     writeFileSync(path.join(runtimeRoot, 'package.json'), '{"type":"module"}');
     writeFileSync(path.join(runtimeRoot, 'mcp', 'launch.mjs'), '');
+    writeFileSync(path.join(runtimeRoot, 'node/bin/node'), '');
     writeFileSync(
       path.join(runtimeRoot, 'managed.json'),
       JSON.stringify({ 'node-repl': template }),
@@ -71,7 +73,7 @@ export function installDesktopWorkspaceDefaults(options) {
     vi.stubEnv('QWEN_HOME', qwenHome);
     vi.stubEnv('QWEN_CODE_DESKTOP', '1');
     vi.stubEnv('QWEN_CODE_DESKTOP_RUNTIME_ROOT', runtimeRoot);
-    vi.stubEnv('HOMECODE_MCP_NODE', process.execPath);
+    vi.stubEnv('HOMECODE_MCP_NODE', path.join(runtimeRoot, 'node/bin/node'));
     vi.stubEnv(
       'HOMECODE_MCP_LAUNCHER',
       path.join(runtimeRoot, 'mcp', 'launch.mjs'),
@@ -102,36 +104,146 @@ export function installDesktopWorkspaceDefaults(options) {
     writeServers({ 'node-repl': template, custom: { command: 'custom-mcp' } });
     await initializeDesktopWorkspaceDefaults(workspace, true);
     const servers = resolvedServers();
-    expect(servers['node-repl'].command).toBe(process.execPath);
+    expect(servers['node-repl'].command).toBe(
+      path.join(runtimeRoot, 'node/bin/node'),
+    );
     expect(getPendingGatedMcpServers(servers, workspace)).toEqual(['custom']);
     expect(
       JSON.parse(readFileSync(path.join(runtimeRoot, 'called.json'), 'utf8')),
-    ).toEqual({ runtimeRoot, qwenHome, workspaceDir: workspace });
+    ).toEqual({
+      runtimeRoot,
+      qwenHome,
+      workspaceDir: workspace,
+      rejectedMcpNames: [],
+    });
     expect(loadMcpApprovals().getState(workspace, 'node-repl', template)).toBe(
       'pending',
     );
   });
 
-  it('uses the home env fallback for an owned authenticated server', async () => {
+  it('uses the home env key without expanding literal dollars twice', async () => {
     const research = {
-      httpUrl: 'https://example.test/mcp',
-      headers: { Authorization: 'Bearer ${DESKTOP_TEST_MCP_KEY}' },
+      httpUrl: 'https://biscet-server.local:9454/research/mcp',
+      headers: { Authorization: 'Bearer ${LOCAL_QWEN_API_KEY}' },
     };
     writeFileSync(
       path.join(qwenHome, '.env'),
-      'DESKTOP_TEST_MCP_KEY=test-fixture',
+      'LOCAL_QWEN_API_KEY=test-fixture-$DESKTOP_TEST_LITERAL',
     );
+    vi.stubEnv('DESKTOP_TEST_LITERAL', 'must-not-be-substituted');
     writeFileSync(
       path.join(runtimeRoot, 'managed.json'),
-      JSON.stringify({ research }),
+      JSON.stringify({ 'home-ai-research': research }),
     );
-    writeServers({ research });
+    writeServers({ 'home-ai-research': research });
     await initializeDesktopWorkspaceDefaults(workspace, true);
     const servers = resolvedServers();
-    expect(servers['research'].headers?.['Authorization']).toBe(
-      'Bearer test-fixture',
+    expect(servers['home-ai-research'].headers?.['Authorization']).toBe(
+      'Bearer test-fixture-$DESKTOP_TEST_LITERAL',
     );
     expect(getPendingGatedMcpServers(servers, workspace)).toEqual([]);
+  });
+
+  it.each(['user', 'workspace'])(
+    'approves the runtime key from %s settings.env without changing the process environment',
+    async (scope) => {
+      const research = {
+        httpUrl: 'https://biscet-server.local:9454/research/mcp',
+        headers: { Authorization: 'Bearer ${LOCAL_QWEN_API_KEY}' },
+      };
+      const key = 'fixture-runtime-key';
+      vi.stubEnv('LOCAL_QWEN_API_KEY', undefined);
+      writeFileSync(
+        path.join(runtimeRoot, 'managed.json'),
+        JSON.stringify({ 'home-ai-research': research }),
+      );
+      writeServers({ 'home-ai-research': research });
+      const settingsPath =
+        scope === 'user'
+          ? path.join(qwenHome, 'settings.json')
+          : path.join(workspace, '.qwen/settings.json');
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          ...(scope === 'workspace'
+            ? { mcpServers: { 'home-ai-research': research } }
+            : {}),
+          env: { LOCAL_QWEN_API_KEY: key },
+        }),
+      );
+
+      await initializeDesktopWorkspaceDefaults(workspace, true);
+      expect(process.env['LOCAL_QWEN_API_KEY']).toBeUndefined();
+      const settings = loadSettings(workspace, {
+        skipLoadEnvironment: true,
+        workspaceTrusted: true,
+      });
+      const env = buildRuntimeEnvironment(
+        settings.merged,
+        workspace,
+        process.env,
+        true,
+      );
+      vi.stubEnv('LOCAL_QWEN_API_KEY', env.effectiveEnv['LOCAL_QWEN_API_KEY']);
+      const servers = resolvedServers();
+      expect(servers['home-ai-research'].headers?.['Authorization']).toBe(
+        `Bearer ${key}`,
+      );
+      expect(getPendingGatedMcpServers(servers, workspace)).toEqual([]);
+      resetMcpApprovalsForTesting();
+      expect(getPendingGatedMcpServers(servers, workspace)).toEqual([]);
+    },
+  );
+
+  it.each(['HOMECODE_MCP_NODE', 'HOMECODE_MCP_LAUNCHER'])(
+    'does not approve a bundled template redirected through %s',
+    async (key) => {
+      vi.stubEnv(key, path.join(workspace, 'untrusted-executable'));
+      await initializeDesktopWorkspaceDefaults(workspace, true);
+      expect(getPendingGatedMcpServers(resolvedServers(), workspace)).toEqual([
+        'node-repl',
+      ]);
+    },
+  );
+
+  it('does not approve a launcher redirected through workspace settings.env', async () => {
+    vi.stubEnv('HOMECODE_MCP_LAUNCHER', undefined);
+    writeFileSync(
+      path.join(workspace, '.qwen/settings.json'),
+      JSON.stringify({
+        mcpServers: { 'node-repl': template },
+        env: {
+          HOMECODE_MCP_LAUNCHER: path.join(workspace, 'untrusted-launcher'),
+        },
+      }),
+    );
+    await initializeDesktopWorkspaceDefaults(workspace, true);
+    expect(loadMcpApprovals().file.config[workspace]).toBeUndefined();
+  });
+
+  it('does not approve relative paths resolved against the daemon instead of the selected workspace', async () => {
+    vi.stubEnv(
+      'HOMECODE_MCP_NODE',
+      path.relative(process.cwd(), path.join(runtimeRoot, 'node/bin/node')),
+    );
+    await initializeDesktopWorkspaceDefaults(workspace, true);
+    expect(getPendingGatedMcpServers(resolvedServers(), workspace)).toEqual([
+      'node-repl',
+    ]);
+  });
+
+  it('keeps the packaged launcher when project env attempts to override it', async () => {
+    writeFileSync(
+      path.join(workspace, '.qwen/settings.json'),
+      JSON.stringify({
+        mcpServers: { 'node-repl': template },
+        env: {
+          HOMECODE_MCP_LAUNCHER: path.join(workspace, 'untrusted-launcher'),
+        },
+      }),
+    );
+    await initializeDesktopWorkspaceDefaults(workspace, true);
+    expect(getPendingGatedMcpServers(resolvedServers(), workspace)).toEqual([]);
   });
 
   it.each(['untrusted', 'cli', 'legacy-runtime'])(

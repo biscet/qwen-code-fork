@@ -1316,6 +1316,19 @@ function mergeToolCallEvent(
   const incomingData = incoming.data as SessionUpdateData | undefined;
   const existingUpdate = existingData?.update ?? {};
   const incomingUpdate = incomingData?.update ?? {};
+  const incomingMeta = incomingUpdate['_meta'];
+  const preparationDiscarded =
+    typeof incomingMeta === 'object' &&
+    incomingMeta !== null &&
+    'preparationDiscarded' in incomingMeta &&
+    incomingMeta.preparationDiscarded === true;
+  if (
+    preparationDiscarded &&
+    existingUpdate.status !== undefined &&
+    existingUpdate.status !== 'pending'
+  ) {
+    return existing;
+  }
 
   const merged: Record<string, unknown> = { ...existingUpdate };
   for (const [key, value] of Object.entries(incomingUpdate)) {
@@ -1327,6 +1340,15 @@ function mergeToolCallEvent(
     existingUpdate['_meta'],
     incomingUpdate['_meta'],
   );
+  if (
+    !preparationDiscarded &&
+    (incomingUpdate.sessionUpdate === 'tool_call' ||
+      incomingUpdate.status !== undefined) &&
+    typeof updateMeta === 'object' &&
+    updateMeta !== null
+  ) {
+    delete (updateMeta as Record<string, unknown>)['preparationDiscarded'];
+  }
   if (updateMeta !== undefined) merged['_meta'] = updateMeta;
   // Always use 'tool_call' as the compacted type
   merged['sessionUpdate'] = 'tool_call';

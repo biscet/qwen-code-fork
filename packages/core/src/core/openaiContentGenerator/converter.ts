@@ -1168,8 +1168,9 @@ function convertOpenAITextToParts(
   final = true,
 ): Part[] {
   if (
-    !requestContext.responseParsingOptions?.taggedThinkingTags &&
-    !requestContext.taggedThinkingParser
+    requestContext.responseParsingOptions?.structuredReasoning ||
+    (!requestContext.responseParsingOptions?.taggedThinkingTags &&
+      !requestContext.taggedThinkingParser)
   ) {
     return text ? [{ text }] : [];
   }
@@ -1330,6 +1331,20 @@ export function convertOpenAIResponseToLlm(
       }
     }
 
+    if (
+      requestContext.responseParsingOptions?.structuredReasoning &&
+      !parts.some(
+        (part) => part.functionCall || (!part.thought && part.text?.trim()),
+      )
+    ) {
+      throw new InvalidStreamError(
+        'Model response ended without final content or a tool call.',
+        choice.finish_reason === 'length'
+          ? 'NO_RESPONSE_TEXT_MAX_TOKENS'
+          : 'NO_RESPONSE_TEXT',
+      );
+    }
+
     response.candidates = [
       {
         content: {
@@ -1435,6 +1450,8 @@ export function convertOpenAIChunkToLlm(
   if (choice) {
     let parts: Part[] = [];
     let contentParts: Part[] = [];
+    const structuredReasoning =
+      requestContext.responseParsingOptions?.structuredReasoning === true;
 
     // Handle reasoning content (thoughts).
     const reasoningText =
@@ -1459,16 +1476,18 @@ export function convertOpenAIChunkToLlm(
         replayState.emittedLength = rawContent.length;
         replayState.cumulativeMode = true;
       }
-      const normalizedContent = replayedTaggedThinkingSnapshot
-        ? ''
-        : normalizeStreamingTextDelta(
-            rawContent,
-            (requestContext.textDeltaState ??= {
-              emittedText: '',
-              emittedLength: 0,
-              cumulativeMode: false,
-            }),
-          );
+      const normalizedContent = structuredReasoning
+        ? rawContent
+        : replayedTaggedThinkingSnapshot
+          ? ''
+          : normalizeStreamingTextDelta(
+              rawContent,
+              (requestContext.textDeltaState ??= {
+                emittedText: '',
+                emittedLength: 0,
+                cumulativeMode: false,
+              }),
+            );
       const taggedThinkingCandidate =
         (requestContext.pendingThinkingTagCandidate?.text ?? '') +
         normalizedContent;
@@ -1532,16 +1551,18 @@ export function convertOpenAIChunkToLlm(
         emittedLength: 0,
         cumulativeMode: false,
       });
-      const normalizedReasoningText = normalizeStreamingTextDelta(
-        reasoningText,
-        reasoningDeltaState,
-      );
+      const normalizedReasoningText = structuredReasoning
+        ? reasoningText
+        : normalizeStreamingTextDelta(reasoningText, reasoningDeltaState);
       if (normalizedReasoningText) {
         reasoningDeltaState.emittedTokenUnits =
           (reasoningDeltaState.emittedTokenUnits ?? 0) +
           estimateTextTokenUnits(normalizedReasoningText);
         requestContext.hasStructuredReasoningContent = true;
-        if (THINKING_TAG_PATTERN.test(normalizedReasoningText)) {
+        if (
+          !structuredReasoning &&
+          THINKING_TAG_PATTERN.test(normalizedReasoningText)
+        ) {
           requestContext.hasThinkingTagInReasoning = true;
         }
       }
@@ -1658,10 +1679,12 @@ export function convertOpenAIChunkToLlm(
     const combinedCandidateText =
       (pendingTagCandidate?.text ?? '') + visibleText;
     const hasStructuredReasoning =
+      !structuredReasoning &&
       requestContext.hasStructuredReasoningContent === true;
     const detectContentOnlyThinkingTagLeaks =
+      !structuredReasoning &&
       requestContext.responseParsingOptions?.contentOnlyThinkingTagLeaks ===
-      true;
+        true;
     const contentOnlyThinkingState =
       hasStructuredReasoning ||
       requestContext.hasVisibleContent === true ||
@@ -1759,7 +1782,7 @@ export function convertOpenAIChunkToLlm(
     }
 
     const leakedThinkingTag =
-      requestContext.hasStructuredReasoningContent === true &&
+      hasStructuredReasoning &&
       ((requestContext.hasVisibleContent !== true &&
         LEADING_THINKING_TAG_PATTERN.test(visibleText)) ||
         (requestContext.hasThinkingTagInReasoning === true &&
@@ -1815,6 +1838,7 @@ export function convertOpenAIChunkToLlm(
     if (
       choice.finish_reason &&
       (toolCallParser.hasInvalidToolCallIndex() ||
+        toolCallParser.hasConflictingToolCallIdentity() ||
         toolCallWithoutName ||
         (choice.finish_reason === 'tool_calls' &&
           completedToolCalls.length === 0))
@@ -1823,6 +1847,37 @@ export function convertOpenAIChunkToLlm(
       throw new InvalidStreamError(
         'Model response contained a malformed tool call.',
         'MALFORMED_TOOL_CALL',
+      );
+    }
+
+    if (
+      choice.finish_reason &&
+      (toolCallsTruncated ||
+        (choice.finish_reason === 'length' && completedToolCalls.length > 0) ||
+        toolCallParser.hasInvalidToolCallArguments())
+    ) {
+      requestContext.pendingUntrustedResponseParts = undefined;
+      // ACP runs tools without CoreToolScheduler's truncation guard. Reject
+      // the whole attempt before any caller can execute repaired arguments.
+      throw new InvalidStreamError(
+        'Model response contained incomplete or invalid tool arguments.',
+        toolCallsTruncated || choice.finish_reason === 'length'
+          ? 'MALFORMED_TOOL_CALL_MAX_TOKENS'
+          : 'MALFORMED_TOOL_CALL',
+      );
+    }
+
+    if (
+      choice.finish_reason &&
+      structuredReasoning &&
+      !requestContext.hasVisibleContent &&
+      completedToolCalls.length === 0
+    ) {
+      throw new InvalidStreamError(
+        'Model response ended without final content or a tool call.',
+        choice.finish_reason === 'length'
+          ? 'NO_RESPONSE_TEXT_MAX_TOKENS'
+          : 'NO_RESPONSE_TEXT',
       );
     }
 
@@ -1856,13 +1911,6 @@ export function convertOpenAIChunkToLlm(
       }
     }
 
-    // If tool call JSON was truncated, override to "length" so downstream
-    // (turn.ts) correctly sets wasOutputTruncated=true.
-    const effectiveFinishReason =
-      toolCallsTruncated && choice.finish_reason !== 'length'
-        ? 'length'
-        : choice.finish_reason;
-
     // Only include finishReason key if finish_reason is present
     const candidate: Candidate = {
       content: {
@@ -1872,10 +1920,8 @@ export function convertOpenAIChunkToLlm(
       index: 0,
       safetyRatings: [],
     };
-    if (effectiveFinishReason) {
-      candidate.finishReason = mapOpenAIFinishReasonToLlm(
-        effectiveFinishReason,
-      );
+    if (choice.finish_reason) {
+      candidate.finishReason = mapOpenAIFinishReasonToLlm(choice.finish_reason);
     }
     response.candidates = [candidate];
   } else {

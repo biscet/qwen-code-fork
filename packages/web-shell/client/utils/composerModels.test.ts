@@ -6,10 +6,62 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  findConfiguredComposerModel,
   isHiddenQwenOAuthModelAlias,
   isHiddenQwenOAuthModelValue,
   isStandaloneModelPickerUnavailable,
 } from './composerModels';
+
+describe('findConfiguredComposerModel', () => {
+  const previous = {
+    id: 'qwen-route:v1:old',
+    label: 'Old label',
+    authType: 'openai',
+    baseModelId: 'qwen',
+    baseUrl: 'https://one.example/v1',
+    registryBaseUrl: null,
+  };
+  const updated = { ...previous, id: 'qwen-route:v1:new', label: 'New label' };
+
+  it('matches a renamed opaque selector by its exact configured route', () => {
+    expect(
+      findConfiguredComposerModel(
+        { id: previous.id, label: previous.label },
+        [previous],
+        [updated],
+      ),
+    ).toBe(updated);
+  });
+
+  it.each([
+    { authType: 'anthropic' },
+    { baseModelId: 'another-model' },
+    { baseUrl: 'https://two.example/v1' },
+    { registryBaseUrl: 'https://one.example/v1' },
+    { envKey: 'SECOND_ROUTE' },
+  ])('does not match another route: %j', (difference) => {
+    expect(
+      findConfiguredComposerModel(
+        previous,
+        [previous],
+        [{ ...updated, ...difference }],
+      ),
+    ).toBeUndefined();
+  });
+
+  it('leaves unknown and ambiguous routes unchanged', () => {
+    expect(
+      findConfiguredComposerModel(previous, [], [updated]),
+    ).toBeUndefined();
+    expect(
+      findConfiguredComposerModel(
+        previous,
+        [previous],
+        [updated, { ...updated, id: 'qwen-route:v1:other' }],
+      ),
+    ).toBeUndefined();
+  });
+});
 
 describe('isHiddenQwenOAuthModelAlias', () => {
   it('hides only the built-in Qwen OAuth coder alias', () => {

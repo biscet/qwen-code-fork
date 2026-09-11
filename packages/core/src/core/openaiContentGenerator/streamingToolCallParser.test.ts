@@ -1222,7 +1222,7 @@ describe('StreamingToolCallParser', () => {
   describe('hasInvalidToolCallArguments', () => {
     it.each([
       ['', false],
-      ['   ', true],
+      ['   ', false],
       ['{"path":"a.ts"}', false],
       ['{bad}', true],
       ['null', true],

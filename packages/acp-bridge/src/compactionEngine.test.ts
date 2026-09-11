@@ -397,6 +397,87 @@ describe('TurnBoundaryCompactionEngine', () => {
   });
 
   describe('tool call folding', () => {
+    it('clears a discarded preparation when a retried tool reuses its ID', () => {
+      const engine = new TurnBoundaryCompactionEngine();
+      engine.ingest(
+        makeToolCall(1, 'reused', 'pending', {
+          rawInput: {},
+          _meta: { phase: 'preparing', toolName: 'run_shell_command' },
+        }),
+      );
+      engine.ingest(
+        makeToolCallUpdate(2, 'reused', 'failed', {
+          content: [],
+          _meta: { phase: 'preparing', preparationDiscarded: true },
+        }),
+      );
+      engine.ingest(
+        makeToolCall(3, 'reused', 'pending', {
+          _meta: { phase: 'preparing' },
+        }),
+      );
+      engine.ingest(
+        makeToolCallUpdate(4, 'reused', 'in_progress', {
+          rawInput: { command: 'pwd' },
+        }),
+      );
+      engine.ingest(
+        makeToolCallUpdate(5, 'reused', 'completed', {
+          rawOutput: { output: '/tmp' },
+        }),
+      );
+      engine.ingest(makeTurnComplete(6));
+
+      expect(engine.snapshot().compactedTurns[0]?.data).toEqual({
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'reused',
+          status: 'completed',
+          rawInput: { command: 'pwd' },
+          rawOutput: { output: '/tmp' },
+          content: [],
+          _meta: { phase: 'preparing', toolName: 'run_shell_command' },
+        },
+      });
+    });
+
+    it.each(['in_progress', 'completed', 'failed'])(
+      'preserves a real %s tool when a stale preparation is discarded',
+      (status) => {
+        const engine = new TurnBoundaryCompactionEngine();
+        const realTool = makeToolCall(1, 'real', status, {
+          rawInput: { command: 'pwd' },
+          rawOutput: { output: '/tmp' },
+        });
+        engine.ingest(realTool);
+        engine.ingest(
+          makeToolCallUpdate(2, 'real', 'failed', {
+            content: [],
+            _meta: { phase: 'preparing', preparationDiscarded: true },
+          }),
+        );
+        engine.ingest(makeTurnComplete(3));
+        expect(engine.snapshot().compactedTurns[0]).toEqual(realTool);
+      },
+    );
+
+    it('retains a discarded pending preparation marker for replay', () => {
+      const engine = new TurnBoundaryCompactionEngine();
+      engine.ingest(makeToolCall(1, 'discarded', 'pending'));
+      engine.ingest(
+        makeToolCallUpdate(2, 'discarded', 'failed', {
+          _meta: { phase: 'preparing', preparationDiscarded: true },
+        }),
+      );
+      engine.ingest(makeTurnComplete(3));
+      expect(engine.snapshot().compactedTurns[0]?.data).toMatchObject({
+        update: {
+          status: 'failed',
+          _meta: { preparationDiscarded: true },
+        },
+      });
+    });
+
     it('folds tool_call + tool_call_updates into single final-state event', () => {
       const engine = new TurnBoundaryCompactionEngine();
       engine.ingest(makeTextChunk(1, 'Let me check'));

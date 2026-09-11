@@ -10548,68 +10548,88 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
     }
   });
 
-  it('switches configured alias thinking and effort through the chat ACP option', async () => {
-    const sessionId = 'configured-alias-reasoning-session';
-    const innerConfig = await setupSessionMocks(sessionId);
-    const generation: {
-      reasoning?: false | { effort?: string };
-      samplingParams: Record<string, unknown>;
-    } = {
-      reasoning: { effort: 'medium' },
-      samplingParams: {
-        reasoning_effort: 'medium',
-        chat_template_kwargs: {
-          enable_thinking: true,
+  it.each([false, true])(
+    'switches configured alias thinking and effort through the chat ACP option: opaque=%s',
+    async (opaque) => {
+      const sessionId = 'configured-alias-reasoning-session';
+      const innerConfig = await setupSessionMocks(sessionId);
+      const generation: {
+        reasoning?: false | { effort?: string };
+        samplingParams: Record<string, unknown>;
+      } = {
+        reasoning: { effort: 'medium' },
+        samplingParams: {
           reasoning_effort: 'medium',
-          preserve_thinking: true,
+          chat_template_kwargs: {
+            enable_thinking: true,
+            reasoning_effort: 'medium',
+            preserve_thinking: true,
+          },
         },
-      },
-    };
-    innerConfig.getModel = vi.fn().mockReturnValue('local-coder');
-    innerConfig.getContentGeneratorConfig = vi.fn(() => generation);
-    innerConfig.getReasoningEffort = vi.fn(() =>
-      generation.reasoning ? generation.reasoning.effort : undefined,
-    );
-    const { agent, agentPromise } = await bootAcpAgent();
-    try {
-      const session = (await agent.newSession({
-        cwd: '/tmp',
-        mcpServers: [],
-      })) as { configOptions?: unknown };
-      expect(session.configOptions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: 'reasoning_effort',
-            currentValue: 'medium',
-          }),
-        ]),
+      };
+      innerConfig.getModel = vi.fn().mockReturnValue('local-coder');
+      if (opaque) {
+        innerConfig.getAuthType = vi.fn().mockReturnValue('openai');
+        innerConfig.getCurrentModelRegistryBaseUrl = vi
+          .fn()
+          .mockReturnValue('https://one.example/v1');
+        innerConfig.getAllConfiguredModels = vi.fn().mockReturnValue(
+          ['one', 'two'].map((name) => ({
+            id: 'local-coder',
+            label: name,
+            authType: 'openai',
+            baseUrl: `https://${name}.example/v1`,
+            registryBaseUrl: `https://${name}.example/v1`,
+          })),
+        );
+      }
+      innerConfig.getContentGeneratorConfig = vi.fn(() => generation);
+      innerConfig.getReasoningEffort = vi.fn(() =>
+        generation.reasoning ? generation.reasoning.effort : undefined,
       );
-      for (const value of ['low', 'none', 'xhigh']) {
-        const result = (await agent.setSessionConfigOption({
-          sessionId,
-          configId: 'reasoning_effort',
-          value,
-        })) as SetSessionConfigOptionResponse;
-        expect(result.configOptions).toEqual(
+      const { agent, agentPromise } = await bootAcpAgent();
+      try {
+        const session = (await agent.newSession({
+          cwd: '/tmp',
+          mcpServers: [],
+        })) as { configOptions?: unknown };
+        expect(session.configOptions).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               id: 'reasoning_effort',
-              currentValue: value,
+              currentValue: 'medium',
             }),
           ]),
         );
-        expect(generation.reasoning).toEqual(
-          value === 'none' ? false : { effort: value },
+        for (const value of ['low', 'none', 'xhigh']) {
+          const result = (await agent.setSessionConfigOption({
+            sessionId,
+            configId: 'reasoning_effort',
+            value,
+          })) as SetSessionConfigOptionResponse;
+          expect(result.configOptions).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                id: 'reasoning_effort',
+                currentValue: value,
+              }),
+            ]),
+          );
+          expect(generation.reasoning).toEqual(
+            value === 'none' ? false : { effort: value },
+          );
+        }
+        expect(generation.samplingParams['chat_template_kwargs']).toMatchObject(
+          {
+            preserve_thinking: true,
+          },
         );
+      } finally {
+        mockConnectionState.resolve();
+        await agentPromise;
       }
-      expect(generation.samplingParams['chat_template_kwargs']).toMatchObject({
-        preserve_thinking: true,
-      });
-    } finally {
-      mockConnectionState.resolve();
-      await agentPromise;
-    }
-  });
+    },
+  );
 
   it('projects qwen3.8-max reasoning controls through one ACP option', async () => {
     const sessionId = 'qwen38-reasoning-session';
@@ -11014,7 +11034,7 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
 
   it.each([
     { modelId: 'qwen-plus', value: 'high', opaque: false },
-    { modelId: 'qwen3.8-max', value: 'medium', opaque: true },
+    { modelId: 'qwen-plus', value: 'medium', opaque: true },
   ])(
     'hides and rejects unsupported reasoning for $modelId with opaque=$opaque',
     async ({ modelId, value, opaque }) => {

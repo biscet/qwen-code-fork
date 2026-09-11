@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const runSideQueryMock = vi.fn();
+const resolveForModelMock = vi.fn();
 const debugLoggerMock = vi.hoisted(() => ({
   debug: vi.fn(),
   warn: vi.fn(),
@@ -24,12 +25,14 @@ import {
   classifyAction,
   sanitizeClassifierReason,
   STAGE1_TIMEOUT_MS,
+  STAGE1_THINKING_TIMEOUT_MS,
   STAGE2_TIMEOUT_MS,
   type ClassifierInput,
 } from './classifier.js';
 import type { Config } from '../config/config.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
 import { expectWithinLatencyBudget } from '../test-utils/latency-budget.js';
+import { DEFAULT_QWEN_MODEL } from '../utils/default-qwen-model.js';
 
 function makeConfig(
   autoModeSettings: ReturnType<Config['getAutoModeSettings']> = {},
@@ -37,6 +40,8 @@ function makeConfig(
   return {
     getFastModel: () => 'qwen-turbo-test',
     getModel: () => 'qwen-max-test',
+    getBaseLlmClient: () => ({ resolveForModel: resolveForModelMock }),
+    getContentGeneratorConfig: () => ({ thinkingMandatory: false }),
     getAutoModeSettings: () => autoModeSettings,
     getToolRegistry: () =>
       ({ getTool: () => undefined }) as unknown as ToolRegistry,
@@ -56,6 +61,9 @@ function makeInput(over: Partial<ClassifierInput> = {}): ClassifierInput {
 
 beforeEach(() => {
   runSideQueryMock.mockReset();
+  resolveForModelMock
+    .mockReset()
+    .mockResolvedValue({ contentGeneratorConfig: {} });
   debugLoggerMock.debug.mockReset();
   debugLoggerMock.warn.mockReset();
 });
@@ -192,6 +200,18 @@ describe('classifyAction — stage 1 escalates to stage 2', () => {
 });
 
 describe('classifyAction — unavailable on stage 1 failure', () => {
+  it('fails closed when resolving the stage 1 generator throws', async () => {
+    resolveForModelMock.mockRejectedValueOnce(new Error('Model unavailable'));
+
+    const result = await classifyAction(makeInput());
+
+    expect(result.shouldBlock).toBe(true);
+    expect(result.unavailable).toBe(true);
+    expect(result.stage).toBe('fast');
+    expect(result.reason).toBe('Classifier stage 1 unavailable');
+    expect(runSideQueryMock).not.toHaveBeenCalled();
+  });
+
   it('returns unavailable=true when stage 1 throws an API error', async () => {
     runSideQueryMock.mockRejectedValueOnce(new Error('API 500'));
     const result = await classifyAction(makeInput());
@@ -252,60 +272,123 @@ describe('classifyAction — unavailable on stage 2 failure', () => {
 });
 
 describe('classifier configuration', () => {
-  it('uses configured stage timeouts when provided', async () => {
-    const timeoutSpy = vi
-      .spyOn(AbortSignal, 'timeout')
-      .mockImplementation(() => new AbortController().signal);
-    runSideQueryMock
-      .mockResolvedValueOnce({ shouldBlock: true })
-      .mockResolvedValueOnce({ thinking: 't', shouldBlock: false, reason: '' });
-
-    await classifyAction(
-      makeInput({
-        config: makeConfig({
-          classifier: {
-            timeouts: {
-              stage1Ms: 12_345,
-              stage2Ms: 67_890,
-            },
-          },
-        }),
-      }),
-    );
-
-    expect(timeoutSpy).toHaveBeenNthCalledWith(1, 12_345);
-    expect(timeoutSpy).toHaveBeenNthCalledWith(2, 67_890);
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(0);
   });
 
-  it('falls back when configured stage timeouts are too low', async () => {
+  it.each([false, true])(
+    'uses configured stage timeouts when mandatory thinking is %s',
+    async (thinkingMandatory) => {
+      resolveForModelMock.mockResolvedValueOnce({
+        contentGeneratorConfig: { thinkingMandatory },
+      });
+      const timeoutSpy = vi
+        .spyOn(AbortSignal, 'timeout')
+        .mockImplementation(() => new AbortController().signal);
+      runSideQueryMock
+        .mockResolvedValueOnce({ shouldBlock: true })
+        .mockResolvedValueOnce({
+          thinking: 't',
+          shouldBlock: false,
+          reason: '',
+        });
+
+      await classifyAction(
+        makeInput({
+          config: makeConfig({
+            classifier: {
+              timeouts: {
+                stage1Ms: 12_345,
+                stage2Ms: 67_890,
+              },
+            },
+          }),
+        }),
+      );
+
+      expect(timeoutSpy).toHaveBeenNthCalledWith(1, 12_345);
+      expect(timeoutSpy).toHaveBeenNthCalledWith(2, 67_890);
+    },
+  );
+
+  it.each([false, true])(
+    'falls back for too-low timeouts when mandatory thinking is %s',
+    async (thinkingMandatory) => {
+      resolveForModelMock.mockResolvedValueOnce({
+        contentGeneratorConfig: { thinkingMandatory },
+      });
+      const timeoutSpy = vi
+        .spyOn(AbortSignal, 'timeout')
+        .mockImplementation(() => new AbortController().signal);
+      runSideQueryMock
+        .mockResolvedValueOnce({ shouldBlock: true })
+        .mockResolvedValueOnce({
+          thinking: 't',
+          shouldBlock: false,
+          reason: '',
+        });
+
+      await classifyAction(
+        makeInput({
+          config: makeConfig({
+            classifier: {
+              timeouts: {
+                stage1Ms: 1,
+                stage2Ms: 999,
+              },
+            },
+          }),
+        }),
+      );
+
+      const stage1Timeout = thinkingMandatory
+        ? STAGE1_THINKING_TIMEOUT_MS
+        : STAGE1_TIMEOUT_MS;
+      expect(timeoutSpy).toHaveBeenNthCalledWith(1, stage1Timeout);
+      expect(timeoutSpy).toHaveBeenNthCalledWith(2, STAGE2_TIMEOUT_MS);
+      expect(debugLoggerMock.warn).toHaveBeenCalledWith(
+        `Classifier timeout 1ms below 1000ms floor, using default ${stage1Timeout}ms`,
+      );
+      expect(debugLoggerMock.warn).toHaveBeenCalledWith(
+        `Classifier timeout 999ms below 1000ms floor, using default ${STAGE2_TIMEOUT_MS}ms`,
+      );
+    },
+  );
+
+  it('counts model resolution time against an explicit stage 1 deadline', async () => {
     const timeoutSpy = vi
       .spyOn(AbortSignal, 'timeout')
       .mockImplementation(() => new AbortController().signal);
-    runSideQueryMock
-      .mockResolvedValueOnce({ shouldBlock: true })
-      .mockResolvedValueOnce({ thinking: 't', shouldBlock: false, reason: '' });
+    resolveForModelMock.mockImplementationOnce(async () => {
+      vi.mocked(Date.now).mockReturnValue(750);
+      return { contentGeneratorConfig: { thinkingMandatory: true } };
+    });
+    runSideQueryMock.mockResolvedValueOnce({ shouldBlock: false });
 
     await classifyAction(
       makeInput({
-        config: makeConfig({
-          classifier: {
-            timeouts: {
-              stage1Ms: 1,
-              stage2Ms: 999,
-            },
-          },
-        }),
+        config: makeConfig({ classifier: { timeouts: { stage1Ms: 2000 } } }),
       }),
     );
 
-    expect(timeoutSpy).toHaveBeenNthCalledWith(1, STAGE1_TIMEOUT_MS);
-    expect(timeoutSpy).toHaveBeenNthCalledWith(2, STAGE2_TIMEOUT_MS);
-    expect(debugLoggerMock.warn).toHaveBeenCalledWith(
-      `Classifier timeout 1ms below 1000ms floor, using default ${STAGE1_TIMEOUT_MS}ms`,
+    expect(timeoutSpy).toHaveBeenCalledWith(1250);
+  });
+
+  it('fails closed if model resolution exhausts the stage 1 deadline', async () => {
+    resolveForModelMock.mockImplementationOnce(async () => {
+      vi.mocked(Date.now).mockReturnValue(2000);
+      return { contentGeneratorConfig: { thinkingMandatory: true } };
+    });
+
+    const result = await classifyAction(
+      makeInput({
+        config: makeConfig({ classifier: { timeouts: { stage1Ms: 2000 } } }),
+      }),
     );
-    expect(debugLoggerMock.warn).toHaveBeenCalledWith(
-      `Classifier timeout 999ms below 1000ms floor, using default ${STAGE2_TIMEOUT_MS}ms`,
-    );
+
+    expect(result.shouldBlock).toBe(true);
+    expect(result.unavailable).toBe(true);
+    expect(runSideQueryMock).not.toHaveBeenCalled();
   });
 
   it('uses temperature 0 and max_output_tokens=256 with thinking disabled for stage 1', async () => {
@@ -367,11 +450,58 @@ describe('classifier configuration', () => {
     expect(stage2.config?.thinkingConfig?.includeThoughts).toBe(true);
   });
 
-  it('does not pin a model — defaults to the fast model via sideQuery', async () => {
+  it.each([
+    ['fast-test', false, true, 'fast-test', 2048],
+    ['fast-test', true, false, 'fast-test', 256],
+    ['fast-test', true, undefined, 'fast-test', 256],
+    [undefined, true, true, 'qwen-max-test', 2048],
+    [undefined, false, false, 'qwen-max-test', 256],
+  ])(
+    'uses the resolved generator budget: fast=%s mainMandatory=%s resolvedMandatory=%s',
+    async (fastModel, mainMandatory, resolvedMandatory, model, tokens) => {
+      const timeoutSpy = vi
+        .spyOn(AbortSignal, 'timeout')
+        .mockImplementation(() => new AbortController().signal);
+      const config = makeConfig();
+      vi.spyOn(config, 'getFastModel').mockReturnValue(fastModel);
+      vi.spyOn(config, 'getContentGeneratorConfig').mockReturnValue({
+        ...config.getContentGeneratorConfig(),
+        thinkingMandatory: mainMandatory,
+      });
+      resolveForModelMock.mockResolvedValueOnce({
+        contentGeneratorConfig: { thinkingMandatory: resolvedMandatory },
+      });
+      runSideQueryMock.mockResolvedValueOnce({ shouldBlock: false });
+
+      await classifyAction(makeInput({ config }));
+
+      expect(resolveForModelMock).toHaveBeenCalledWith(model);
+      expect(timeoutSpy).toHaveBeenCalledWith(
+        resolvedMandatory === true
+          ? STAGE1_THINKING_TIMEOUT_MS
+          : STAGE1_TIMEOUT_MS,
+      );
+      expect(runSideQueryMock).toHaveBeenCalledWith(
+        config,
+        expect.objectContaining({
+          model,
+          config: expect.objectContaining({ maxOutputTokens: tokens }),
+        }),
+      );
+    },
+  );
+
+  it('pins the default side-query model when neither model is configured', async () => {
     runSideQueryMock.mockResolvedValueOnce({ shouldBlock: false });
-    await classifyAction(makeInput());
+    const config = {
+      ...makeConfig(),
+      getFastModel: undefined,
+      getModel: () => undefined,
+    } as unknown as Config;
+    await classifyAction(makeInput({ config }));
     const opts = runSideQueryMock.mock.calls[0]?.[1] as { model?: string };
-    expect(opts.model).toBeUndefined();
+    expect(resolveForModelMock).toHaveBeenCalledWith(DEFAULT_QWEN_MODEL);
+    expect(opts.model).toBe(DEFAULT_QWEN_MODEL);
   });
 });
 

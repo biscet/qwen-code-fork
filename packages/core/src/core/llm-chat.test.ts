@@ -28,6 +28,8 @@ import { getToolCallFingerprint } from './toolCallIdUtils.js';
 import { classifyRetryError } from '../utils/retryErrorClassification.js';
 import { StreamContentError } from './openaiContentGenerator/pipeline.js';
 import { OpenAIContentGenerator } from './openaiContentGenerator/openaiContentGenerator.js';
+import { OpenAIContentConverter } from './openaiContentGenerator/converter.js';
+import { StreamingToolCallParser } from './openaiContentGenerator/streamingToolCallParser.js';
 import { EnhancedErrorHandler } from './openaiContentGenerator/errorHandler.js';
 import { APIConnectionTimeoutError } from 'openai';
 import type { OpenAICompatibleProvider } from './openaiContentGenerator/provider/index.js';
@@ -3077,6 +3079,111 @@ describe('LlmChat', async () => {
             ),
         ),
       ).toBe(true);
+    });
+
+    it('escalates a truncated tool call rejected before the finish chunk', async () => {
+      vi.useFakeTimers();
+      try {
+        const functionCall = {
+          id: 'call_complete',
+          name: 'run_shell_command',
+          args: { command: 'echo complete' },
+        };
+        vi.mocked(mockContentGenerator.generateContentStream)
+          .mockResolvedValueOnce(
+            (async function* () {
+              yield {
+                candidates: [
+                  {
+                    content: {
+                      parts: [{ thought: true, text: 'Preparing a command.' }],
+                    },
+                  },
+                ],
+              } as GenerateContentResponse;
+              throw new InvalidStreamError(
+                'Model response contained a truncated tool call.',
+                'MALFORMED_TOOL_CALL_MAX_TOKENS',
+              );
+            })(),
+          )
+          .mockResolvedValueOnce(
+            streamResponse(stopResponse([{ functionCall }])),
+          );
+
+        const stream = await chat.sendMessageStream(
+          'gemini-pro',
+          { message: 'Run the command.' },
+          'prompt-truncated-tool-call',
+        );
+        const events = await collectStreamWithFakeTimers(stream);
+        const calls = vi.mocked(mockContentGenerator.generateContentStream).mock
+          .calls;
+
+        expect(calls).toHaveLength(2);
+        expect(calls[1]![0].config?.maxOutputTokens).toBeGreaterThan(
+          calls[0]![0].config?.maxOutputTokens ?? 0,
+        );
+        expect(events).toContainEqual({
+          type: StreamEventType.RETRY,
+          maxOutputTokensEscalated: calls[1]![0].config?.maxOutputTokens,
+        });
+        expect(chat.getHistory()).toEqual([
+          { role: 'user', parts: [{ text: 'Run the command.' }] },
+          { role: 'model', parts: [{ functionCall }] },
+        ]);
+        expect(
+          events.flatMap((event) =>
+            event.type === StreamEventType.CHUNK
+              ? (event.value.functionCalls ?? [])
+              : [],
+          ),
+        ).toEqual([functionCall]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('bounds truncated tool-call retries without increasing a user-set token cap', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue({
+          authType: AuthType.USE_GEMINI,
+          model: 'test-model',
+          samplingParams: { max_tokens: 1024 },
+        });
+        vi.mocked(
+          mockContentGenerator.generateContentStream,
+        ).mockImplementation(async () =>
+          (async function* () {
+            yield* [];
+            throw new InvalidStreamError(
+              'Model response contained a truncated tool call.',
+              'MALFORMED_TOOL_CALL_MAX_TOKENS',
+            );
+          })(),
+        );
+
+        const stream = await chat.sendMessageStream(
+          'gemini-pro',
+          { message: 'Run the command.' },
+          'prompt-truncated-tool-call-user-cap',
+        );
+        await expectStreamExhaustion(stream, {
+          type: 'MALFORMED_TOOL_CALL_MAX_TOKENS',
+        });
+        const calls = vi.mocked(mockContentGenerator.generateContentStream).mock
+          .calls;
+        expect(calls).toHaveLength(5);
+        expect(
+          calls.map(([request]) => request.config?.maxOutputTokens),
+        ).toEqual([1024, 1024, 1024, 1024, 1024]);
+        expect(chat.getHistory()).toEqual([
+          { role: 'user', parts: [{ text: 'Run the command.' }] },
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should escalate thought-only MAX_TOKENS responses after a tool result', async () => {
@@ -12519,6 +12626,290 @@ describe('LlmChat', async () => {
     expect(modelTurn!.parts![0]!.text).not.toContain(
       'This valid part should be discarded',
     );
+  });
+
+  describe('authoritative structured reasoning route', () => {
+    it.each([false, true])(
+      'preserves reasoning-only output-limit recovery with an explicit cap: %s',
+      async (explicitCap) => {
+        vi.useFakeTimers();
+        try {
+          vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue({
+            model: 'test-model',
+            extra_body: { reasoning_format: 'qwen' },
+            ...(explicitCap ? { samplingParams: { max_tokens: 1024 } } : {}),
+          });
+          let attempts = 0;
+          vi.mocked(
+            mockContentGenerator.generateContentStream,
+          ).mockImplementation(async () => {
+            if (++attempts > 1 && !explicitCap)
+              return streamResponse(stopResponse([{ text: 'Completed.' }]));
+            return (async function* () {
+              const context = {
+                model: 'test-model',
+                modalities: {},
+                startTime: 0,
+                toolCallParser: new StreamingToolCallParser(),
+                responseParsingOptions: { structuredReasoning: true },
+              };
+              for (const finishReason of [null, 'length'] as const) {
+                yield OpenAIContentConverter.convertOpenAIChunkToLlm(
+                  {
+                    id: 'reasoning-limit',
+                    object: 'chat.completion.chunk',
+                    created: 0,
+                    model: 'test-model',
+                    choices: [
+                      {
+                        index: 0,
+                        delta: finishReason
+                          ? {}
+                          : { reasoning: 'Still thinking.' },
+                        finish_reason: finishReason,
+                        logprobs: null,
+                      },
+                    ],
+                  } as OpenAI.Chat.ChatCompletionChunk,
+                  context,
+                );
+              }
+            })();
+          });
+          const stream = await chat.sendMessageStream(
+            'test-model',
+            { message: 'Finish the analysis.' },
+            'structured-reasoning-output-limit',
+          );
+          if (explicitCap) {
+            await expectStreamExhaustion(stream, {
+              type: 'NO_RESPONSE_TEXT_MAX_TOKENS',
+            });
+          } else {
+            const events = await collectStreamWithFakeTimers(stream);
+            expect(events).toContainEqual({
+              type: StreamEventType.RETRY,
+              maxOutputTokensEscalated: expect.any(Number),
+            });
+            expect(chat.getLastModelMessageText()).toBe('Completed.');
+          }
+          const calls = vi.mocked(mockContentGenerator.generateContentStream)
+            .mock.calls;
+          expect(calls).toHaveLength(explicitCap ? 5 : 2);
+          if (explicitCap) {
+            expect(
+              calls.map(([request]) => request.config?.maxOutputTokens),
+            ).toEqual([1024, 1024, 1024, 1024, 1024]);
+          } else {
+            expect(calls[1]![0].config?.maxOutputTokens).toBeGreaterThan(
+              calls[0]![0].config?.maxOutputTokens ?? 0,
+            );
+          }
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+
+    it.each([
+      '<analysis>literal</analysis><summary>example</summary>',
+      '<tool_call><function=read_file><parameter=path>example.txt</parameter></function></tool_call>',
+    ])('preserves literal final content and history %j', async (content) => {
+      vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue({
+        model: 'test-model',
+        extra_body: { reasoning_format: 'qwen' },
+      });
+      vi.mocked(
+        mockContentGenerator.generateContentStream,
+      ).mockResolvedValueOnce(
+        streamResponse(
+          stopResponse([
+            { thought: true, text: 'Explain literal protocol syntax.' },
+            { text: content },
+          ]),
+        ),
+      );
+
+      const stream = await chat.sendMessageStream(
+        'test-model',
+        { message: 'quote the syntax' },
+        'structured-literal',
+      );
+      const events: StreamEvent[] = [];
+      for await (const event of stream) events.push(event);
+      const parts = events.flatMap((event) =>
+        event.type === StreamEventType.CHUNK
+          ? (event.value.candidates?.[0]?.content?.parts ?? [])
+          : [],
+      );
+
+      expect(
+        parts
+          .filter((part) => !part.thought)
+          .map((part) => part.text)
+          .join(''),
+      ).toBe(content);
+      expect(parts.some((part) => part.functionCall)).toBe(false);
+      expect(chat.getLastModelMessageText()).toBe(content);
+      expect(mockContentGenerator.generateContentStream).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it.each([true, false])(
+      'uses the exact route contract instead of the primary contract (%s)',
+      async (structured) => {
+        vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue({
+          model: 'primary-model',
+          extra_body: { reasoning_format: structured ? 'auto' : 'qwen' },
+        });
+        const content = '<analysis>literal</analysis>';
+        const generateContentStream = vi
+          .fn()
+          .mockResolvedValueOnce(
+            streamResponse(stopResponse([{ text: content }])),
+          )
+          .mockResolvedValueOnce(
+            streamResponse(stopResponse([{ text: 'compatibility retry' }])),
+          );
+        const resolveForModel = vi.fn().mockResolvedValue({
+          model: 'exact-model',
+          contentGenerator: { ...mockContentGenerator, generateContentStream },
+          contentGeneratorConfig: {
+            model: 'exact-model',
+            extra_body: { reasoning_format: structured ? 'qwen' : 'auto' },
+          },
+        });
+        vi.mocked(mockConfig.getBaseLlmClient).mockReturnValue({
+          resolveForModel,
+        } as unknown as ReturnType<typeof mockConfig.getBaseLlmClient>);
+
+        const stream = await chat.sendMessageStream(
+          'openai:exact-model\0https://exact.example/v1\0',
+          { message: 'quote the syntax' },
+          'structured-exact-route',
+        );
+        for await (const _ of stream) {
+          /* consume */
+        }
+
+        expect(generateContentStream).toHaveBeenCalledTimes(structured ? 1 : 2);
+        expect(chat.getLastModelMessageText()).toBe(
+          structured ? content : 'compatibility retry',
+        );
+        expect(
+          mockContentGenerator.generateContentStream,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([true, false])(
+      'uses the fallback contract instead of the primary contract (%s)',
+      async (structured) => {
+        vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue({
+          model: 'test-model',
+          maxRetries: 0,
+          extra_body: { reasoning_format: structured ? 'auto' : 'qwen' },
+        });
+        vi.mocked(mockConfig.getModelFallbacks).mockReturnValue([
+          'fallback-model',
+        ]);
+        const capacity = Object.assign(new Error('temporarily unavailable'), {
+          status: 503,
+        });
+        vi.mocked(
+          mockContentGenerator.generateContentStream,
+        ).mockRejectedValueOnce(capacity);
+        const content = '<analysis>literal</analysis>';
+        const generateContentStream = vi
+          .fn()
+          .mockResolvedValueOnce(
+            streamResponse(stopResponse([{ text: content }])),
+          );
+        const resolveForModel = vi.fn().mockResolvedValue({
+          model: 'fallback-model',
+          contentGenerator: { ...mockContentGenerator, generateContentStream },
+          contentGeneratorConfig: {
+            model: 'fallback-model',
+            extra_body: { reasoning_format: structured ? 'qwen' : 'auto' },
+          },
+        });
+        vi.mocked(mockConfig.getBaseLlmClient).mockReturnValue({
+          resolveForModel,
+        } as unknown as ReturnType<typeof mockConfig.getBaseLlmClient>);
+        const stream = await chat.sendMessageStream(
+          'test-model',
+          { message: 'quote the syntax' },
+          'structured-fallback-route',
+        );
+        const consume = async () => {
+          for await (const _ of stream) {
+            /* consume */
+          }
+        };
+        if (structured) {
+          await consume();
+          expect(chat.getLastModelMessageText()).toBe(content);
+        } else {
+          await expect(consume()).rejects.toMatchObject({
+            type: 'PROTOCOL_TAG_LEAK',
+          });
+        }
+        expect(generateContentStream).toHaveBeenCalledTimes(1);
+        expect(
+          mockContentGenerator.generateContentStream,
+        ).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('preserves reasoning-only abort as an error without final history', async () => {
+      vi.mocked(mockConfig.getContentGeneratorConfig).mockReturnValue({
+        model: 'test-model',
+        extra_body: { reasoning_format: 'qwen' },
+      });
+      const abort = Object.assign(new Error('cancelled'), {
+        name: 'AbortError',
+      });
+      vi.mocked(
+        mockContentGenerator.generateContentStream,
+      ).mockResolvedValueOnce(
+        (async function* () {
+          yield {
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: 'Still reasoning.', thought: true }],
+                },
+              },
+            ],
+          } as GenerateContentResponse;
+          throw abort;
+        })(),
+      );
+      const stream = await chat.sendMessageStream(
+        'test-model',
+        { message: 'continue' },
+        'structured-abort',
+      );
+      const parts: Part[] = [];
+      await expect(
+        (async () => {
+          for await (const event of stream) {
+            if (event.type === StreamEventType.CHUNK)
+              parts.push(
+                ...(event.value.candidates?.[0]?.content?.parts ?? []),
+              );
+          }
+        })(),
+      ).rejects.toBe(abort);
+      expect(parts.every((part) => part.thought)).toBe(true);
+      expect(
+        chat.getHistory().filter((content) => content.role === 'model'),
+      ).toEqual([]);
+      expect(mockContentGenerator.generateContentStream).toHaveBeenCalledTimes(
+        1,
+      );
+    });
   });
 
   it('discards a completed protocol-tagged response and retries before persistence', async () => {

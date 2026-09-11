@@ -308,6 +308,39 @@ describe('createWorkspaceProvidersStatusProvider', () => {
     expect(modelIds).not.toContain('voice-model(openai)');
   });
 
+  it('projects generic live-session reasoning for a configured Windows alias before creating a session', async () => {
+    const id = 'windows-lmstudio/windows-qwen35-9b';
+    const provider = createWorkspaceProvidersStatusProvider({ env: {} });
+    await writeUserSettings({
+      security: { auth: { selectedType: 'openai' } },
+      model: { name: id, reasoningEffort: 'xhigh' },
+      modelProviders: {
+        openai: [
+          { id, name: 'Qwen 3.8 27B', baseUrl: 'https://gateway.example/v1' },
+        ],
+      },
+    });
+    const result = await provider(workspace, false);
+    const alias = result.providers
+      .flatMap((entry) => entry.models)
+      .find((model) => model.baseModelId === id);
+    expect(alias?.configOptions).toMatchObject([
+      {
+        id: 'reasoning_effort',
+        currentValue: 'xhigh',
+        options: [
+          { value: 'none' },
+          { value: 'default' },
+          { value: 'low' },
+          { value: 'medium' },
+          { value: 'high' },
+          { value: 'xhigh' },
+          { value: 'max' },
+        ],
+      },
+    ]);
+  });
+
   it('projects configured alias thinking and effort before creating a session', async () => {
     const provider = createWorkspaceProvidersStatusProvider({ env: {} });
     await writeUserSettings({
@@ -557,41 +590,70 @@ describe('createWorkspaceProvidersStatusProvider', () => {
     ).toBe(settingsBefore);
   });
 
-  it('does not project reasoning preview onto opaque route models', async () => {
-    const provider = createWorkspaceProvidersStatusProvider({ env: {} });
-    await writeUserSettings({
-      security: { auth: { selectedType: 'openai' } },
-      model: {
-        name: 'qwen3.8-max',
-        baseUrl: 'https://one.example/v1',
-      },
-      modelProviders: {
-        openai: [
-          {
-            id: 'qwen3.8-max',
-            name: 'Qwen 3.8 Max One',
-            baseUrl: 'https://one.example/v1',
-          },
-          {
-            id: 'qwen3.8-max',
-            name: 'Qwen 3.8 Max Two',
-            baseUrl: 'https://two.example/v1',
-          },
-        ],
-      },
-    });
+  it.each(['https://one.example/v1', undefined])(
+    'projects reasoning previews from each opaque route endpoint before a session exists: %s',
+    async (firstBaseUrl) => {
+      const provider = createWorkspaceProvidersStatusProvider({ env: {} });
+      await writeUserSettings({
+        security: { auth: { selectedType: 'openai' } },
+        model: {
+          name: 'qwen3.8-max',
+          baseUrl: firstBaseUrl,
+          reasoningEffort: 'none',
+        },
+        modelProviders: {
+          openai: [
+            {
+              id: 'qwen3.8-max',
+              name: 'Qwen 3.8 Max One',
+              baseUrl: firstBaseUrl,
+              generationConfig: { thinkingMandatory: true },
+            },
+            {
+              id: 'qwen3.8-max',
+              name: 'Qwen 3.8 Max Two',
+              baseUrl: 'https://api.openai.com/v1',
+              generationConfig: { thinkingMandatory: false },
+            },
+          ],
+        },
+      });
 
-    const result = await provider(workspace, false);
-    const models = result.providers.flatMap((entry) => entry.models);
-    const routeModels = models.filter((model) =>
-      model.modelId.startsWith('qwen-route:v1:'),
-    );
+      const result = await provider(workspace, false);
+      const models = result.providers.flatMap((entry) => entry.models);
+      const routeModels = models.filter((model) =>
+        model.modelId.startsWith('qwen-route:v1:'),
+      );
 
-    expect(routeModels).toHaveLength(2);
-    expect(
-      routeModels.every((model) => model.configOptions === undefined),
-    ).toBe(true);
-  });
+      expect(routeModels).toHaveLength(2);
+      expect(
+        routeModels.find((model) => model.name === 'Qwen 3.8 Max One')
+          ?.configOptions,
+      ).toMatchObject([
+        {
+          id: 'reasoning_effort',
+          currentValue: 'xhigh',
+          options: [{ value: 'low' }, { value: 'medium' }, { value: 'xhigh' }],
+          _meta: { 'qwenCode/reasoning': { thinkingMandatory: true } },
+        },
+      ]);
+      expect(
+        routeModels.find((model) => model.name === 'Qwen 3.8 Max Two')
+          ?.configOptions,
+      ).toMatchObject([
+        {
+          id: 'reasoning_effort',
+          currentValue: 'none',
+          options: [
+            { value: 'none' },
+            { value: 'low' },
+            { value: 'medium' },
+            { value: 'xhigh' },
+          ],
+        },
+      ]);
+    },
+  );
 
   it('reports custom providerProtocol models under their resolved auth type', async () => {
     const provider = createWorkspaceProvidersStatusProvider({ env: {} });

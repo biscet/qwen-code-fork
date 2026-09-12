@@ -533,6 +533,7 @@ describe('Session', () => {
     isInitialized: ReturnType<typeof vi.fn>;
     refreshSystemInstruction: ReturnType<typeof vi.fn>;
     setTools: ReturnType<typeof vi.fn>;
+    flushMcpReminders: ReturnType<typeof vi.fn>;
     tryCompressChat: ReturnType<typeof vi.fn>;
     beginManagedAutoMemoryRecall: ReturnType<typeof vi.fn>;
     consumeManagedAutoMemoryRecall: ReturnType<typeof vi.fn>;
@@ -771,6 +772,7 @@ describe('Session', () => {
       isInitialized: vi.fn().mockReturnValue(true),
       refreshSystemInstruction: vi.fn().mockResolvedValue(undefined),
       setTools: vi.fn().mockResolvedValue(undefined),
+      flushMcpReminders: vi.fn(),
       tryCompressChat: vi.fn().mockResolvedValue({
         originalTokenCount: 0,
         newTokenCount: 0,
@@ -937,6 +939,7 @@ describe('Session', () => {
       endAutomaticActiveTodoWorkChain: vi.fn(),
       getActiveTodoWorkChainOwner: vi.fn((promptId: string) => promptId),
       assertCanStartTurn: vi.fn().mockResolvedValue(undefined),
+      waitForMcpReady: vi.fn().mockResolvedValue(undefined),
       getWorkingDir: vi.fn().mockReturnValue(process.cwd()),
       getProjectRoot: vi.fn().mockReturnValue('/repo'),
       // Folder trust gates the project `.qwen/loop.md`; default trusted (the
@@ -1078,6 +1081,115 @@ describe('Session', () => {
     mockToolRegistry = undefined as unknown as typeof mockToolRegistry;
     vi.restoreAllMocks();
     vi.clearAllTimers();
+  });
+
+  describe('MCP readiness before model requests', () => {
+    const prompt = {
+      sessionId: 'test-session-id',
+      prompt: [{ type: 'text' as const, text: 'Use Serena for example.ts' }],
+    };
+
+    it('waits for session discovery and publishes deferred MCP context before the first send', async () => {
+      let finishDiscovery!: () => void;
+      const discovery = new Promise<void>((resolve) => {
+        finishDiscovery = resolve;
+      });
+      vi.mocked(mockConfig.waitForMcpReady).mockReturnValue(discovery);
+      vi.mocked(mockChat.sendMessageStream).mockImplementation(async () =>
+        createEmptyStream(),
+      );
+
+      const pending = session.prompt(prompt);
+      await vi.waitFor(() =>
+        expect(mockConfig.waitForMcpReady).toHaveBeenCalledOnce(),
+      );
+      expect(mockChat.sendMessageStream).not.toHaveBeenCalled();
+      expect(mockLlmClient.flushMcpReminders).not.toHaveBeenCalled();
+
+      finishDiscovery();
+      await pending;
+
+      expect(mockLlmClient.flushMcpReminders).toHaveBeenCalledOnce();
+      expect(
+        mockLlmClient.flushMcpReminders.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        vi.mocked(mockChat.sendMessageStream).mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('cancels a prompt while discovery is pending without sending to the model', async () => {
+      vi.mocked(mockConfig.waitForMcpReady).mockReturnValue(
+        new Promise<void>(() => {}),
+      );
+      const pending = session.prompt(prompt);
+      await vi.waitFor(() =>
+        expect(mockConfig.waitForMcpReady).toHaveBeenCalledOnce(),
+      );
+
+      await session.cancelPendingPrompt();
+      await expect(pending).resolves.toEqual({ stopReason: 'cancelled' });
+      expect(mockChat.sendMessageStream).not.toHaveBeenCalled();
+      expect(mockLlmClient.flushMcpReminders).not.toHaveBeenCalled();
+    });
+
+    it('flushes later MCP changes on each new prompt', async () => {
+      vi.mocked(mockChat.sendMessageStream).mockImplementation(async () =>
+        createEmptyStream(),
+      );
+      await session.prompt(prompt);
+      await session.prompt(prompt);
+
+      expect(mockLlmClient.flushMcpReminders).toHaveBeenCalledTimes(2);
+      expect(
+        mockLlmClient.flushMcpReminders.mock.invocationCallOrder[1],
+      ).toBeLessThan(
+        vi.mocked(mockChat.sendMessageStream).mock.invocationCallOrder[1]!,
+      );
+    });
+
+    it('keeps MCP reminders queued while returning a tool result', async () => {
+      mockToolRegistry.getTool.mockReturnValue({
+        name: 'read_file',
+        kind: core.Kind.Read,
+        build: vi.fn().mockReturnValue({
+          params: { path: '/tmp/example.ts' },
+          getDefaultPermission: vi.fn().mockResolvedValue('allow'),
+          getDescription: vi.fn().mockReturnValue('Read file'),
+          toolLocations: vi.fn().mockReturnValue([]),
+          execute: vi.fn().mockResolvedValue({
+            llmContent: 'file contents',
+            returnDisplay: 'file contents',
+          }),
+        }),
+      });
+      mockChat.sendMessageStream = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createStreamWithChunks([
+            {
+              type: 'chunk' as const,
+              value: {
+                functionCalls: [
+                  {
+                    id: 'read-call',
+                    name: 'read_file',
+                    args: { path: '/tmp/example.ts' },
+                  },
+                ],
+              },
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(createEmptyStream());
+
+      await session.prompt(prompt);
+
+      expect(mockChat.sendMessageStream).toHaveBeenCalledTimes(2);
+      expect(mockLlmClient.flushMcpReminders).toHaveBeenCalledOnce();
+      const secondRequest = vi.mocked(mockChat.sendMessageStream).mock
+        .calls[1]?.[1] as { message: Part[] };
+      expect(secondRequest.message[0]?.functionResponse?.id).toBe('read-call');
+    });
   });
 
   it('captures the Session Workflow gate from settings at construction instead of tracking the live view', () => {
@@ -17009,6 +17121,7 @@ describe('Session', () => {
           sendMessageStream: vi.fn().mockResolvedValue(createEmptyStream()),
           addHistory: vi.fn(),
           getHistory: vi.fn().mockReturnValue([]),
+          peekLastHistoryEntry: vi.fn(),
           getHistoryShallow: vi.fn().mockReturnValue([]),
           getLastModelMessageText: vi.fn().mockReturnValue(''),
         } as unknown as LlmChat;
@@ -18137,6 +18250,7 @@ describe('Session', () => {
           sendMessageStream: vi.fn().mockResolvedValue(createEmptyStream()),
           addHistory: vi.fn(),
           getHistory: vi.fn().mockReturnValue([]),
+          peekLastHistoryEntry: vi.fn(),
           getHistoryShallow: vi.fn().mockReturnValue([]),
           getLastModelMessageText: vi.fn().mockReturnValue(''),
         } as unknown as LlmChat;
@@ -26367,68 +26481,78 @@ describe('Session', () => {
         });
       });
 
-      it('pauses without counting a Goal turn cancelled before the model request', async () => {
-        // `modelStarted` decides whether settlement records an iteration.
-        // A user cancel still pauses the Goal before that point; releasing
-        // the permit would mint another continuation and ignore the cancel.
-        // Flagging it at the top of the turn made everything between there
-        // and the send — prompt assembly, transcript writes, the abort check
-        // itself — count as model work, so a cancel landing in that window
-        // paused the Goal and charged it a turn it never took.
-        const permit: core.GoalTurnPermit = {
-          goalId: 'goal-1',
-          revision: 1,
-          turnId: 'turn-cancelled-early',
-        };
-        const turnKey = 'goal-runtime:turn-cancelled-early';
-        mockGoalRuntime.getSnapshot.mockReturnValue({
-          v: 2,
-          activity: 'running',
-          goal: {
+      it.each(['transcript', 'MCP discovery'])(
+        'pauses without counting a Goal turn cancelled during %s before the model request',
+        async (phase) => {
+          // `modelStarted` decides whether settlement records an iteration.
+          // A user cancel still pauses the Goal before that point; releasing
+          // the permit would mint another continuation and ignore the cancel.
+          // Flagging it at the top of the turn made everything between there
+          // and the send — prompt assembly, transcript writes, the abort check
+          // itself — count as model work, so a cancel landing in that window
+          // paused the Goal and charged it a turn it never took.
+          const permit: core.GoalTurnPermit = {
             goalId: 'goal-1',
             revision: 1,
-            objective: 'check weather',
-            status: 'active',
-            evidenceCursor: { recordId: 'cursor-1' },
-            turnCount: 0,
-            activeTimeMs: 0,
-            tokensUsed: 0,
-            createdAt: 1234,
-            updatedAt: 1234,
-          },
-        });
-        mockGoalRuntime.permitForTurn.mockImplementation((key: string) =>
-          key === turnKey ? permit : undefined,
-        );
-        mockChat.sendMessageStream = vi
-          .fn()
-          .mockResolvedValue(createEmptyStream());
-        // The runtime transcript write is the last awaited step before the
-        // turn reaches the model, which makes it the exact window this
-        // finding is about.
-        mockChatRecordingService.recordGoalRuntimeMessage.mockImplementation(
-          () => {
-            void session.cancelPendingPrompt();
-          },
-        );
-
-        await boundGoalHost!.startGoalTurn({
-          permit,
-          continuationContext: 'check weather',
-        });
-
-        await vi.waitFor(() => {
-          expect(mockGoalRuntime.dispatch).toHaveBeenCalledWith({
-            action: 'pause',
-            expectedGoalId: permit.goalId,
-            expectedRevision: permit.revision,
-            reason: GOAL_PAUSE_REASON_USER_INTERRUPT,
+            turnId: 'turn-cancelled-early',
+          };
+          const turnKey = 'goal-runtime:turn-cancelled-early';
+          mockGoalRuntime.getSnapshot.mockReturnValue({
+            v: 2,
+            activity: 'running',
+            goal: {
+              goalId: 'goal-1',
+              revision: 1,
+              objective: 'check weather',
+              status: 'active',
+              evidenceCursor: { recordId: 'cursor-1' },
+              turnCount: 0,
+              activeTimeMs: 0,
+              tokensUsed: 0,
+              createdAt: 1234,
+              updatedAt: 1234,
+            },
           });
-        });
-        expect(mockChat.sendMessageStream).not.toHaveBeenCalled();
-        expect(mockGoalRuntime.finishTurn).not.toHaveBeenCalled();
-        expect(mockGoalRuntime.releaseTurn).not.toHaveBeenCalledWith(turnKey);
-      });
+          mockGoalRuntime.permitForTurn.mockImplementation((key: string) =>
+            key === turnKey ? permit : undefined,
+          );
+          mockChat.sendMessageStream = vi
+            .fn()
+            .mockResolvedValue(createEmptyStream());
+          // The runtime transcript write is the last awaited step before the
+          // turn reaches the model, which makes it the exact window this
+          // finding is about.
+          if (phase === 'MCP discovery') {
+            vi.mocked(mockConfig.waitForMcpReady).mockImplementation(() => {
+              void session.cancelPendingPrompt();
+              return new Promise<void>(() => {});
+            });
+          } else {
+            mockChatRecordingService.recordGoalRuntimeMessage.mockImplementation(
+              () => {
+                void session.cancelPendingPrompt();
+              },
+            );
+          }
+
+          await boundGoalHost!.startGoalTurn({
+            permit,
+            continuationContext: 'check weather',
+          });
+
+          await vi.waitFor(() => {
+            expect(mockGoalRuntime.dispatch).toHaveBeenCalledWith({
+              action: 'pause',
+              expectedGoalId: permit.goalId,
+              expectedRevision: permit.revision,
+              reason: GOAL_PAUSE_REASON_USER_INTERRUPT,
+            });
+          });
+          expect(mockChat.sendMessageStream).not.toHaveBeenCalled();
+          expect(mockGoalRuntime.finishTurn).not.toHaveBeenCalled();
+          expect(mockGoalRuntime.releaseTurn).not.toHaveBeenCalledWith(turnKey);
+        },
+      );
 
       it('releases a pre-model Goal permit when recording its pause fails', async () => {
         const permit: core.GoalTurnPermit = {

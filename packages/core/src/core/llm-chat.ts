@@ -137,6 +137,10 @@ import {
   setToolCallPreparations,
 } from './tool-call-preparation.js';
 import { InvalidStreamError } from './invalid-stream-error.js';
+import {
+  ModelEmptyAnswerError,
+  toModelEmptyAnswerError,
+} from './model-empty-answer-error.js';
 import type { GoalTurnPermit } from '../goals/goal-protocol.js';
 
 export { InvalidStreamError };
@@ -3131,6 +3135,8 @@ export class LlmChat {
         }
 
         let lastError: unknown = new Error('Request failed after all retries.');
+        let emptyAnswerRecoveryUsed = false;
+        let emptyAnswerReplayBlocked = false;
         let rateLimitRetryCount = 0;
         let transientInvalidStreamRetryCount = 0;
         let protocolTagLeakRetryCount = 0;
@@ -3336,6 +3342,7 @@ export class LlmChat {
                 ? transportContinuationPrefix
                 : undefined,
               acceptQuietToolResultCompletion,
+              emptyAnswerRecoveryUsed,
             );
 
             lastFinishReason = undefined;
@@ -3346,6 +3353,10 @@ export class LlmChat {
               }
               if (hasNonThoughtCandidateParts(chunk)) {
                 streamYieldedContentChunk = true;
+                emptyAnswerReplayBlocked = true;
+              }
+              if (getToolCallPreparations(chunk).length > 0) {
+                emptyAnswerReplayBlocked = true;
               }
               // Mirror the visible text into the continuation buffer as it is
               // yielded. Reading it back off history is not an option on the
@@ -3379,6 +3390,40 @@ export class LlmChat {
             // than per chunk keeps the overlap scan anchored at the attempt
             // boundary, which is the only place a replay can occur.
             foldTransportAttemptText();
+
+            const emptyAnswerError = toModelEmptyAnswerError(error);
+            if (emptyAnswerError) {
+              lastError = emptyAnswerError;
+              if (
+                !emptyAnswerRecoveryUsed &&
+                !params.config?.abortSignal?.aborted &&
+                !emptyAnswerReplayBlocked &&
+                !streamYieldedContentChunk &&
+                !streamYieldedFunctionCall &&
+                transportContinuationText.trim().length === 0
+              ) {
+                emptyAnswerRecoveryUsed = true;
+                self.popPendingPartialAssistantTurn();
+                resetTransportContinuation();
+                acceptQuietToolResultCompletionOnNextAttempt = false;
+                suppressNextRetryEvent = true;
+                debugLogger.warn(
+                  'Retrying a model response without usable output',
+                  {
+                    errorKind: emptyAnswerError.errorKind,
+                    code: emptyAnswerError.code,
+                    attempt: 1,
+                    maxRetries: 1,
+                  },
+                );
+                yield { type: StreamEventType.RETRY };
+                if (params.config?.abortSignal?.aborted) break;
+                continue;
+              }
+              break;
+            }
+            // The one recovery request must not enter another retry budget.
+            if (emptyAnswerRecoveryUsed) break;
 
             // Handle rate-limit / throttling errors returned as stream content.
             // These arrive as StreamContentError with finish_reason="error_finish"
@@ -4061,6 +4106,7 @@ export class LlmChat {
         if (
           lastError === null &&
           lastFinishReason === FinishReason.MAX_TOKENS &&
+          !emptyAnswerRecoveryUsed &&
           !maxTokensEscalated &&
           !hasUserMaxTokensOverride
         ) {
@@ -4312,7 +4358,10 @@ export class LlmChat {
           // - Fallback is only for capacity/availability errors (429/503/529),
           //   not for auth/billing/client errors.
           const fallbackModels =
-            exactRoute || options?.disableModelFallbacks
+            exactRoute ||
+            options?.disableModelFallbacks ||
+            emptyAnswerRecoveryUsed ||
+            toModelEmptyAnswerError(lastError)
               ? []
               : self.config.getModelFallbacks();
 
@@ -4600,15 +4649,23 @@ export class LlmChat {
     goalContext?: GoalTurnPermit,
     transportContinuationPrefix?: string,
     acceptQuietToolResultCompletion = false,
+    disableRetries = false,
   ): Promise<AsyncGenerator<GenerateContentResponse>> {
     const generator =
       overrides?.contentGenerator ?? this.config.getContentGenerator();
+    const requestConfig = { ...this.generationConfig, ...params.config };
+    if (disableRetries) {
+      requestConfig.httpOptions = {
+        ...requestConfig.httpOptions,
+        retryOptions: { attempts: 1 },
+      };
+    }
     const apiCall = () =>
       generator.generateContentStream(
         {
           model,
           contents: requestContents,
-          config: { ...this.generationConfig, ...params.config },
+          config: requestConfig,
         },
         prompt_id,
       );
@@ -4621,9 +4678,11 @@ export class LlmChat {
       overrides?.retryErrorCodes ?? cgConfig?.retryErrorCodes;
     // Fallback models never enter persistent retry mode — persistent mode
     // is the caller's explicit opt-in for the primary model only.
-    const persistentMode = overrides ? false : isUnattendedMode();
+    const persistentMode =
+      overrides || disableRetries ? false : isUnattendedMode();
     const streamResponse = await retryWithBackoff(apiCall, {
       shouldRetryOnError: (error: unknown) => {
+        if (disableRetries || toModelEmptyAnswerError(error)) return false;
         if (error instanceof Error) {
           if (isSchemaDepthError(error.message)) return false;
           if (isInvalidArgumentError(error.message)) return false;
@@ -4687,6 +4746,7 @@ export class LlmChat {
       transportContinuationPrefix,
       acceptQuietToolResultCompletion,
       structuredReasoning,
+      disableRetries,
     );
   }
 
@@ -5234,6 +5294,7 @@ export class LlmChat {
     transportContinuationPrefix?: string,
     acceptQuietToolResultCompletion = false,
     structuredReasoning = false,
+    requireVisibleResponse = false,
   ): AsyncGenerator<GenerateContentResponse> {
     // Collect ALL parts from the model response (including thoughts for recording)
     const allModelParts: Part[] = [];
@@ -5481,7 +5542,7 @@ export class LlmChat {
           }
         }
 
-        if (isToolResultContinuation) {
+        if (isToolResultContinuation || requireVisibleResponse) {
           // Do not let consumers commit Finished before post-stream validation
           // can reject a semantically empty continuation.
           for (const candidate of chunk.candidates ?? []) {
@@ -5667,16 +5728,27 @@ export class LlmChat {
     const lacksVisibleToolResultProgress =
       isToolResultContinuation &&
       (!contentText || contentText === GEMINI_EMPTY_CONTENT_PLACEHOLDER);
+    const emptyRecoveryResponse =
+      requireVisibleResponse &&
+      (!contentText || contentText === GEMINI_EMPTY_CONTENT_PLACEHOLDER);
     let acceptedQuietToolResultCompletion = false;
     if (
       streamError === null &&
       !hasToolCall &&
-      (!hasFinishReason || !hasAnyContent || lacksVisibleToolResultProgress)
+      (!hasFinishReason ||
+        !hasAnyContent ||
+        lacksVisibleToolResultProgress ||
+        emptyRecoveryResponse)
     ) {
       if (!hasFinishReason) {
         throw new InvalidStreamError(
           'Model stream ended without a finish reason.',
           'NO_FINISH_REASON',
+        );
+      }
+      if (emptyRecoveryResponse && deferredFinishReason === FinishReason.STOP) {
+        throw new ModelEmptyAnswerError(
+          'The model did not produce a usable response after one recovery attempt.',
         );
       }
       if (lacksVisibleToolResultProgress) {

@@ -78,6 +78,7 @@ import {
   SessionTranscriptTooLargeError,
   encodeSessionTranscriptCursor,
   isTurnResultRecordPayload,
+  toModelEmptyAnswerError,
   subagentGenerator,
   redactUrlCredentials,
   computeUniqueBranchTitle,
@@ -6192,6 +6193,16 @@ class QwenAgent implements Agent {
         call.controller.signal,
         modelPrompt,
       );
+    } catch (error) {
+      const emptyAnswerError = toModelEmptyAnswerError(error);
+      if (emptyAnswerError) {
+        throw new RequestError(-32603, emptyAnswerError.message, {
+          details: emptyAnswerError.message,
+          errorKind: emptyAnswerError.errorKind,
+          code: emptyAnswerError.code,
+        });
+      }
+      throw error;
     } finally {
       calls.delete(call);
       if (calls.size === 0) {

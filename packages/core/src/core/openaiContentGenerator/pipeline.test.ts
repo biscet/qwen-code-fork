@@ -3374,75 +3374,121 @@ describe('ContentGenerationPipeline', () => {
   });
 
   describe('executeStream', () => {
-    it('retries stream creation when the provider requires thinking', async () => {
-      mockContentGeneratorConfig = {
-        ...mockContentGeneratorConfig,
-        baseUrl:
-          'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
-        model: 'qwen3.8-max-preview',
-        extra_body: { enable_thinking: true },
-      } as ContentGeneratorConfig;
-      mockConfig = {
-        ...mockConfig,
-        contentGeneratorConfig: mockContentGeneratorConfig,
-      };
-      pipeline = new ContentGenerationPipeline(mockConfig);
-
-      (mockProvider.buildRequest as Mock).mockImplementation((req) => ({
-        ...req,
-        enable_thinking: true,
-      }));
+    it('disables SDK retries for a single-attempt recovery request', async () => {
       (mockConverter.convertLlmRequestToOpenAI as Mock).mockReturnValue([]);
-
-      const requiredThinkingError = Object.assign(
-        new Error(
-          'The value of the enable_thinking parameter is restricted to True.',
-        ),
-        { status: 400 },
-      );
-      const stream = {
+      (mockClient.chat.completions.create as Mock).mockResolvedValue({
         async *[Symbol.asyncIterator]() {
-          // Empty response is sufficient: this test covers stream creation.
+          // Only the SDK request options matter here.
         },
-      };
-      const failedCreate = Object.assign(Promise.resolve(stream), {
-        withResponse: () => Promise.reject(requiredThinkingError),
       });
-      const successfulCreate = Object.assign(Promise.resolve(stream), {
-        withResponse: () =>
-          Promise.resolve({
-            data: stream,
-            response: new Response(null, {
-              headers: { 'content-type': 'text/event-stream' },
-            }),
-            request_id: 'retry-success',
-          }),
-      });
-      (mockClient.chat.completions.create as Mock)
-        .mockReturnValueOnce(failedCreate)
-        .mockReturnValueOnce(successfulCreate);
-
       const result = await pipeline.executeStream(
         {
-          model: 'qwen3.8-max-preview',
-          contents: [{ parts: [{ text: 'Quick question' }], role: 'user' }],
-          config: { thinkingConfig: { includeThoughts: false } },
+          model: 'test-model',
+          contents: [{ role: 'user', parts: [{ text: 'test' }] }],
+          config: { httpOptions: { retryOptions: { attempts: 1 } } },
         },
-        'forked_query',
+        'empty-recovery',
       );
       for await (const _ of result) {
-        // Drain the retried stream.
+        /* drain */
       }
-
-      const calls = (mockClient.chat.completions.create as Mock).mock.calls;
-      expect(calls).toHaveLength(2);
-      expect(calls[0][0].reasoning_effort).toBe('none');
-      expect(calls[0][0].enable_thinking).toBeUndefined();
-      expect(calls[1][0].enable_thinking).toBe(true);
-      expect(mockReportOpenAiRequest).toHaveBeenNthCalledWith(1, calls[0][0]);
-      expect(mockReportOpenAiRequest).toHaveBeenNthCalledWith(2, calls[1][0]);
-      expect(mockErrorHandler.handle).not.toHaveBeenCalled();
+      expect(mockClient.chat.completions.create).toHaveBeenCalledTimes(1);
+      expect(
+        (mockClient.chat.completions.create as Mock).mock.calls[0][1],
+      ).toMatchObject({
+        signal: expect.any(AbortSignal),
+        maxRetries: 0,
+      });
     });
+
+    it.each([undefined, 1])(
+      'respects the attempt limit %s when the provider requires thinking',
+      async (attempts) => {
+        mockContentGeneratorConfig = {
+          ...mockContentGeneratorConfig,
+          baseUrl:
+            'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+          model: 'qwen3.8-max-preview',
+          extra_body: { enable_thinking: true },
+        } as ContentGeneratorConfig;
+        mockConfig = {
+          ...mockConfig,
+          contentGeneratorConfig: mockContentGeneratorConfig,
+        };
+        pipeline = new ContentGenerationPipeline(mockConfig);
+
+        (mockProvider.buildRequest as Mock).mockImplementation((req) => ({
+          ...req,
+          enable_thinking: true,
+        }));
+        (mockConverter.convertLlmRequestToOpenAI as Mock).mockReturnValue([]);
+
+        const requiredThinkingError = Object.assign(
+          new Error(
+            'The value of the enable_thinking parameter is restricted to True.',
+          ),
+          { status: 400 },
+        );
+        const stream = {
+          async *[Symbol.asyncIterator]() {
+            // Empty response is sufficient: this test covers stream creation.
+          },
+        };
+        const failedCreate = Object.assign(Promise.resolve(stream), {
+          withResponse: () => Promise.reject(requiredThinkingError),
+        });
+        const successfulCreate = Object.assign(Promise.resolve(stream), {
+          withResponse: () =>
+            Promise.resolve({
+              data: stream,
+              response: new Response(null, {
+                headers: { 'content-type': 'text/event-stream' },
+              }),
+              request_id: 'retry-success',
+            }),
+        });
+        (mockClient.chat.completions.create as Mock)
+          .mockReturnValueOnce(failedCreate)
+          .mockReturnValueOnce(successfulCreate);
+        if (attempts === 1) {
+          vi.mocked(mockErrorHandler.handle).mockImplementation((error) => {
+            throw error;
+          });
+        }
+
+        const resultPromise = pipeline.executeStream(
+          {
+            model: 'qwen3.8-max-preview',
+            contents: [{ parts: [{ text: 'Quick question' }], role: 'user' }],
+            config: {
+              thinkingConfig: { includeThoughts: false },
+              ...(attempts
+                ? { httpOptions: { retryOptions: { attempts } } }
+                : {}),
+            },
+          },
+          'forked_query',
+        );
+        if (attempts === 1) {
+          await expect(resultPromise).rejects.toBe(requiredThinkingError);
+          expect(mockClient.chat.completions.create).toHaveBeenCalledTimes(1);
+          return;
+        }
+        const result = await resultPromise;
+        for await (const _ of result) {
+          // Drain the retried stream.
+        }
+
+        const calls = (mockClient.chat.completions.create as Mock).mock.calls;
+        expect(calls).toHaveLength(2);
+        expect(calls[0][0].reasoning_effort).toBe('none');
+        expect(calls[0][0].enable_thinking).toBeUndefined();
+        expect(calls[1][0].enable_thinking).toBe(true);
+        expect(mockReportOpenAiRequest).toHaveBeenNthCalledWith(1, calls[0][0]);
+        expect(mockReportOpenAiRequest).toHaveBeenNthCalledWith(2, calls[1][0]);
+        expect(mockErrorHandler.handle).not.toHaveBeenCalled();
+      },
+    );
 
     it('should successfully execute streaming request', async () => {
       // Arrange

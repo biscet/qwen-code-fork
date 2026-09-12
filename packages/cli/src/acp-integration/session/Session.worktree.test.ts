@@ -90,12 +90,14 @@ describe('Session.pendingWorktreeNotice', () => {
         ),
       addHistory: vi.fn(),
       getHistory: vi.fn().mockReturnValue([]),
+      peekLastHistoryEntry: vi.fn(),
       setHistory: vi.fn(),
       truncateHistory: vi.fn(),
       stripThoughtsFromHistory: vi.fn(),
     } as unknown as LlmChat;
 
     const mockLlmClient = {
+      flushMcpReminders: vi.fn(),
       getChat: vi.fn().mockReturnValue(mockChat),
       tryCompressChat: vi.fn().mockResolvedValue({
         originalTokenCount: 0,
@@ -109,6 +111,7 @@ describe('Session.pendingWorktreeNotice', () => {
     };
 
     mockConfig = {
+      waitForMcpReady: vi.fn().mockResolvedValue(undefined),
       storage: {
         getRuntimeBaseDir: vi.fn(() => Storage.getRuntimeBaseDir()),
       },

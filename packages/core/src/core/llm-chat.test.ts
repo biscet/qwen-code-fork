@@ -24,6 +24,7 @@ import {
   type StreamEvent,
 } from './llm-chat.js';
 import { RETRYABLE_STREAM_TRANSPORT_CODES } from './stream-transport-retry.js';
+import { ModelEmptyAnswerError } from './model-empty-answer-error.js';
 import { getToolCallFingerprint } from './toolCallIdUtils.js';
 import { classifyRetryError } from '../utils/retryErrorClassification.js';
 import { StreamContentError } from './openaiContentGenerator/pipeline.js';
@@ -7320,6 +7321,322 @@ describe('LlmChat', async () => {
       });
 
       expect(chat.getLastModelMessageText()).toBeUndefined();
+    });
+  });
+
+  describe('structured empty-answer recovery', () => {
+    function emptyAnswer() {
+      return Object.assign(new Error('Финальный ответ не сформирован'), {
+        type: 'final_answer_not_formed',
+        code: 'empty_answer',
+      });
+    }
+
+    async function drain(stream: AsyncGenerator<StreamEvent>) {
+      const events: StreamEvent[] = [];
+      for await (const event of stream) events.push(event);
+      return events;
+    }
+
+    function failAfter(...chunks: GenerateContentResponse[]) {
+      return (async function* () {
+        yield* chunks;
+        throw emptyAnswer();
+      })();
+    }
+
+    it('recovers once from completed tool results without recording failed reasoning', async () => {
+      const recordAssistantTurn = vi.fn();
+      const recordedChat = chatWithRecorder(recordAssistantTurn);
+      recordedChat.addHistory({
+        role: 'user',
+        parts: [{ text: 'Read the file' }],
+      });
+      recordedChat.addHistory({
+        role: 'model',
+        parts: [
+          {
+            functionCall: {
+              id: 'read-once',
+              name: 'read_file',
+              args: { file_path: '/tmp/fixture' },
+            },
+          },
+        ],
+      });
+      const toolResult: Part = {
+        functionResponse: {
+          id: 'read-once',
+          name: 'read_file',
+          response: { output: 'already read' },
+        },
+      };
+      const generate = vi.mocked(mockContentGenerator.generateContentStream);
+      generate.mockResolvedValueOnce(
+        failAfter({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: 'failed private reasoning', thought: true }],
+              },
+            },
+          ],
+        } as GenerateContentResponse),
+      );
+      generate.mockResolvedValueOnce(
+        streamResponse(stopResponse([{ text: 'Recovered final' }])),
+      );
+
+      const events = await drain(
+        await recordedChat.sendMessageStream(
+          'test-model',
+          { message: [toolResult] },
+          'empty-after-tool',
+        ),
+      );
+
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(generate.mock.calls[1][0].contents).toEqual(
+        generate.mock.calls[0][0].contents,
+      );
+      expect(
+        generate.mock.calls[1][0].config?.httpOptions?.retryOptions?.attempts,
+      ).toBe(1);
+      expect(
+        events.filter((event) => event.type === StreamEventType.RETRY),
+      ).toHaveLength(1);
+      const history = recordedChat.getHistory();
+      expect(
+        history
+          .flatMap((content) => content.parts ?? [])
+          .filter((part) => part.functionResponse),
+      ).toEqual([toolResult]);
+      expect(JSON.stringify(history)).not.toContain('failed private reasoning');
+      expect(recordAssistantTurn).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(recordAssistantTurn.mock.calls)).not.toContain(
+        'failed private reasoning',
+      );
+      expect(recordedChat.getLastModelMessageText()).toBe('Recovered final');
+      expect(
+        mockRetryWithBackoff.mock.calls[1][1].shouldRetryOnError({
+          status: 503,
+        }),
+      ).toBe(false);
+      expect(
+        mockRetryWithBackoff.mock.calls[0][1].shouldRetryOnError(emptyAnswer()),
+      ).toBe(false);
+    });
+
+    it('stops with a typed error after exactly one failed recovery and never falls back', async () => {
+      vi.mocked(mockConfig.getModelFallbacks).mockReturnValue([
+        'fallback-model',
+      ]);
+      const generate = vi.mocked(mockContentGenerator.generateContentStream);
+      generate.mockImplementation(async () => failAfter());
+      await expect(
+        drain(
+          await chat.sendMessageStream(
+            'test-model',
+            { message: 'test' },
+            'empty-twice',
+          ),
+        ),
+      ).rejects.toMatchObject({
+        errorKind: 'final_answer_not_formed',
+        code: 'empty_answer',
+      });
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(chat.getHistory()).toEqual([
+        { role: 'user', parts: [{ text: 'test' }] },
+      ]);
+      expect(mockConfig.setModel).not.toHaveBeenCalled();
+    });
+
+    it.each(['text', 'functionCall', 'preparation'] as const)(
+      'does not replay an empty-answer error after delivered %s',
+      async (kind) => {
+        const chunk = {
+          candidates: [
+            {
+              content: {
+                parts:
+                  kind === 'text'
+                    ? [{ text: 'Already visible' }]
+                    : kind === 'functionCall'
+                      ? [
+                          {
+                            functionCall: {
+                              id: 'call-1',
+                              name: 'read_file',
+                              args: {},
+                            },
+                          },
+                        ]
+                      : [],
+              },
+            },
+          ],
+        } as GenerateContentResponse;
+        if (kind === 'preparation') {
+          setToolCallPreparations(chunk, [
+            { callId: 'call-1', toolName: 'read_file' },
+          ]);
+        }
+        const generate = vi.mocked(mockContentGenerator.generateContentStream);
+        generate.mockResolvedValueOnce(failAfter(chunk));
+        await expect(
+          drain(
+            await chat.sendMessageStream(
+              'test-model',
+              { message: 'test' },
+              'empty-after-output',
+            ),
+          ),
+        ).rejects.toBeInstanceOf(ModelEmptyAnswerError);
+        expect(generate).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('does not recover after cancellation', async () => {
+      const controller = new AbortController();
+      const generate = vi.mocked(mockContentGenerator.generateContentStream);
+      generate.mockImplementationOnce(async () =>
+        (async function* () {
+          yield {
+            candidates: [
+              { content: { parts: [{ text: 'thinking', thought: true }] } },
+            ],
+          } as GenerateContentResponse;
+          controller.abort();
+          throw emptyAnswer();
+        })(),
+      );
+      await expect(
+        drain(
+          await chat.sendMessageStream(
+            'test-model',
+            { message: 'test', config: { abortSignal: controller.signal } },
+            'empty-cancelled',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ModelEmptyAnswerError);
+      expect(generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('honors cancellation while the recovery event is being consumed', async () => {
+      const controller = new AbortController();
+      const generate = vi.mocked(mockContentGenerator.generateContentStream);
+      generate.mockResolvedValueOnce(failAfter());
+      const stream = await chat.sendMessageStream(
+        'test-model',
+        {
+          message: 'test',
+          config: { abortSignal: controller.signal },
+        },
+        'empty-retry-cancel',
+      );
+      const first = await stream.next();
+      expect(first.value?.type).toBe(StreamEventType.RETRY);
+      controller.abort();
+      await expect(stream.next()).rejects.toBeInstanceOf(ModelEmptyAnswerError);
+      expect(generate).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['STOP', 'MAX_TOKENS'] as const)(
+      'rejects a reasoning-only recovery ending with %s before publishing Finished',
+      async (finishReason) => {
+        const generate = vi.mocked(mockContentGenerator.generateContentStream);
+        generate.mockResolvedValueOnce(failAfter());
+        generate.mockResolvedValueOnce(
+          streamResponse({
+            candidates: [
+              {
+                content: { parts: [{ text: 'no final', thought: true }] },
+                finishReason,
+              },
+            ],
+          } as GenerateContentResponse),
+        );
+        const events: StreamEvent[] = [];
+        const stream = await chat.sendMessageStream(
+          'test-model',
+          { message: 'test' },
+          'empty-recovery-finish',
+        );
+        const collecting = (async () => {
+          for await (const event of stream) events.push(event);
+        })();
+        if (finishReason === 'STOP') {
+          await expect(collecting).rejects.toBeInstanceOf(
+            ModelEmptyAnswerError,
+          );
+        } else {
+          await expect(collecting).rejects.toBeInstanceOf(InvalidStreamError);
+        }
+        expect(generate).toHaveBeenCalledTimes(2);
+        expect(
+          events.some(
+            (event) =>
+              event.type === StreamEventType.CHUNK &&
+              event.value.candidates?.some(
+                (candidate) => candidate.finishReason,
+              ),
+          ),
+        ).toBe(false);
+        expect(chat.getHistory()).toHaveLength(1);
+      },
+    );
+
+    it.each(['network', 'invalid-stream', 'thinking-only'] as const)(
+      'does not enter another retry budget when recovery ends with %s',
+      async (kind) => {
+        const generate = vi.mocked(mockContentGenerator.generateContentStream);
+        generate.mockResolvedValueOnce(failAfter());
+        if (kind === 'network') {
+          generate.mockRejectedValueOnce(
+            Object.assign(new Error('socket failed'), { code: 'ECONNRESET' }),
+          );
+        } else {
+          generate.mockResolvedValueOnce(
+            kind === 'thinking-only'
+              ? streamResponse(
+                  stopResponse([{ text: 'only reasoning', thought: true }]),
+                )
+              : streamResponse(),
+          );
+        }
+        await expect(
+          drain(
+            await chat.sendMessageStream(
+              'test-model',
+              { message: 'test' },
+              'empty-recovery-error',
+            ),
+          ),
+        ).rejects.toThrow();
+        expect(generate).toHaveBeenCalledTimes(2);
+        expect(chat.getHistory()).toHaveLength(1);
+      },
+    );
+
+    it('does not recover from message text alone or another structured code', async () => {
+      const generate = vi.mocked(mockContentGenerator.generateContentStream);
+      generate.mockRejectedValueOnce(
+        Object.assign(new Error('final_answer_not_formed empty_answer'), {
+          type: 'final_answer_not_formed',
+          code: 'unclosed_think',
+        }),
+      );
+      await expect(
+        drain(
+          await chat.sendMessageStream(
+            'test-model',
+            { message: 'test' },
+            'not-empty-answer',
+          ),
+        ),
+      ).rejects.toThrow('final_answer_not_formed empty_answer');
+      expect(generate).toHaveBeenCalledTimes(1);
     });
   });
 

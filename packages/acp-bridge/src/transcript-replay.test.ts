@@ -80,6 +80,62 @@ function goalCardRecord(
 }
 
 describe('createTranscriptReplayMachine', () => {
+  it('replays a bounded persisted error with its original prompt identity', () => {
+    const machine = createTranscriptReplayMachine();
+    const projected = updates(
+      machine,
+      record('terminal-1', 'system', {
+        subtype: 'turn_result',
+        systemPayload: {
+          state: 'error',
+          promptId: 'prompt-1',
+          endedAt: 1,
+          error: {
+            message: 'No final answer',
+            errorKind: 'final_answer_not_formed',
+            code: 'empty_answer',
+          },
+        },
+      }),
+    );
+    expect(projected).toHaveLength(1);
+    expect(projected[0]).toMatchObject({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: '' },
+      _meta: {
+        qwenTranscript: { sourceRecordIds: ['terminal-1'] },
+        turnError: {
+          promptId: 'prompt-1',
+          message: 'No final answer',
+          errorKind: 'final_answer_not_formed',
+          code: 'empty_answer',
+        },
+      },
+    });
+  });
+
+  it.each([
+    { state: 'completed', promptId: 'p', error: { message: 'ignored' } },
+    { state: 'cancelled', promptId: 'p', error: { message: 'ignored' } },
+    { state: 'error', error: { message: 'missing owner' } },
+    { state: 'error', promptId: 'p', error: { message: 'x'.repeat(4097) } },
+    {
+      state: 'error',
+      promptId: 'x'.repeat(257),
+      error: { message: 'bad owner' },
+    },
+  ])('does not replay non-error or malformed terminal %j', (systemPayload) => {
+    expect(
+      updates(
+        createTranscriptReplayMachine(),
+        record('terminal', 'system', {
+          subtype: 'turn_result',
+          systemPayload,
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it('projects the daemon identity on every user block before a turn result', () => {
     const projected = updates(
       createTranscriptReplayMachine(),

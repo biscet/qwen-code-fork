@@ -17424,6 +17424,83 @@ describe('DaemonSessionProvider', () => {
     ]);
   });
 
+  it('restores durable turn errors in the transcript without creating notices', async () => {
+    const promptId = 'prompt-empty-answer';
+    const turnError = {
+      promptId,
+      message: 'Финальный ответ не сформирован',
+      code: 'empty_answer',
+      errorKind: 'final_answer_not_formed',
+    };
+    const session = createMockSession({
+      replaySnapshot: {
+        compactedReplay: [
+          {
+            id: 1,
+            v: 1,
+            type: 'session_update',
+            promptId,
+            data: {
+              update: {
+                sessionUpdate: 'user_message_chunk',
+                content: { type: 'text', text: 'Read the file' },
+                _meta: { 'qwen.session.recordId': 'user-record' },
+              },
+            },
+          },
+          {
+            id: 2,
+            v: 1,
+            type: 'session_update',
+            promptId,
+            data: {
+              update: {
+                sessionUpdate: 'agent_message_chunk',
+                content: { type: 'text', text: '' },
+                _meta: {
+                  'qwen.session.recordId': 'error-record',
+                  qwenTranscript: { sourceRecordIds: ['error-record'] },
+                  turnError,
+                },
+              },
+            },
+          },
+        ],
+        liveJournal: [],
+      },
+      events: createIdleEvents(),
+    });
+    sdkMocks.sessions.push(session);
+    let blocks: readonly DaemonTranscriptBlock[] = [];
+    let notices: readonly DaemonSessionNotice[] = [];
+
+    function Harness() {
+      blocks = useDaemonTranscriptBlocks();
+      notices = useDaemonSessionNotices().notices;
+      return null;
+    }
+
+    await renderWithProvider(<Harness />, {
+      autoConnect: true,
+      autoReconnect: false,
+    });
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(blocks.map((block) => block.kind)).toEqual(['user', 'error']);
+    expect(blocks[1]).toMatchObject({
+      kind: 'error',
+      source: 'turn_error',
+      promptId,
+      text: turnError.message,
+      code: turnError.code,
+      errorKind: turnError.errorKind,
+      sourceRecordIds: ['error-record'],
+    });
+    expect(notices).toEqual([]);
+  });
+
   it('keeps turn_error in transcript instead of routing to notices', async () => {
     const session = createMockSession({
       events: async function* turnErrorEvents(

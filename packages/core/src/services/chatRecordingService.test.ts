@@ -1464,6 +1464,48 @@ describe('ChatRecordingService', () => {
   });
 
   describe('recordTurnResult', () => {
+    it('preserves a bounded empty-answer kind and code across provider and RPC errors', () => {
+      const expected = {
+        message: 'Финальный ответ не сформирован',
+        code: 'empty_answer',
+        errorKind: 'final_answer_not_formed',
+      };
+      expect(
+        normalizeTurnResultError({
+          type: expected.errorKind,
+          code: expected.code,
+          message: expected.message,
+          rawBody: 'must not be recorded',
+        }),
+      ).toEqual(expected);
+      expect(
+        normalizeTurnResultError({
+          code: -32603,
+          message: 'Internal error',
+          data: { ...expected, details: expected.message },
+        }),
+      ).toEqual(expected);
+      expect(
+        isTurnResultRecordPayload({
+          promptId: 'prompt-1',
+          state: 'error',
+          endedAt: 2_000,
+          error: expected,
+        }),
+      ).toBe(true);
+      expect(
+        isTurnResultRecordPayload({
+          promptId: 'prompt-1',
+          state: 'error',
+          endedAt: 2_000,
+          error: {
+            ...expected,
+            errorKind: 'x'.repeat(TURN_RESULT_IDENTIFIER_MAX_CHARS + 1),
+          },
+        }),
+      ).toBe(false);
+    });
+
     it('normalizes hostile and oversized error fields without throwing', () => {
       const hostile = Object.create(null, {
         message: { get: () => 'm'.repeat(5_000) },

@@ -981,6 +981,47 @@ class DefaultTranscriptReplayMachine implements TranscriptReplayMachine {
     emit: (update: SessionUpdate) => TranscriptReplayEmission,
     meta: UpdateMetaOptions,
   ): Iterable<TranscriptReplayEmission> {
+    if (record.subtype === 'turn_result') {
+      const payload = isObjectRecord(record.systemPayload)
+        ? record.systemPayload
+        : undefined;
+      const error = isObjectRecord(payload?.['error'])
+        ? payload['error']
+        : undefined;
+      if (
+        payload?.['state'] !== 'error' ||
+        typeof payload['promptId'] !== 'string' ||
+        !payload['promptId'] ||
+        payload['promptId'].length > 256 ||
+        typeof error?.['message'] !== 'string' ||
+        !error['message'] ||
+        error['message'].length > 4096
+      ) {
+        return;
+      }
+      const code = error['code'];
+      const errorKind = error['errorKind'];
+      yield emit(
+        createTranscriptMessageUpdate({
+          role: 'assistant',
+          text: '',
+          ...meta,
+          extra: {
+            turnError: {
+              promptId: payload['promptId'],
+              message: error['message'],
+              ...(typeof code === 'string' && code.length <= 256
+                ? { code }
+                : {}),
+              ...(typeof errorKind === 'string' && errorKind.length <= 256
+                ? { errorKind }
+                : {}),
+            },
+          },
+        }),
+      );
+      return;
+    }
     if (record.subtype === 'agent_session_ready') {
       const payload = isObjectRecord(record.systemPayload)
         ? record.systemPayload

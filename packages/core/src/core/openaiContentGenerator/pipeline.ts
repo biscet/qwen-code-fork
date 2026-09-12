@@ -429,7 +429,12 @@ export class ContentGenerationPipeline {
           // returning text/html with HTTP 200).
           const createPromise = this.client.chat.completions.create(
             openaiRequest,
-            { signal: perRequestAc.signal },
+            {
+              signal: perRequestAc.signal,
+              ...(request.config?.httpOptions?.retryOptions?.attempts === 1
+                ? { maxRetries: 0 }
+                : {}),
+            },
           );
 
           // withResponse() is available on APIPromise (the OpenAI SDK's
@@ -1441,6 +1446,7 @@ export class ContentGenerationPipeline {
         | Record<string, unknown>
         | undefined;
       if (
+        request.config?.httpOptions?.retryOptions?.attempts !== 1 &&
         (wireRequest?.['enable_thinking'] === false ||
           chatTemplateKwargs?.['enable_thinking'] === false ||
           // The tier-native family's disable shape (reasoning_effort:
@@ -1471,6 +1477,7 @@ export class ContentGenerationPipeline {
       // degraded retry also fails, media was not the blocker and the error
       // surfaces as before.
       if (
+        request.config?.httpOptions?.retryOptions?.attempts !== 1 &&
         request.config?.abortSignal?.aborted !== true &&
         getErrorStatus(error) === 400 &&
         wireRequestHasMediaContent(wireRequest)

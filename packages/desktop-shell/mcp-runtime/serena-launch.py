@@ -36,7 +36,10 @@ if managed != previous:
 
 project = Path.cwd()
 project_config_path = config.get_project_yml_location(str(project))
-if sys.argv[1:2] == ["start-mcp-server"] and not Path(project_config_path).exists():
+initialize_only = sys.argv[1:2] == ["initialize-project"]
+if (
+    initialize_only or sys.argv[1:2] == ["start-mcp-server"]
+) and not Path(project_config_path).exists():
     ignored = GitignoreParser(str(project))
     files = scan_directory(
         str(project),
@@ -63,4 +66,8 @@ if sys.argv[1:2] == ["start-mcp-server"] and not Path(project_config_path).exist
             save_to_disk=False,
         )
         save_yaml(project_config_path, initial._to_yaml_dict())
-top_level()
+    elif initialize_only:
+        initial = ProjectConfig.autogenerate(project, config, save_to_disk=False)
+        save_yaml(project_config_path, initial._to_yaml_dict())
+if not initialize_only:
+    top_level()

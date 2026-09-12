@@ -1903,6 +1903,22 @@ export class LlmClient {
     this.pendingMcpServerInstructions.clear();
   }
 
+  flushMcpReminders(): void {
+    try {
+      this.drainPendingMcpServerInstructionsReminder();
+    } catch (error) {
+      debugLogger.warn(
+        'drainPendingMcpServerInstructionsReminder failed',
+        error,
+      );
+    }
+    try {
+      this.drainPendingAddedMcpToolsReminder();
+    } catch (error) {
+      debugLogger.warn('drainPendingAddedMcpToolsReminder failed', error);
+    }
+  }
+
   private queueAddedMcpToolsReminder(
     deferredTools: readonly DeferredToolSummary[],
   ): void {
@@ -3783,19 +3799,7 @@ export class LlmClient {
         (messageType === SendMessageType.UserQuery ||
           messageType === SendMessageType.Cron)
       ) {
-        try {
-          this.drainPendingMcpServerInstructionsReminder();
-        } catch (error) {
-          debugLogger.warn(
-            'drainPendingMcpServerInstructionsReminder failed',
-            error,
-          );
-        }
-        try {
-          this.drainPendingAddedMcpToolsReminder();
-        } catch (error) {
-          debugLogger.warn('drainPendingAddedMcpToolsReminder failed', error);
-        }
+        this.flushMcpReminders();
         try {
           await this.drainSkillAndCommandReminders();
         } catch (error) {

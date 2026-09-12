@@ -85,6 +85,7 @@ export {
   findPlanModeEntryBatchBoundaryIndex,
 } from './core/plan-mode-entry-policy.js';
 export * from './core/llm-chat.js';
+export * from './core/model-empty-answer-error.js';
 export * from './core/llm-request.js';
 export * from './core/inlineMediaLimit.js';
 export * from './core/insightProtocol.js';

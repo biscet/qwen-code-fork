@@ -1855,6 +1855,7 @@ export const DAEMON_ERROR_KINDS = [
   'writer_idle_timeout',
   // The model response stream ended before a complete turn could be read.
   'model_stream_interrupted',
+  'final_answer_not_formed',
   // Tool-call loop protection stopped the current turn.
   'loop_detected',
 ] as const;

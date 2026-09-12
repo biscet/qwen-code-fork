@@ -6040,6 +6040,7 @@ export class Session implements SessionContext {
 
               while (nextMessage !== null) {
                 turnCount++;
+                await this.#waitForMcpBeforeSend(pendingSend.signal);
                 if (pendingSend.signal.aborted) {
                   this.todoStopGuard.suspend();
                   this.#getCurrentChat().addHistory(nextMessage);
@@ -7829,6 +7830,22 @@ export class Session implements SessionContext {
     );
   }
 
+  async #waitForMcpBeforeSend(abortSignal: AbortSignal): Promise<void> {
+    if (abortSignal.aborted) return;
+    // Session creation stays nonblocking, but its first request must see
+    // the session's MCP discovery rather than a built-in-only snapshot.
+    let cancelMcpWait!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      cancelMcpWait = resolve;
+      abortSignal.addEventListener('abort', cancelMcpWait, { once: true });
+    });
+    try {
+      await Promise.race([this.config.waitForMcpReady(), cancelled]);
+    } finally {
+      abortSignal.removeEventListener('abort', cancelMcpWait);
+    }
+  }
+
   /**
    * Mirrors the core send path for ACP model sends.
    *
@@ -7852,6 +7869,10 @@ export class Session implements SessionContext {
     } = {},
   ): Promise<AutoCompressionSendResult> {
     const llmClient = this.config.getLlmClient()!;
+    await this.#waitForMcpBeforeSend(abortSignal);
+    if (abortSignal.aborted) {
+      return { responseStream: null, stopReason: 'cancelled' };
+    }
     if (options.prepareBeforeCompression) {
       const decision = await options.prepareBeforeCompression();
       if (decision.kind === 'stop') {
@@ -8015,6 +8036,18 @@ export class Session implements SessionContext {
     }
 
     const chat = this.#getCurrentChat();
+    const lastMessage = chat.peekLastHistoryEntry();
+    // ACP sends directly to LlmChat, bypassing LlmClient's reminder drain.
+    // Keep reminders outside pending tool call/result pairs.
+    if (
+      !message.some((part) => part.functionResponse) &&
+      !(
+        lastMessage?.role === 'model' &&
+        lastMessage.parts?.some((part) => part.functionCall)
+      )
+    ) {
+      llmClient.flushMcpReminders();
+    }
     const request = {
       message,
       config: {

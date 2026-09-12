@@ -476,6 +476,19 @@ function applyDaemonTranscriptEvent(
       });
       break;
     case 'error':
+      // The same terminal can arrive from saved history and the live journal.
+      if (
+        event.source === 'turn_error' &&
+        event.promptId &&
+        next.blocks.some(
+          (block) =>
+            block.kind === 'error' &&
+            block.source === 'turn_error' &&
+            block.promptId === event.promptId,
+        )
+      ) {
+        break;
+      }
       appendStatusBlock(next, event.type, event.text, event);
       break;
     // Session-meta / workspace / auth events do NOT push transcript blocks.
@@ -1634,6 +1647,9 @@ function appendStatusBlock(
       ? { serverTimestamp: event.serverTimestamp }
       : {}),
     ...(event?.segmentId ? { segmentId: event.segmentId } : {}),
+    ...(event?.sourceRecordIds
+      ? { sourceRecordIds: [...event.sourceRecordIds] }
+      : {}),
     ...(event?.type === 'error' && event.code ? { code: event.code } : {}),
     ...(event?.type === 'error' && event.promptId
       ? { promptId: event.promptId }

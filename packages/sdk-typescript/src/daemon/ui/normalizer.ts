@@ -903,6 +903,34 @@ function normalizeSessionUpdate(
       const text = getTextContent(update['content']);
       const parentToolCallId = extractParentToolCallId(update);
       const meta = extractUpdateMeta(update);
+      const turnError = meta?.['turnError'];
+      if (isRecord(turnError)) {
+        const promptId = getString(turnError, 'promptId');
+        const message = getString(turnError, 'message');
+        if (
+          promptId &&
+          promptId.length <= 256 &&
+          message &&
+          message.length <= 4096
+        ) {
+          const code = getString(turnError, 'code');
+          const errorKind = asDaemonErrorKind(
+            getString(turnError, 'errorKind'),
+          );
+          return [
+            {
+              ...base,
+              type: 'error',
+              source: 'turn_error',
+              recoverable: true,
+              promptId,
+              text: message,
+              ...(code && code.length <= 256 ? { code } : {}),
+              ...(errorKind ? { errorKind } : {}),
+            },
+          ];
+        }
+      }
       const events: DaemonUiEvent[] = [];
       if (text) {
         events.push({

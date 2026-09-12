@@ -1,10 +1,17 @@
 import { existsSync, realpathSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { isDeepStrictEqual } from 'node:util';
-import type { MCPServerConfig } from '@qwen-code/qwen-code-core';
+import { isDeepStrictEqual, promisify } from 'node:util';
+import {
+  matchesAnyServerPattern,
+  type MCPServerConfig,
+} from '@qwen-code/qwen-code-core';
 import { resolveEnvVarsInObject } from '@qwen-code/qwen-code-core/envVarResolver';
 import { buildRuntimeEnvironment } from '../config/environment.js';
+import { writeStderrLineSafe } from '../utils/stdioHelpers.js';
+
+const execFileAsync = promisify(execFile);
 
 function isBundledPath(
   candidate: string | undefined,
@@ -126,8 +133,28 @@ export async function initializeDesktopWorkspaceDefaults(
     ) {
       continue;
     }
-    if (approvals.getState(projectRoot, name, resolved) === 'approved')
-      continue;
-    await approvals.setState(projectRoot, name, resolved, 'approved');
+    if (approvals.getState(projectRoot, name, resolved) !== 'approved') {
+      await approvals.setState(projectRoot, name, resolved, 'approved');
+    }
+    if (
+      name === 'serena' &&
+      !matchesAnyServerPattern(name, settings.merged.mcp?.excluded) &&
+      (settings.merged.mcp?.allowed === undefined ||
+        matchesAnyServerPattern(name, settings.merged.mcp.allowed)) &&
+      !existsSync(path.join(workspaceDir, '.serena', 'project.yml'))
+    ) {
+      try {
+        await execFileAsync(
+          resolved.command!,
+          [...resolved.args!, '--initialize-project'],
+          { cwd: workspaceDir, env: runtimeEnv, timeout: 30000 },
+        );
+      } catch {
+        writeStderrLineSafe(
+          `qwen serve: Serena project initialization failed for ${workspaceDir}; ` +
+            'setup will retry when the MCP server starts.',
+        );
+      }
+    }
   }
 }

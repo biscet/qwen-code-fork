@@ -2172,6 +2172,53 @@ describe('Gemini Client (client.ts)', () => {
       }
     }
 
+    it('flushes deferred MCP tools and server instructions without the LlmClient send loop', async () => {
+      const reg = getRegistryMock();
+      reg.getTool.mockImplementation((name: string) =>
+        name === 'tool_search' ? ({} as never) : null,
+      );
+      const tool = {
+        name: 'mcp__serena__get_symbols_overview',
+        description: 'List symbols in a project file',
+        serverName: 'serena',
+      };
+      reg.getDeferredToolSummary.mockReturnValue([tool]);
+      reg.getMcpServerInstructions.mockReturnValue(
+        new Map([['serena', 'Use the selected workspace.']]),
+      );
+      vi.spyOn(client.getChat(), 'setTools').mockImplementation(() => {});
+      const addHistory = vi.spyOn(client.getChat(), 'addHistory');
+
+      await client.setTools();
+      expect(addHistory).not.toHaveBeenCalled();
+      client.flushMcpReminders();
+
+      expect(buildChangedMcpToolsReminder).toHaveBeenCalledWith([tool], []);
+      expect(addHistory).toHaveBeenCalledWith({
+        role: 'user',
+        parts: [
+          {
+            text: buildMcpServerInstructionsReminderFromEntries(
+              new Map([['serena', 'Use the selected workspace.']]),
+            ),
+          },
+        ],
+      });
+      expect(JSON.stringify(addHistory.mock.calls)).toContain(tool.name);
+      addHistory.mockClear();
+      client.flushMcpReminders();
+      expect(addHistory).not.toHaveBeenCalled();
+
+      reg.getDeferredToolSummary.mockReturnValue([]);
+      reg.getMcpServerInstructions.mockReturnValue(new Map());
+      await client.setTools();
+      client.flushMcpReminders();
+      expect(buildChangedMcpToolsReminder).toHaveBeenLastCalledWith(
+        [],
+        [tool.name],
+      );
+    });
+
     it('avoids reading history without hidden deferred tools and resolves one summary', async () => {
       const reg = getRegistryMock();
       reg.getDeferredToolSummary.mockReturnValue([]);

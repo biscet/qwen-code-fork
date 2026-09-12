@@ -8,6 +8,41 @@ import {
 import type { DaemonUiEvent } from '../src/daemon/ui/types.js';
 import { matchTurnEvent } from '../src/daemon/DaemonClient.js';
 
+describe('turn error replay', () => {
+  it('deduplicates replay/live terminals by prompt without moving errors after newer content', () => {
+    const terminal: DaemonUiEvent = {
+      type: 'error',
+      source: 'turn_error',
+      promptId: 'prompt-1',
+      text: 'No final answer',
+      recoverable: true,
+      code: 'empty_answer',
+    };
+    const previous = reduceDaemonTranscriptEvents(
+      createDaemonTranscriptState(),
+      [
+        { type: 'user.text.delta', text: 'First', promptId: 'prompt-1' },
+        terminal,
+        { type: 'user.text.delta', text: 'Second', promptId: 'prompt-2' },
+        { type: 'assistant.text.delta', text: 'Done', promptId: 'prompt-2' },
+      ],
+    );
+    const next = reduceDaemonTranscriptEvents(previous, [
+      { ...terminal, eventId: 20 },
+      { ...terminal, promptId: 'prompt-3', eventId: 21 },
+    ]);
+    expect(next.blocks.map((block) => block.kind)).toEqual([
+      'user',
+      'error',
+      'user',
+      'assistant',
+      'error',
+    ]);
+    expect(next.lastEventId).toBe(21);
+    expect(previous.blocks).toHaveLength(4);
+  });
+});
+
 describe('daemon transcript rewind', () => {
   it('drops the target user turn and later transcript blocks', () => {
     const events: DaemonUiEvent[] = [

@@ -1,8 +1,11 @@
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
@@ -44,6 +47,28 @@ describe('desktop workspace MCP initialization', () => {
       skipLoadEnvironment: true,
       workspaceTrusted: true,
     }).merged.mcpServers!;
+
+  const provisionSerena = () => {
+    const serena = {
+      ...template,
+      args: ['${HOMECODE_MCP_LAUNCHER}', 'serena'],
+    };
+    writeServers({ serena });
+    writeFileSync(
+      path.join(runtimeRoot, 'managed.json'),
+      JSON.stringify({ serena }),
+    );
+    rmSync(path.join(runtimeRoot, 'node/bin/node'));
+    symlinkSync(process.execPath, path.join(runtimeRoot, 'node/bin/node'));
+    writeFileSync(
+      path.join(runtimeRoot, 'mcp/launch.mjs'),
+      `import fs from 'node:fs';
+await new Promise(resolve => setTimeout(resolve, 20));
+fs.mkdirSync('.serena', { recursive: true });
+fs.writeFileSync('.serena/project.yml', JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }));`,
+    );
+    return serena;
+  };
 
   beforeEach(() => {
     root = mkdtempSync(path.join(os.tmpdir(), 'desktop-workspace-defaults-'));
@@ -118,6 +143,107 @@ export function installDesktopWorkspaceDefaults(options) {
     });
     expect(loadMcpApprovals().getState(workspace, 'node-repl', template)).toBe(
       'pending',
+    );
+  });
+
+  it('initializes the selected Serena project before completing bootstrap', async () => {
+    provisionSerena();
+    await initializeDesktopWorkspaceDefaults(workspace, true);
+    expect(
+      JSON.parse(
+        readFileSync(path.join(workspace, '.serena/project.yml'), 'utf8'),
+      ),
+    ).toEqual({
+      cwd: realpathSync(workspace),
+      args: ['serena', '--initialize-project'],
+    });
+    expect(getPendingGatedMcpServers(resolvedServers(), workspace)).toEqual([]);
+  });
+
+  it('preserves an existing Serena project configuration', async () => {
+    provisionSerena();
+    mkdirSync(path.join(workspace, '.serena'));
+    const projectFile = path.join(workspace, '.serena/project.yml');
+    writeFileSync(projectFile, 'custom project configuration');
+    await initializeDesktopWorkspaceDefaults(workspace, true);
+    expect(readFileSync(projectFile, 'utf8')).toBe(
+      'custom project configuration',
+    );
+  });
+
+  it.each([
+    'excluded',
+    'allowed',
+    'disabled',
+    'rejected',
+    'custom',
+    'untrusted',
+  ])('does not initialize a %s Serena server', async (mode) => {
+    const serena = provisionSerena();
+    if (mode === 'excluded' || mode === 'allowed') {
+      writeFileSync(
+        path.join(workspace, '.qwen/settings.json'),
+        JSON.stringify({
+          mcpServers: { serena },
+          mcp: { [mode]: mode === 'allowed' ? [] : ['serena'] },
+        }),
+      );
+    } else if (mode === 'disabled' || mode === 'custom') {
+      writeServers({
+        serena: {
+          ...serena,
+          ...(mode === 'disabled'
+            ? { disabled: true }
+            : { command: 'custom-serena' }),
+        },
+      });
+    } else if (mode === 'rejected') {
+      await loadMcpApprovals().setState(
+        workspace,
+        'serena',
+        serena,
+        'rejected',
+      );
+    }
+    await initializeDesktopWorkspaceDefaults(workspace, mode !== 'untrusted');
+    expect(() =>
+      readFileSync(path.join(workspace, '.serena/project.yml')),
+    ).toThrow();
+  });
+
+  it('keeps the workspace available if early Serena setup fails', async () => {
+    provisionSerena();
+    writeFileSync(path.join(runtimeRoot, 'mcp/launch.mjs'), 'process.exit(1)');
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      await expect(
+        initializeDesktopWorkspaceDefaults(workspace, true),
+      ).resolves.toBeUndefined();
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringContaining('Serena project initialization failed'),
+      );
+      expect(getPendingGatedMcpServers(resolvedServers(), workspace)).toEqual(
+        [],
+      );
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  it.each([
+    { mcp: { allowed: ['*'] }, initializes: true },
+    { mcp: { allowed: ['ser*'] }, initializes: true },
+    { mcp: { excluded: ['*'] }, initializes: false },
+    { mcp: { excluded: ['ser*'] }, initializes: false },
+  ])('honors MCP server patterns $mcp', async ({ mcp, initializes }) => {
+    const serena = provisionSerena();
+    writeFileSync(
+      path.join(workspace, '.qwen/settings.json'),
+      JSON.stringify({ mcpServers: { serena }, mcp }),
+    );
+    await initializeDesktopWorkspaceDefaults(workspace, true);
+    expect(existsSync(path.join(workspace, '.serena/project.yml'))).toBe(
+      initializes,
     );
   });
 

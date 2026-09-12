@@ -5053,7 +5053,8 @@ function filterDaemonUiEventsForTranscript(
       filtered.push(event);
       continue;
     }
-    if (sourceEvent.type === 'turn_error') {
+    // Durable replay wraps turn errors in session_update events.
+    if (event.source === 'turn_error') {
       filtered.push(event);
       continue;
     }

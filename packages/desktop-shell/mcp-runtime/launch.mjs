@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -53,7 +54,9 @@ const servers = {
     python,
     [
       path.join(root, 'serena-launch.py'),
-      'start-mcp-server',
+      process.argv[3] === '--initialize-project'
+        ? 'initialize-project'
+        : 'start-mcp-server',
       '--context',
       'ide-assistant',
       '--add-mode',

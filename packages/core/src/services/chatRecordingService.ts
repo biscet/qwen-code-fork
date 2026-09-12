@@ -16,6 +16,7 @@ import type {
   GenerateContentResponseUsageMetadata,
 } from '@google/genai';
 import { createModelContent, createUserContent } from '../core/genai-compat.js';
+import { toModelEmptyAnswerError } from '../core/model-empty-answer-error.js';
 import * as jsonl from '../utils/jsonl-utils.js';
 import { getGitBranch } from '../utils/gitUtils.js';
 import { createDebugLogger } from '../utils/debugLogger.js';
@@ -680,6 +681,7 @@ export type TurnResultCode = typeof TURN_RESULT_CODE_TEXT_TRUNCATED;
 export interface TurnResultErrorPayload {
   message: string;
   code?: string;
+  errorKind?: string;
   messageTruncated?: boolean;
   codeTruncated?: boolean;
 }
@@ -713,6 +715,14 @@ function truncateTurnResultErrorField(
 export function normalizeTurnResultError(
   error: unknown,
 ): TurnResultErrorPayload {
+  const emptyAnswerError = toModelEmptyAnswerError(error);
+  if (emptyAnswerError) {
+    return {
+      message: emptyAnswerError.message,
+      code: emptyAnswerError.code,
+      errorKind: emptyAnswerError.errorKind,
+    };
+  }
   const rawMessage = readTurnResultErrorField(error, 'message');
   let message =
     typeof rawMessage === 'string' && rawMessage.length > 0
@@ -836,6 +846,10 @@ export function isTurnResultRecordPayload(
       (typeof fields['code'] === 'string' &&
         fields['code'].length > 0 &&
         fields['code'].length <= TURN_RESULT_ERROR_CODE_MAX_CHARS)) &&
+    (fields['errorKind'] === undefined ||
+      (typeof fields['errorKind'] === 'string' &&
+        fields['errorKind'].length > 0 &&
+        fields['errorKind'].length <= TURN_RESULT_IDENTIFIER_MAX_CHARS)) &&
     (fields['messageTruncated'] === undefined ||
       typeof fields['messageTruncated'] === 'boolean') &&
     (fields['codeTruncated'] === undefined ||

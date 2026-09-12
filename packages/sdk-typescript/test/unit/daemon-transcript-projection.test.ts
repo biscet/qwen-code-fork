@@ -27,6 +27,47 @@ function record(
 }
 
 describe('projectChatRecordsToDaemonTranscript', () => {
+  it('restores a failed turn before the next successful turn', () => {
+    const projected = projectChatRecordsToDaemonTranscript([
+      record('request', null, { daemonPromptId: 'prompt-1' }),
+      record('failure', 'request', {
+        type: 'system',
+        subtype: 'turn_result',
+        message: undefined,
+        systemPayload: {
+          state: 'error',
+          promptId: 'prompt-1',
+          endedAt: 1,
+          error: {
+            message: 'No final answer',
+            code: 'empty_answer',
+            errorKind: 'final_answer_not_formed',
+          },
+        },
+      }),
+      record('next-request', 'failure', { daemonPromptId: 'prompt-2' }),
+      record('success', 'next-request', {
+        type: 'assistant',
+        message: { role: 'model', parts: [{ text: 'Done' }] },
+      }),
+    ]);
+    expect(projected.complete).toBe(true);
+    expect(projected.blocks.map((block) => block.kind)).toEqual([
+      'user',
+      'error',
+      'user',
+      'assistant',
+    ]);
+    expect(projected.blocks[1]).toMatchObject({
+      source: 'turn_error',
+      promptId: 'prompt-1',
+      text: 'No final answer',
+      code: 'empty_answer',
+      errorKind: 'final_answer_not_formed',
+      sourceRecordIds: ['failure'],
+    });
+  });
+
   it('projects the active branch with deterministic record boundaries', () => {
     const records = [
       record('root', null, {

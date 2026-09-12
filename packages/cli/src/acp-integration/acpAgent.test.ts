@@ -243,6 +243,9 @@ vi.mock('@qwen-code/qwen-code-core', async (importOriginal) => ({
   isTurnResultRecordPayload: (
     await importOriginal<typeof import('@qwen-code/qwen-code-core')>()
   ).isTurnResultRecordPayload,
+  toModelEmptyAnswerError: (
+    await importOriginal<typeof import('@qwen-code/qwen-code-core')>()
+  ).toModelEmptyAnswerError,
   RUNTIME_SNAPSHOT_PREFIX: (
     await importOriginal<typeof import('@qwen-code/qwen-code-core')>()
   ).RUNTIME_SNAPSHOT_PREFIX,
@@ -5410,6 +5413,33 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
       lastSessionMock?.releaseTodoStopGuardQueuedPromptWait,
     ).toHaveBeenCalledWith('guard-owner');
 
+    mockConnectionState.resolve();
+    await agentPromise;
+  });
+
+  it('preserves structured empty-answer errors in the ACP rejection data', async () => {
+    const sessionId = '11111111-1111-1111-1111-111111111111';
+    await setupSessionMocks(sessionId);
+    const { agent, agentPromise } = await bootAcpAgent();
+    await agent.newSession({ cwd: '/tmp', mcpServers: [] });
+    lastSessionMock?.prompt.mockRejectedValueOnce(
+      Object.assign(new Error('Финальный ответ не сформирован'), {
+        type: 'final_answer_not_formed',
+        code: 'empty_answer',
+        rawBody: 'private',
+      }),
+    );
+    await expect(agent.prompt({ sessionId, prompt: [] })).rejects.toMatchObject(
+      {
+        code: -32603,
+        message: 'Финальный ответ не сформирован',
+        data: {
+          details: 'Финальный ответ не сформирован',
+          errorKind: 'final_answer_not_formed',
+          code: 'empty_answer',
+        },
+      },
+    );
     mockConnectionState.resolve();
     await agentPromise;
   });
